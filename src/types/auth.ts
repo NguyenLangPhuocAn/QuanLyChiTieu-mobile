@@ -1,0 +1,19 @@
+export type UserRole = 'BASIC' | 'PREMIUM' | 'ADMIN' | null;
+
+export type AuthUser = {
+  id: number;
+  email: string;
+  role: UserRole;
+  full_name?: string | null;
+  phone?: string | null;
+  birthday?: string | null;
+  address?: string | null;
+  avatar?: string | null;
+  currency_default?: string | null;
+  wallet_count: number;
+};
+
+export type LoginResponse = {
+  message: string;
+  token: string;
+};
