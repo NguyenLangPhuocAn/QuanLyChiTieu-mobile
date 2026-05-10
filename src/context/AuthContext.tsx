@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { configureAuthSession } from '../services/api';
 import { authService } from '../services/auth';
 import type { AuthUser } from '../types/auth';
 
@@ -7,6 +8,7 @@ type AuthContextValue = {
   isLoading: boolean;
   user: AuthUser | null;
   token: string | null;
+  refreshToken: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, confirmPassword: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -25,10 +27,57 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const tokenRef = useRef<string | null>(null);
+  const refreshTokenRef = useRef<string | null>(null);
+  const accessTokenExpiresAtRef = useRef<number | null>(null);
+
+  const saveTokens = (next: {
+    token?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    expiresIn?: number;
+  }) => {
+    const nextAccessToken = next.accessToken ?? next.token ?? null;
+
+    if (nextAccessToken) {
+      tokenRef.current = nextAccessToken;
+      accessTokenExpiresAtRef.current = Date.now() + (next.expiresIn ?? 600) * 1000;
+      setToken(nextAccessToken);
+    }
+
+    if (next.refreshToken) {
+      refreshTokenRef.current = next.refreshToken;
+      setRefreshToken(next.refreshToken);
+    }
+  };
+
+  const clearSession = () => {
+    tokenRef.current = null;
+    refreshTokenRef.current = null;
+    accessTokenExpiresAtRef.current = null;
+    setToken(null);
+    setRefreshToken(null);
+    setUser(null);
+  };
+
+  useEffect(() => {
+    configureAuthSession({
+      getAccessToken: () => tokenRef.current,
+      getRefreshToken: () => refreshTokenRef.current,
+      getAccessTokenExpiresAt: () => accessTokenExpiresAtRef.current,
+      onTokens: saveTokens,
+      onLogout: clearSession,
+    });
+
+    return () => configureAuthSession(null);
+  }, []);
 
   const hydrateUser = async (nextToken: string) => {
     const profile = await authService.getProfile(nextToken);
+    tokenRef.current = nextToken;
+    accessTokenExpiresAtRef.current = Date.now() + 600 * 1000;
     setToken(nextToken);
     setUser(profile);
   };
@@ -38,7 +87,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
 
     try {
       const response = await authService.login(email, password);
-      await hydrateUser(response.token);
+      saveTokens(response);
+      await hydrateUser(response.accessToken ?? response.token);
     } finally {
       setIsLoading(false);
     }
@@ -50,7 +100,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     try {
       await authService.register(email, password, confirmPassword);
       const response = await authService.login(email, password);
-      await hydrateUser(response.token);
+      saveTokens(response);
+      await hydrateUser(response.accessToken ?? response.token);
     } finally {
       setIsLoading(false);
     }
@@ -67,14 +118,14 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     birthday?: string;
     currency_default?: string;
   }) => {
-    if (!token) {
+    if (!tokenRef.current) {
       throw new Error('Vui lòng đăng nhập lại.');
     }
 
     setIsLoading(true);
 
     try {
-      const updatedUser = await authService.updateProfile(token, payload);
+      const updatedUser = await authService.updateProfile(tokenRef.current, payload);
       setUser(updatedUser);
     } finally {
       setIsLoading(false);
@@ -82,8 +133,14 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   };
 
   const signOut = () => {
-    setUser(null);
-    setToken(null);
+    const currentToken = tokenRef.current;
+    const currentRefreshToken = refreshTokenRef.current;
+
+    clearSession();
+
+    if (currentToken) {
+      void authService.logout(currentToken, currentRefreshToken).catch(() => undefined);
+    }
   };
 
   return (
@@ -93,6 +150,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         isLoading,
         user,
         token,
+        refreshToken,
         signIn,
         signUp,
         signInWithGoogle,

@@ -10,10 +10,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'WalletTransactions'>;
 
 const WalletTransactionsScreen = ({ navigation, route }: Props) => {
   const { walletId, walletName } = route.params;
-  const { transactions, preferredCurrency } = useFinance();
+  const { transactions } = useFinance();
 
-  // Backend tra ve wallet_id nen loc theo id de khong bi sai khi nguoi dung doi ten vi.
+  // Backend trả về wallet_id nên lọc theo id để không bị sai khi người dùng đổi tên ví.
   const walletTransactions = transactions.filter(item => item.walletId === walletId);
+  const walletCurrency = walletTransactions[0]?.currency ?? 'VND';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -46,7 +47,7 @@ const WalletTransactionsScreen = ({ navigation, route }: Props) => {
               </View>
               <Text style={item.type === 'income' ? styles.incomeAmount : styles.expenseAmount}>
                 {item.type === 'income' ? '+' : '-'}
-                {formatCurrency(item.amount, preferredCurrency)}
+                {formatCurrency(item.amount, item.currency)}
               </Text>
             </View>
           ))

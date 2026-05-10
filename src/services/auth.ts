@@ -46,4 +46,26 @@ export const authService = {
       body: payload,
     });
   },
+
+  deactivateMe(token: string) {
+    return apiRequest<{ message: string; forceLogout?: boolean }>('/users/me', {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  refresh(refreshToken: string) {
+    return apiRequest<LoginResponse>('/users/refresh', {
+      method: 'POST',
+      body: { refreshToken },
+    });
+  },
+
+  logout(token: string, refreshToken?: string | null) {
+    return apiRequest('/users/logout', {
+      method: 'POST',
+      token,
+      body: { refreshToken },
+    });
+  },
 };

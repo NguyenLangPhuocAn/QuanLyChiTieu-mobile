@@ -55,9 +55,9 @@ const HistoryScreen = ({ wallets = [], categories = [], onRefresh }: HistoryScre
       transactions.reduce(
         (total, item) => {
           if (item.type === 'income') {
-            total.income += item.amount;
+            total.income += item.displayAmount;
           } else {
-            total.expense += item.amount;
+            total.expense += item.displayAmount;
           }
 
           return total;
@@ -198,12 +198,13 @@ const HistoryScreen = ({ wallets = [], categories = [], onRefresh }: HistoryScre
                 <Text style={styles.meta}>
                   {item.category} • {item.wallet}
                 </Text>
+                <Text style={styles.meta}>Tiền tệ ví: {item.currency}</Text>
                 <Text style={styles.meta}>{formatDisplayDate(item.date)}</Text>
               </View>
               <View style={styles.amountColumn}>
                 <Text style={item.type === 'income' ? styles.income : styles.expense}>
                   {item.type === 'income' ? '+' : '-'}
-                  {formatCurrency(item.amount, preferredCurrency)}
+                  {formatCurrency(item.amount, item.currency)}
                 </Text>
                 <MoreHorizontal size={20} color="#B57745" />
               </View>
@@ -234,7 +235,9 @@ const HistoryScreen = ({ wallets = [], categories = [], onRefresh }: HistoryScre
                   key={wallet.id}
                   style={[styles.chip, editWalletId === wallet.id && styles.activeChip]}
                   onPress={() => setEditWalletId(wallet.id)}>
-                  <Text style={[styles.chipText, editWalletId === wallet.id && styles.activeChipText]}>{wallet.name}</Text>
+                  <Text style={[styles.chipText, editWalletId === wallet.id && styles.activeChipText]}>
+                    {wallet.name} · {wallet.currency}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

@@ -5,6 +5,9 @@ export type ApiTransaction = {
   wallet_id: number;
   category_id?: number | null;
   amount: string | number;
+  currency: string;
+  display_amount?: number;
+  display_currency?: string;
   note?: string | null;
   receipt_image?: string | null;
   transaction_date: string;

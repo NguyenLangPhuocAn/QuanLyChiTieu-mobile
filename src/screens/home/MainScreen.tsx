@@ -56,34 +56,69 @@ const formatAmountInput = (value: string) => {
 
 const normalizeAmountInput = (value: string) => value.replace(/[^\d]/g, '');
 
+const buildReceiptUploadFile = (uri: string, transactionId: number) => {
+  const trimmedUri = uri.trim();
+  const extension = trimmedUri.split('?')[0].split('.').pop()?.toLowerCase();
+  const mimeByExtension: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+  };
+  const type = extension ? mimeByExtension[extension] : undefined;
+
+  if (!trimmedUri) {
+    return null;
+  }
+
+  if (!type) {
+    throw new Error('Ảnh hóa đơn chỉ hỗ trợ JPG, PNG hoặc WEBP.');
+  }
+
+  return {
+    uri: trimmedUri,
+    name: `receipt-${transactionId}.${extension === 'jpeg' ? 'jpg' : extension}`,
+    type,
+  };
+};
+
 const mapApiTransactions = (
   apiTransactions: ApiTransaction[],
   currentWallets: Wallet[],
 ): TransactionItem[] => {
-  const walletMap = new Map(currentWallets.map(wallet => [wallet.id, wallet.name]));
+  const walletMap = new Map(currentWallets.map(wallet => [wallet.id, wallet]));
 
-  return apiTransactions.map(transaction => ({
-    id: String(transaction.id),
-    walletId: transaction.wallet_id,
-    categoryId: transaction.category_id,
-    categoryIcon: transaction.category?.icon ?? null,
-    receiptImage: transaction.receipt_image ?? null,
+  return apiTransactions.map(transaction => {
+    const wallet = walletMap.get(transaction.wallet_id);
+
+    return {
+      id: String(transaction.id),
+      walletId: transaction.wallet_id,
+      categoryId: transaction.category_id,
+      categoryIcon: transaction.category?.icon ?? null,
+      receiptImage: transaction.receipt_image ?? null,
     note: transaction.note || 'Không có ghi chú',
-    category:
+      category:
       transaction.category?.name || (transaction.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu'),
-    wallet: walletMap.get(transaction.wallet_id) || 'Ví',
-    type: transaction.type === 'INCOME' ? 'income' : 'expense',
-    amount: Number(transaction.amount),
-    date: transaction.transaction_date,
-  }));
+    wallet: wallet?.name || 'Ví',
+      currency: transaction.currency || wallet?.currency || 'VND',
+      displayAmount: Number(transaction.display_amount ?? transaction.amount),
+      displayCurrency:
+      transaction.display_currency || wallet?.display_currency || 'VND',
+      type: transaction.type === 'INCOME' ? 'income' : 'expense',
+      amount: Number(transaction.amount),
+      date: transaction.transaction_date,
+    };
+  });
 };
 
 const MainScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const {
     categories,
     preferredCurrency,
+    setPreferredCurrency,
     selectedTransactionCategory,
     setCategories,
     setSelectedTransactionCategory,
@@ -128,6 +163,12 @@ const MainScreen = () => {
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
+
+  useEffect(() => {
+    if (user?.currency_default) {
+      setPreferredCurrency(user.currency_default as 'VND' | 'USD' | 'EUR' | 'JPY');
+    }
+  }, [setPreferredCurrency, user?.currency_default]);
 
   useEffect(() => {
     if (wallets.length > 0 && selectedWalletId === null) {
@@ -183,6 +224,9 @@ const MainScreen = () => {
       walletId: wallet.id,
       wallet: wallet.name,
       category: selectedTransactionCategory?.name ?? 'Giao dịch',
+      currency: wallet.currency,
+      displayAmount: amount,
+      displayCurrency: wallet.currency,
       note: transactionNote.trim() || 'Giao dịch mới',
       type: transactionType,
       amount,
@@ -198,7 +242,7 @@ const MainScreen = () => {
     }
 
     const budgetLine = alert.budgetLimit
-      ? `\nĐã chi ${formatCurrency(alert.monthExpense, preferredCurrency)} / ${formatCurrency(alert.budgetLimit, preferredCurrency)} trong tháng này.`
+      ? `\nĐã chi ${formatCurrency(alert.monthExpense, wallet.currency)} / ${formatCurrency(alert.budgetLimit, wallet.currency)} trong tháng này.`
       : '';
 
     Alert.alert('Cảnh báo ngân sách', `${alert.walletName}: ${alert.reasons.join(' · ')}.${budgetLine}`);
@@ -245,12 +289,11 @@ const MainScreen = () => {
       });
 
       if (receiptImageUri.trim()) {
-        // Tạm dùng URI ảnh do người dùng nhập; sau này gắn image picker sẽ truyền cùng object uri/name/type.
-        await transactionsService.uploadReceipt(token, createdTransaction.id, {
-          uri: receiptImageUri.trim(),
-          name: `receipt-${createdTransaction.id}.jpg`,
-          type: 'image/jpeg',
-        });
+        const receiptFile = buildReceiptUploadFile(receiptImageUri, createdTransaction.id);
+
+        if (receiptFile) {
+          await transactionsService.uploadReceipt(token, createdTransaction.id, receiptFile);
+        }
       }
 
       await fetchDashboardData();
@@ -295,10 +338,6 @@ const MainScreen = () => {
           <Pressable style={styles.modalShell}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>Thêm giao dịch</Text>
-              <Text style={styles.modalDescription}>
-                Chọn ví, danh mục rồi nhập số tiền. Ghi chú là phần mô tả duy nhất của giao dịch.
-              </Text>
-
               <Text style={styles.fieldLabel}>Trạng thái</Text>
               <View
                 style={[
@@ -336,6 +375,11 @@ const MainScreen = () => {
               </TouchableOpacity>
 
               <Text style={styles.fieldLabel}>Ví</Text>
+              {selectedWallet ? (
+                <Text style={styles.walletCurrencyHint}>
+                  Giao dịch này sẽ dùng tiền tệ của ví: {selectedWallet.currency}
+                </Text>
+              ) : null}
               <View style={styles.optionWrap}>
                 {wallets.map(wallet => (
                   <TouchableOpacity
@@ -350,7 +394,7 @@ const MainScreen = () => {
                         styles.optionChipText,
                         selectedWalletId === wallet.id && styles.optionChipTextActive,
                       ]}>
-                      {wallet.name}
+                      {wallet.name} · {wallet.currency}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -376,10 +420,18 @@ const MainScreen = () => {
               <Text style={styles.fieldLabel}>Ảnh hóa đơn</Text>
               <TextInput
                 style={styles.input}
-                placeholder="URI ảnh hóa đơn"
+                placeholder="URI ảnh JPG, PNG hoặc WEBP"
                 value={receiptImageUri}
                 onChangeText={setReceiptImageUri}
+                autoCapitalize="none"
               />
+              {receiptImageUri ? (
+                <TouchableOpacity
+                  style={styles.clearReceiptButton}
+                  onPress={() => setReceiptImageUri('')}>
+                  <Text style={styles.clearReceiptText}>Bỏ ảnh hóa đơn</Text>
+                </TouchableOpacity>
+              ) : null}
 
               <TouchableOpacity style={styles.primaryButton} onPress={handleSaveTransaction}>
                 <Text style={styles.primaryButtonText}>Lưu giao dịch</Text>
@@ -596,6 +648,23 @@ const styles = StyleSheet.create({
     color: '#C75A1B',
     marginTop: 10,
     lineHeight: 20,
+  },
+  walletCurrencyHint: {
+    color: '#8A623F',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  clearReceiptButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFE3C8',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  clearReceiptText: {
+    color: '#A94F18',
+    fontWeight: '800',
   },
   primaryButton: {
     backgroundColor: '#F28C28',

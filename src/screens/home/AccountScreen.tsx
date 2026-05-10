@@ -1,15 +1,45 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronRight, ListTree, LogOut, ShieldCheck, UserRound } from 'lucide-react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ChevronRight, ListTree, LogOut, ShieldCheck, Trash2, UserRound } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+import { authService } from '../../services/auth';
 
 const AccountScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { user, signOut } = useAuth();
+  const { token, user, signOut } = useAuth();
+
+  const confirmDeactivateAccount = () => {
+    Alert.alert(
+      'Xóa tài khoản',
+      'Tài khoản sẽ bị vô hiệu hóa. Dữ liệu vẫn được giữ trong hệ thống và bạn sẽ cần liên hệ hỗ trợ nếu muốn mở lại.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa tài khoản',
+          style: 'destructive',
+          onPress: async () => {
+            if (!token) {
+              return;
+            }
+
+            try {
+              await authService.deactivateMe(token);
+              await signOut();
+            } catch (error) {
+              Alert.alert(
+                'Không thể xóa tài khoản',
+                error instanceof Error ? error.message : 'Vui lòng thử lại sau.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -56,6 +86,11 @@ const AccountScreen = () => {
       <TouchableOpacity style={styles.logoutButton} onPress={signOut}>
         <LogOut size={18} color={Colors.white} />
         <Text style={styles.logoutText}>Đăng xuất</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.deleteAccountButton} onPress={confirmDeactivateAccount}>
+        <Trash2 size={18} color="#B42318" />
+        <Text style={styles.deleteAccountText}>Xóa tài khoản</Text>
       </TouchableOpacity>
     </View>
   );
@@ -167,6 +202,23 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: Colors.white,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  deleteAccountButton: {
+    marginTop: 12,
+    backgroundColor: '#FFF1F0',
+    borderWidth: 1.2,
+    borderColor: '#F3B8B2',
+    borderRadius: 20,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  deleteAccountText: {
+    color: '#B42318',
     fontWeight: '800',
     fontSize: 16,
   },

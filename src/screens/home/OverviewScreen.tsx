@@ -26,16 +26,25 @@ type Props = {
   onRefresh: () => void;
 };
 
-type StatMode = 'week' | 'month' | 'year' | 'category';
+type StatMode = 'all' | 'day' | 'week' | 'month' | 'quarter' | 'year' | 'category';
 type ChartStat = {
   label: string;
   income: number;
   expense: number;
 };
+type PeriodOption = {
+  key: string;
+  label: string;
+  caption?: string;
+  date: Date;
+};
 
 const statModeLabels: Record<StatMode, string> = {
+  all: 'Tất cả',
+  day: 'Ngày',
   week: 'Tuần',
   month: 'Tháng',
+  quarter: 'Quý',
   year: 'Năm',
   category: 'Danh mục',
 };
@@ -45,13 +54,186 @@ const isSameDay = (first: Date, second: Date) =>
   first.getMonth() === second.getMonth() &&
   first.getDate() === second.getDate();
 
-const buildTimeStats = (transactions: TransactionItem[], mode: Exclude<StatMode, 'category'>) => {
-  const now = new Date();
+const getStartOfWeek = (date: Date) => {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = start.getDay();
+  start.setDate(start.getDate() + (day === 0 ? -6 : 1 - day));
+  start.setHours(0, 0, 0, 0);
+
+  return start;
+};
+
+const addDays = (date: Date, amount: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+};
+
+const getStartOfQuarter = (date: Date) =>
+  new Date(date.getFullYear(), Math.floor(date.getMonth() / 3) * 3, 1);
+
+const formatChipDate = (date: Date) =>
+  `${`${date.getDate()}`.padStart(2, '0')}/${`${date.getMonth() + 1}`.padStart(2, '0')}`;
+
+const getISOWeek = (date: Date) => {
+  const current = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = current.getUTCDay() || 7;
+  current.setUTCDate(current.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(current.getUTCFullYear(), 0, 1));
+
+  return Math.ceil(((current.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+};
+
+const getPeriodKey = (date: Date) =>
+  `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+
+const buildPeriodOptions = (mode: Exclude<StatMode, 'category'>): PeriodOption[] => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (mode === 'all') {
+    return [
+      {
+        key: 'all',
+        label: 'Tất cả',
+        caption: 'Toàn bộ dữ liệu',
+        date: today,
+      },
+    ];
+  }
+
+  if (mode === 'day') {
+    return Array.from({ length: 30 }, (_, index) => {
+      const date = addDays(today, -index);
+
+      return {
+        key: getPeriodKey(date),
+        label: formatChipDate(date),
+        caption: `${date.getFullYear()}`,
+        date,
+      };
+    });
+  }
 
   if (mode === 'week') {
+    const currentStart = getStartOfWeek(today);
+
+    return Array.from({ length: 20 }, (_, index) => {
+      const start = addDays(currentStart, -index * 7);
+      const end = addDays(start, 6);
+
+      return {
+        key: getPeriodKey(start),
+        label: `Tuần ${getISOWeek(start)}`,
+        caption: `${formatChipDate(start)} - ${formatChipDate(end)}`,
+        date: start,
+      };
+    });
+  }
+
+  if (mode === 'month') {
+    return Array.from({ length: 18 }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth() - index, 1);
+
+      return {
+        key: getPeriodKey(date),
+        label: `Tháng ${date.getMonth() + 1}/${date.getFullYear()}`,
+        date,
+      };
+    });
+  }
+
+  if (mode === 'quarter') {
+    const currentStart = getStartOfQuarter(today);
+
+    return Array.from({ length: 12 }, (_, index) => {
+      const start = new Date(currentStart.getFullYear(), currentStart.getMonth() - index * 3, 1);
+      const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
+
+      return {
+        key: getPeriodKey(start),
+        label: `Q${Math.floor(start.getMonth() / 3) + 1} ${start.getFullYear()}`,
+        caption: `${formatChipDate(start)} - ${formatChipDate(end)}`,
+        date: start,
+      };
+    });
+  }
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(today.getFullYear() - index, 0, 1);
+
+    return {
+      key: getPeriodKey(date),
+      label: `${date.getFullYear()}`,
+      date,
+    };
+  });
+};
+
+const buildTimeStats = (
+  transactions: TransactionItem[],
+  mode: Exclude<StatMode, 'category'>,
+  referenceDate: Date,
+) => {
+  const now = referenceDate;
+
+  if (mode === 'all') {
+    const years = new Map<number, ChartStat>();
+
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const year = date.getFullYear();
+      const stat = years.get(year) ?? {
+        label: `${year}`,
+        income: 0,
+        expense: 0,
+      };
+
+      if (transaction.type === 'income') {
+        stat.income += transaction.displayAmount;
+      } else {
+        stat.expense += transaction.displayAmount;
+      }
+
+      years.set(year, stat);
+    });
+
+    return years.size ? Array.from(years.values()).sort((left, right) => Number(left.label) - Number(right.label)) : [
+      { label: `${now.getFullYear()}`, income: 0, expense: 0 },
+    ];
+  }
+
+  if (mode === 'day') {
+    const hours = Array.from({ length: 24 }, (_, hour) => ({
+      label: `${`${hour}`.padStart(2, '0')}h`,
+      income: 0,
+      expense: 0,
+    }));
+
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+
+      if (!isSameDay(now, date)) {
+        return;
+      }
+
+      if (transaction.type === 'income') {
+        hours[date.getHours()].income += transaction.displayAmount;
+      } else {
+        hours[date.getHours()].expense += transaction.displayAmount;
+      }
+    });
+
+    const activeHours = hours.filter(item => item.income > 0 || item.expense > 0);
+
+    return activeHours.length > 0 ? activeHours : hours.filter((_, index) => index % 4 === 0);
+  }
+
+  if (mode === 'week') {
+    const startOfWeek = getStartOfWeek(now);
     const days = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(now);
-      date.setDate(now.getDate() - (6 - index));
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + index);
 
       return {
         date,
@@ -70,9 +252,9 @@ const buildTimeStats = (transactions: TransactionItem[], mode: Exclude<StatMode,
       }
 
       if (transaction.type === 'income') {
-        stat.income += transaction.amount;
+        stat.income += transaction.displayAmount;
       } else {
-        stat.expense += transaction.amount;
+        stat.expense += transaction.displayAmount;
       }
     });
 
@@ -80,8 +262,9 @@ const buildTimeStats = (transactions: TransactionItem[], mode: Exclude<StatMode,
   }
 
   if (mode === 'month') {
-    const weeks = [1, 2, 3, 4].map(week => ({
-      label: `T${week}`,
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const days = Array.from({ length: daysInMonth }, (_, index) => ({
+      label: `${index + 1}`,
       income: 0,
       expense: 0,
     }));
@@ -93,16 +276,42 @@ const buildTimeStats = (transactions: TransactionItem[], mode: Exclude<StatMode,
         return;
       }
 
-      const weekIndex = Math.min(3, Math.floor((date.getDate() - 1) / 7));
+      const stat = days[date.getDate() - 1];
 
       if (transaction.type === 'income') {
-        weeks[weekIndex].income += transaction.amount;
+        stat.income += transaction.displayAmount;
       } else {
-        weeks[weekIndex].expense += transaction.amount;
+        stat.expense += transaction.displayAmount;
       }
     });
 
-    return weeks;
+    return days;
+  }
+
+  if (mode === 'quarter') {
+    const startMonth = Math.floor(now.getMonth() / 3) * 3;
+    const months = Array.from({ length: 3 }, (_, index) => ({
+      label: `T${startMonth + index + 1}`,
+      income: 0,
+      expense: 0,
+    }));
+
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const monthOffset = date.getMonth() - startMonth;
+
+      if (date.getFullYear() !== now.getFullYear() || monthOffset < 0 || monthOffset > 2) {
+        return;
+      }
+
+      if (transaction.type === 'income') {
+        months[monthOffset].income += transaction.displayAmount;
+      } else {
+        months[monthOffset].expense += transaction.displayAmount;
+      }
+    });
+
+    return months;
   }
 
   const months = Array.from({ length: 12 }, (_, index) => ({
@@ -121,9 +330,9 @@ const buildTimeStats = (transactions: TransactionItem[], mode: Exclude<StatMode,
     const stat = months[date.getMonth()];
 
     if (transaction.type === 'income') {
-      stat.income += transaction.amount;
+      stat.income += transaction.displayAmount;
     } else {
-      stat.expense += transaction.amount;
+      stat.expense += transaction.displayAmount;
     }
   });
 
@@ -138,7 +347,7 @@ const buildCategoryStats = (transactions: TransactionItem[]) => {
     .forEach(transaction => {
       expenseMap.set(
         transaction.category,
-        (expenseMap.get(transaction.category) ?? 0) + transaction.amount,
+        (expenseMap.get(transaction.category) ?? 0) + transaction.displayAmount,
       );
     });
 
@@ -147,6 +356,46 @@ const buildCategoryStats = (transactions: TransactionItem[]) => {
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 };
+
+const filterTransactionsByPeriod = (
+  transactions: TransactionItem[],
+  mode: Exclude<StatMode, 'category'>,
+  referenceDate: Date,
+) =>
+  transactions.filter(transaction => {
+    const date = new Date(transaction.date);
+
+    if (mode === 'day') {
+      return isSameDay(date, referenceDate);
+    }
+
+    if (mode === 'week') {
+      const start = getStartOfWeek(referenceDate);
+      const end = addDays(start, 7);
+
+      return date >= start && date < end;
+    }
+
+    if (mode === 'month') {
+      return (
+        date.getFullYear() === referenceDate.getFullYear() &&
+        date.getMonth() === referenceDate.getMonth()
+      );
+    }
+
+    if (mode === 'quarter') {
+      const startMonth = Math.floor(referenceDate.getMonth() / 3) * 3;
+      const monthOffset = date.getMonth() - startMonth;
+
+      return date.getFullYear() === referenceDate.getFullYear() && monthOffset >= 0 && monthOffset < 3;
+    }
+
+    if (mode === 'year') {
+      return date.getFullYear() === referenceDate.getFullYear();
+    }
+
+    return true;
+  });
 
 const getCurrentMonthExpense = (walletId: number, transactions: TransactionItem[]) => {
   const now = new Date();
@@ -169,16 +418,35 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
   const { user } = useAuth();
   const { transactions, preferredCurrency } = useFinance();
   const [statMode, setStatMode] = useState<StatMode>('month');
+  const [referenceDate, setReferenceDate] = useState(() => new Date());
+  const walletCurrencyMap = useMemo(
+    () => new Map(wallets.map(wallet => [wallet.id, wallet.currency])),
+    [wallets],
+  );
 
   const totalBalance = useMemo(
-    () => wallets.reduce((sum, wallet) => sum + Number(wallet.balance || 0), 0),
+    () =>
+      wallets.reduce(
+        (sum, wallet) => sum + Number(wallet.display_balance ?? wallet.balance ?? 0),
+        0,
+      ),
     [wallets],
   );
   const timeStats = useMemo(
-    () => buildTimeStats(transactions, statMode === 'category' ? 'month' : statMode),
-    [statMode, transactions],
+    () => buildTimeStats(transactions, statMode === 'category' ? 'month' : statMode, referenceDate),
+    [referenceDate, statMode, transactions],
   );
-  const categoryStats = useMemo(() => buildCategoryStats(transactions), [transactions]);
+  const periodMode = statMode === 'category' ? 'month' : statMode;
+  const periodOptions = useMemo(() => buildPeriodOptions(periodMode), [periodMode]);
+  const selectedPeriodKey = getPeriodKey(referenceDate);
+  const selectedPeriodTransactions = useMemo(
+    () => filterTransactionsByPeriod(transactions, periodMode, referenceDate),
+    [periodMode, referenceDate, transactions],
+  );
+  const categoryStats = useMemo(
+    () => buildCategoryStats(selectedPeriodTransactions),
+    [selectedPeriodTransactions],
+  );
   const budgetAlerts = useMemo(
     () => buildWalletBudgetAlerts(wallets, transactions),
     [transactions, wallets],
@@ -204,6 +472,17 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
   );
   const maxChartValue = Math.max(1, ...timeStats.flatMap(item => [item.income, item.expense]));
   const isPremiumStatsEnabled = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
+  const selectedPeriod = periodOptions.find(option => option.key === selectedPeriodKey);
+  const periodTitle = selectedPeriod?.caption
+    ? `${selectedPeriod.label} · ${selectedPeriod.caption}`
+    : selectedPeriod?.label ?? `${statModeLabels[statMode]} ${formatChipDate(referenceDate)}`;
+  const handleModeChange = (mode: StatMode) => {
+    setStatMode(mode);
+
+    if (mode !== 'category') {
+      setReferenceDate(buildPeriodOptions(mode)[0]?.date ?? new Date());
+    }
+  };
 
   const renderChart = (stats: ChartStat[]) => (
     <>
@@ -308,7 +587,7 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
                 {wallet.name}
               </Text>
               <Text style={styles.walletAmount} numberOfLines={1}>
-                {formatCurrency(Number(wallet.balance || 0), preferredCurrency)}
+                {formatCurrency(Number(wallet.balance || 0), wallet.currency)}
               </Text>
             </TouchableOpacity>
           ))
@@ -328,12 +607,12 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
               <Text style={styles.warningText}>{alert.reasons.join(' · ')}</Text>
               {alert.budgetLimit ? (
                 <Text style={styles.warningMeta}>
-                  Đã chi {formatCurrency(alert.monthExpense, preferredCurrency)} /{' '}
-                  {formatCurrency(alert.budgetLimit, preferredCurrency)} tháng này.
+                  Đã chi {formatCurrency(alert.monthExpense, walletCurrencyMap.get(alert.walletId) ?? preferredCurrency)} /{' '}
+                  {formatCurrency(alert.budgetLimit, walletCurrencyMap.get(alert.walletId) ?? preferredCurrency)} tháng này.
                 </Text>
               ) : (
                 <Text style={styles.warningMeta}>
-                  Số dư hiện tại: {formatCurrency(alert.balance, preferredCurrency)}.
+                  Số dư hiện tại: {formatCurrency(alert.balance, walletCurrencyMap.get(alert.walletId) ?? preferredCurrency)}.
                 </Text>
               )}
             </View>
@@ -343,7 +622,7 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
 
       {budgetProgress.length > 0 && (
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Tiến độ ngân sách</Text>
+          <Text style={styles.sectionTitle}>Ngân Sách</Text>
           {budgetProgress.map(item => {
             const cappedPercent = Math.min(item.percent, 1);
             const isOverBudget = item.percent > 1;
@@ -368,8 +647,8 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
                   />
                 </View>
                 <Text style={styles.budgetMeta}>
-                  {formatCurrency(item.monthExpense, preferredCurrency)} /{' '}
-                  {formatCurrency(item.budgetLimit, preferredCurrency)}
+                  {formatCurrency(item.monthExpense, walletCurrencyMap.get(item.walletId) ?? preferredCurrency)} /{' '}
+                  {formatCurrency(item.budgetLimit, walletCurrencyMap.get(item.walletId) ?? preferredCurrency)}
                 </Text>
               </View>
             );
@@ -383,14 +662,14 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
         </View>
 
         <View style={styles.modeRow}>
-          {(['week', 'month', 'year', 'category'] as StatMode[]).map(mode => {
+          {(['all', 'day', 'week', 'month', 'quarter', 'year', 'category'] as StatMode[]).map(mode => {
             const isLocked = mode === 'category' && !isPremiumStatsEnabled;
 
             return (
               <TouchableOpacity
                 key={mode}
                 style={[styles.modeChip, statMode === mode && styles.modeChipActive, isLocked && styles.modeChipLocked]}
-                onPress={() => !isLocked && setStatMode(mode)}>
+                onPress={() => !isLocked && handleModeChange(mode)}>
                 <Text style={[styles.modeChipText, statMode === mode && styles.modeChipTextActive]}>
                   {statModeLabels[mode]}
                 </Text>
@@ -398,6 +677,33 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
             );
           })}
         </View>
+
+        <Text style={styles.periodTitle}>{periodTitle}</Text>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.periodChipRow}>
+          {periodOptions.map(option => {
+            const isActive = option.key === selectedPeriodKey;
+
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.periodChip, isActive && styles.periodChipActive]}
+                onPress={() => setReferenceDate(option.date)}>
+                <Text style={[styles.periodChipText, isActive && styles.periodChipTextActive]}>
+                  {option.label}
+                </Text>
+                {option.caption ? (
+                  <Text style={[styles.periodChipCaption, isActive && styles.periodChipCaptionActive]}>
+                    {option.caption}
+                  </Text>
+                ) : null}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
         {statMode === 'category' ? (
           categoryStats.length === 0 ? (
@@ -435,7 +741,7 @@ const OverviewScreen = ({ wallets, refreshing, onRefresh }: Props) => {
             </View>
             <Text style={item.type === 'income' ? styles.incomeAmount : styles.expenseAmount}>
               {item.type === 'income' ? '+' : '-'}
-              {formatCurrency(item.amount, preferredCurrency)}
+              {formatCurrency(item.amount, item.currency)}
             </Text>
           </View>
         ))}
@@ -667,6 +973,48 @@ const styles = StyleSheet.create({
   },
   modeChipTextActive: {
     color: '#FFFFFF',
+  },
+  periodTitle: {
+    color: '#4A2B1A',
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  periodChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    paddingRight: 8,
+  },
+  periodChip: {
+    backgroundColor: '#FFE3C8',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F0B990',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 78,
+  },
+  periodChipActive: {
+    backgroundColor: '#F28C28',
+    borderColor: '#D87219',
+  },
+  periodChipText: {
+    color: '#4A2B1A',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  periodChipTextActive: {
+    color: '#FFFFFF',
+  },
+  periodChipCaption: {
+    color: '#8B6548',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  periodChipCaptionActive: {
+    color: '#FFF7EF',
   },
   legendRow: {
     flexDirection: 'row',

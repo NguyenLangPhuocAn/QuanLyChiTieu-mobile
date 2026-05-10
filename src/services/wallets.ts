@@ -15,6 +15,7 @@ export const walletsService = {
       name: string;
       balance?: string;
       budget_limit?: string;
+      currency?: string;
     },
   ) {
     return apiRequest<Wallet>('/wallets', {
@@ -30,6 +31,7 @@ export const walletsService = {
     payload: {
       name?: string;
       budget_limit?: string;
+      currency?: string;
     },
   ) {
     return apiRequest<Wallet>(`/wallets/${id}`, {

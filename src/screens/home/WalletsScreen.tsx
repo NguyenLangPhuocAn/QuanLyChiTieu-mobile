@@ -36,6 +36,7 @@ const WalletsScreen = ({ navigation }: Props) => {
   const [walletName, setWalletName] = useState('');
   const [walletBalance, setWalletBalance] = useState('');
   const [walletBudget, setWalletBudget] = useState('');
+  const [walletCurrency, setWalletCurrency] = useState<'VND' | 'USD' | 'EUR' | 'JPY'>('VND');
 
   const fetchWallets = useCallback(async () => {
     if (!token) {
@@ -60,7 +61,11 @@ const WalletsScreen = ({ navigation }: Props) => {
   }, [fetchWallets]);
 
   const totalBalance = useMemo(
-    () => wallets.reduce((sum, wallet) => sum + Number(wallet.balance || 0), 0),
+    () =>
+      wallets.reduce(
+        (sum, wallet) => sum + Number(wallet.display_balance ?? wallet.balance ?? 0),
+        0,
+      ),
     [wallets],
   );
 
@@ -69,6 +74,7 @@ const WalletsScreen = ({ navigation }: Props) => {
     setWalletName('');
     setWalletBalance('');
     setWalletBudget('');
+    setWalletCurrency((user?.currency_default as 'VND' | 'USD' | 'EUR' | 'JPY') ?? 'VND');
     setIsWalletModalVisible(true);
   };
 
@@ -77,6 +83,7 @@ const WalletsScreen = ({ navigation }: Props) => {
     setWalletName(wallet.name);
     setWalletBalance('');
     setWalletBudget(wallet.budget_limit ? String(wallet.budget_limit) : '');
+    setWalletCurrency((wallet.currency as 'VND' | 'USD' | 'EUR' | 'JPY') ?? 'VND');
     setIsWalletModalVisible(true);
   };
 
@@ -98,12 +105,14 @@ const WalletsScreen = ({ navigation }: Props) => {
         await walletsService.update(token, editingWallet.id, {
           name: walletName.trim(),
           budget_limit: walletBudget.trim() || undefined,
+          currency: walletCurrency,
         });
       } else {
         await walletsService.create(token, {
           name: walletName.trim(),
           balance: walletBalance.trim() || '0',
           budget_limit: walletBudget.trim() || undefined,
+          currency: walletCurrency,
         });
       }
 
@@ -185,8 +194,9 @@ const WalletsScreen = ({ navigation }: Props) => {
               <View style={styles.walletInfo}>
                 <Text style={styles.walletName}>{wallet.name}</Text>
                 <Text style={styles.walletBalance}>
-                  {formatCurrency(Number(wallet.balance || 0), preferredCurrency)}
+                  {formatCurrency(Number(wallet.balance || 0), wallet.currency)}
                 </Text>
+                <Text style={styles.walletCurrency}>{wallet.currency}</Text>
               </View>
 
               <TouchableOpacity
@@ -207,11 +217,7 @@ const WalletsScreen = ({ navigation }: Props) => {
         <Pressable style={styles.modalBackdrop} onPress={() => setIsWalletModalVisible(false)}>
           <Pressable style={styles.modalCard}>
             <Text style={styles.modalTitle}>{editingWallet ? 'Sửa ví' : 'Thêm ví mới'}</Text>
-            <Text style={styles.modalDescription}>
-              {editingWallet
-                ? 'Số dư ví được tính từ giao dịch, nên khi sửa ví chỉ đổi tên và hạn mức.'
-                : 'Số dư ban đầu chỉ nhập một lần khi tạo ví; các thay đổi sau đó đi qua giao dịch thu chi.'}
-            </Text>
+
 
             <Text style={styles.inputLabel}>Tên ví</Text>
             <TextInput
@@ -225,10 +231,7 @@ const WalletsScreen = ({ navigation }: Props) => {
               <View style={styles.readOnlyBalanceCard}>
                 <Text style={styles.readOnlyBalanceLabel}>Số dư hiện tại</Text>
                 <Text style={styles.readOnlyBalanceValue}>
-                  {formatCurrency(Number(editingWallet.balance || 0), preferredCurrency)}
-                </Text>
-                <Text style={styles.readOnlyBalanceHint}>
-                  Muốn điều chỉnh số dư, hãy thêm một giao dịch thu hoặc chi tương ứng.
+                  {formatCurrency(Number(editingWallet.balance || 0), editingWallet.currency)}
                 </Text>
               </View>
             ) : (
@@ -252,6 +255,24 @@ const WalletsScreen = ({ navigation }: Props) => {
               value={walletBudget}
               onChangeText={setWalletBudget}
             />
+
+            <Text style={styles.inputLabel}>Tiền tệ của ví</Text>
+            <View style={styles.currencyRow}>
+              {(['VND', 'USD', 'EUR', 'JPY'] as const).map(item => (
+                <TouchableOpacity
+                  key={item}
+                  style={[styles.currencyChip, walletCurrency === item && styles.currencyChipActive]}
+                  onPress={() => setWalletCurrency(item)}>
+                  <Text
+                    style={[
+                      styles.currencyChipText,
+                      walletCurrency === item && styles.currencyChipTextActive,
+                    ]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWallet}>
               {isSavingWallet ? (
@@ -406,6 +427,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 6,
   },
+  walletCurrency: {
+    color: '#8B6548',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
   walletMenuButton: {
     width: 34,
     height: 34,
@@ -491,6 +518,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 16,
     marginBottom: 8,
+  },
+  currencyRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 2,
+  },
+  currencyChip: {
+    backgroundColor: '#FFF8F2',
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  currencyChipActive: {
+    backgroundColor: '#F28C28',
+    borderColor: '#F28C28',
+  },
+  currencyChipText: {
+    color: '#7B573C',
+    fontWeight: '700',
+  },
+  currencyChipTextActive: {
+    color: Colors.white,
   },
   input: {
     backgroundColor: '#FFF8F2',

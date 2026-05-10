@@ -9,6 +9,9 @@ export type TransactionItem = {
   receiptImage?: string | null;
   category: string;
   wallet: string;
+  currency: string;
+  displayAmount: number;
+  displayCurrency: string;
   type: TransactionType;
   amount: number;
   date: string;
