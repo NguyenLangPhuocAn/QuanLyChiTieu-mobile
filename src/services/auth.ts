@@ -68,4 +68,29 @@ export const authService = {
       body: { refreshToken },
     });
   },
+
+  forgotPassword(email: string) {
+    return apiRequest<{ message: string; resetToken?: string }>('/users/forgot-password', {
+      method: 'POST',
+      body: { email },
+    });
+  },
+
+  resetPassword(token: string, newPassword: string, confirmPassword: string) {
+    return apiRequest<{ message: string }>('/users/reset-password', {
+      method: 'POST',
+      body: { token, newPassword, confirmPassword },
+    });
+  },
+
+  completePasswordSetup(token: string, newPassword: string, confirmPassword: string) {
+    return apiRequest<{ message: string; forceLogout?: boolean }>(
+      '/users/complete-password-setup',
+      {
+        method: 'PUT',
+        token,
+        body: { newPassword, confirmPassword },
+      },
+    );
+  },
 };

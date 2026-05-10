@@ -10,6 +10,7 @@ export type AuthUser = {
   address?: string | null;
   avatar?: string | null;
   currency_default?: string | null;
+  must_change_password?: boolean | number | null;
   wallet_count: number;
 };
 
@@ -20,4 +21,5 @@ export type LoginResponse = {
   refreshToken: string;
   expiresIn?: number;
   refreshTokenExpiresAt?: string;
+  mustChangePassword?: boolean;
 };

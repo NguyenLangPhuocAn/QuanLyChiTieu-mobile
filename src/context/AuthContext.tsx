@@ -19,6 +19,7 @@ type AuthContextValue = {
     birthday?: string;
     currency_default?: string;
   }) => Promise<void>;
+  completePasswordSetup: (newPassword: string, confirmPassword: string) => Promise<void>;
   signOut: () => void;
 };
 
@@ -132,6 +133,21 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     }
   };
 
+  const completePasswordSetup = async (newPassword: string, confirmPassword: string) => {
+    if (!tokenRef.current) {
+      throw new Error('Vui lòng đăng nhập lại.');
+    }
+
+    setIsLoading(true);
+
+    try {
+      await authService.completePasswordSetup(tokenRef.current, newPassword, confirmPassword);
+      clearSession();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const signOut = () => {
     const currentToken = tokenRef.current;
     const currentRefreshToken = refreshTokenRef.current;
@@ -155,6 +171,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         signUp,
         signInWithGoogle,
         updateProfile,
+        completePasswordSetup,
         signOut,
       }}>
       {children}

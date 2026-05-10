@@ -99,10 +99,7 @@ const LoginScreen = ({ navigation }: Props) => {
           <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() =>
-            Alert.alert('Thông báo', 'Chức năng quên mật khẩu sẽ làm tiếp sau.')
-          }>
+        <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
           <Text style={styles.forgotText}>Quên mật khẩu?</Text>
         </TouchableOpacity>
 

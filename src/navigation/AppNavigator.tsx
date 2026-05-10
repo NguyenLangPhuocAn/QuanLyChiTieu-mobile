@@ -6,6 +6,9 @@ import LaunchScreen from '../screens/auth/LaunchScreen';
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
+import ForcePasswordSetupScreen from '../screens/auth/ForcePasswordSetupScreen';
 import MainScreen from '../screens/home/MainScreen';
 import WalletsScreen from '../screens/home/WalletsScreen';
 import WalletTransactionsScreen from '../screens/home/WalletTransactionsScreen';
@@ -19,6 +22,13 @@ export type RootStackParamList = {
   Onboarding: undefined;
   Login: undefined;
   SignUp: undefined;
+  ForgotPassword: undefined;
+  ResetPassword:
+    | {
+        token?: string;
+      }
+    | undefined;
+  ForcePasswordSetup: undefined;
   Main: undefined;
   Wallets: undefined;
   WalletTransactions: {
@@ -36,11 +46,16 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const mustChangePassword = Boolean(user?.must_change_password);
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? (
+      {isAuthenticated && mustChangePassword ? (
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="ForcePasswordSetup" component={ForcePasswordSetupScreen} />
+        </Stack.Navigator>
+      ) : isAuthenticated ? (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Main" component={MainScreen} />
           <Stack.Screen name="Wallets" component={WalletsScreen} />
@@ -54,6 +69,8 @@ const AppNavigator = () => {
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="SignUp" component={SignUpScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </Stack.Navigator>
       )}
     </NavigationContainer>
