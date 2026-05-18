@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -44,105 +47,132 @@ const LoginScreen = ({ navigation }: Props) => {
     try {
       await signInWithGoogle();
     } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : '';
       const message =
-        error instanceof Error ? error.message : 'Đăng nhập Google chưa sẵn sàng.';
-      Alert.alert('Google Sign-In', message);
+        rawMessage.includes('idToken') ||
+        rawMessage.includes('webClientId') ||
+        rawMessage.includes('GOOGLE_WEB_CLIENT_ID') ||
+        rawMessage.toLowerCase().includes('non-recoverable') ||
+        rawMessage.toLowerCase().includes('sign in failure')
+          ? 'Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.'
+          : rawMessage || 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
+
+      Alert.alert('Đăng nhập Google', message);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <ArrowLeft color={Colors.text} size={24} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Đăng nhập</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+            <ArrowLeft color={Colors.text} size={24} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Đăng nhập</Text>
+          <View style={styles.headerSpacer} />
+        </View>
 
-      <View style={styles.content}>
-        <Text style={styles.title}>Chào mừng bạn quay lại</Text>
-        <Text style={styles.caption}>Đăng nhập để tiếp tục theo dõi ví và chi tiêu của bạn.</Text>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}>
+          <Text style={styles.title}>Chào mừng bạn quay lại</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <View style={styles.passwordContainer}>
           <TextInput
-            style={styles.inputPassword}
-            placeholder="Mật khẩu"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={secureText}
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
           />
-          <TouchableOpacity onPress={() => setSecureText(!secureText)} style={styles.eyeIcon}>
-            {secureText ? <EyeOff size={20} color={Colors.gray} /> : <Eye size={20} color={Colors.gray} />}
+
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.inputPassword}
+              placeholder="Mật khẩu"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={secureText}
+            />
+            <TouchableOpacity onPress={() => setSecureText(!secureText)} style={styles.eyeIcon}>
+              {secureText ? <EyeOff size={20} color={Colors.gray} /> : <Eye size={20} color={Colors.gray} />}
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.btnPrimary} onPress={handleLogin} disabled={isLoading}>
+            {isLoading ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Text style={styles.btnPrimaryText}>Đăng nhập</Text>
+            )}
           </TouchableOpacity>
-        </View>
 
-        <TouchableOpacity style={styles.btnPrimary} onPress={handleLogin}>
-          {isLoading ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <Text style={styles.btnPrimaryText}>Đăng nhập</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin}>
-          <GoogleIcon size={20} />
-          <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
-          <Text style={styles.forgotText}>Quên mật khẩu?</Text>
-        </TouchableOpacity>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Chưa có tài khoản? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-            <Text style={styles.linkText}>Đăng ký</Text>
+          <TouchableOpacity style={styles.googleButton} onPress={handleGoogleLogin} disabled={isLoading}>
+            <GoogleIcon size={20} />
+            <Text style={styles.googleButtonText}>Đăng nhập với Google</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+
+          <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+            <Text style={styles.forgotText}>Quên mật khẩu?</Text>
+          </TouchableOpacity>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Chưa có tài khoản? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+              <Text style={styles.linkText}>Đăng ký</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.white },
+  keyboardView: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 20,
-    marginBottom: 20,
   },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: Colors.text },
-  headerSpacer: { width: 24 },
-  content: { paddingHorizontal: 20 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text, marginBottom: 8 },
-  caption: { color: Colors.gray, fontSize: 15, lineHeight: 22, marginBottom: 28 },
+  headerSpacer: { width: 44 },
+  content: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 76,
+    paddingBottom: 36,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 30,
+    textAlign: 'center',
+  },
   input: {
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 16,
     padding: 16,
     fontSize: 16,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   passwordContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 16,
-    marginBottom: 22,
+    marginBottom: 20,
   },
   inputPassword: { flex: 1, padding: 16, fontSize: 16 },
   eyeIcon: { padding: 16 },
@@ -169,10 +199,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: Colors.primary,
     fontWeight: 'bold',
-    marginTop: 25,
+    marginTop: 22,
     fontSize: 16,
   },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 40 },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 34 },
   footerText: { color: Colors.gray, fontSize: 16 },
   linkText: {
     color: Colors.primary,

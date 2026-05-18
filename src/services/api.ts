@@ -6,6 +6,11 @@ const API_BASE_URLS =
     : ['http://localhost:3000', 'http://192.168.1.3:3000'];
 
 const REFRESH_THRESHOLD_SECONDS = 4 * 60;
+const SESSION_EXPIRED_MESSAGE = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.';
+const NETWORK_ERROR_MESSAGE =
+  'Không thể kết nối hệ thống. Vui lòng kiểm tra mạng hoặc thử lại sau.';
+const SERVER_ERROR_MESSAGE = 'Hệ thống đang gặp sự cố. Vui lòng thử lại sau.';
+const GENERIC_ERROR_MESSAGE = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
@@ -44,7 +49,7 @@ export class ApiError extends Error {
 
 const parseErrorMessage = (payload: unknown) => {
   if (!payload) {
-    return 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+    return GENERIC_ERROR_MESSAGE;
   }
 
   if (typeof payload === 'string') {
@@ -63,7 +68,19 @@ const parseErrorMessage = (payload: unknown) => {
     }
   }
 
-  return 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+  return GENERIC_ERROR_MESSAGE;
+};
+
+const getFriendlyErrorMessage = (status: number, payload: unknown) => {
+  if (status === 401 || status === 403) {
+    return SESSION_EXPIRED_MESSAGE;
+  }
+
+  if (status >= 500) {
+    return SERVER_ERROR_MESSAGE;
+  }
+
+  return parseErrorMessage(payload);
 };
 
 const parseResponseBody = (text: string) => {
@@ -100,7 +117,7 @@ const postRefresh = async (baseUrl: string, refreshToken: string) => {
   } | null;
 
   if (!response.ok || !payload) {
-    throw new ApiError(parseErrorMessage(payload), response.status);
+    throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
   }
 
   authSession?.onTokens(payload);
@@ -132,11 +149,11 @@ const refreshAccessToken = async () => {
 
       authSession?.onLogout();
 
-      if (lastError instanceof Error) {
-        throw lastError;
+      if (lastError instanceof ApiError) {
+        throw new ApiError(SESSION_EXPIRED_MESSAGE, lastError.status);
       }
 
-      return null;
+      throw new Error(NETWORK_ERROR_MESSAGE);
     })().finally(() => {
       refreshPromise = null;
     });
@@ -204,7 +221,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
           authSession?.onLogout();
         }
 
-        throw new ApiError(parseErrorMessage(payload), response.status);
+        throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
       }
 
       return payload as T;
@@ -218,10 +235,10 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
   }
 
   if (lastError instanceof Error) {
-    throw new Error('Không kết nối được backend. Kiểm tra server Nest và địa chỉ API.');
+    throw new Error(NETWORK_ERROR_MESSAGE);
   }
 
-  throw new Error('Không kết nối được backend.');
+  throw new Error(NETWORK_ERROR_MESSAGE);
 };
 
 export const apiUploadRequest = async <T>(
@@ -232,6 +249,7 @@ export const apiUploadRequest = async <T>(
     name: string;
     type: string;
   },
+  method = 'POST',
 ) => {
   let lastError: unknown;
   let authToken = await getValidToken(token);
@@ -242,7 +260,7 @@ export const apiUploadRequest = async <T>(
       formData.append('file', file as unknown as Blob);
 
       let response = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
+        method,
         headers: {
           Accept: 'application/json',
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
@@ -253,7 +271,7 @@ export const apiUploadRequest = async <T>(
       if (response.status === 401 && authSession?.getRefreshToken()) {
         authToken = await refreshAccessToken();
         response = await fetch(`${baseUrl}${path}`, {
-          method: 'POST',
+          method,
           headers: {
             Accept: 'application/json',
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
@@ -270,7 +288,7 @@ export const apiUploadRequest = async <T>(
           authSession?.onLogout();
         }
 
-        throw new ApiError(parseErrorMessage(payload), response.status);
+        throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
       }
 
       return payload as T;
@@ -284,10 +302,10 @@ export const apiUploadRequest = async <T>(
   }
 
   if (lastError instanceof Error) {
-    throw new Error('Không kết nối được backend để upload ảnh.');
+    throw new Error(NETWORK_ERROR_MESSAGE);
   }
 
-  throw new Error('Không kết nối được backend.');
+  throw new Error(NETWORK_ERROR_MESSAGE);
 };
 
 export { API_BASE_URLS };

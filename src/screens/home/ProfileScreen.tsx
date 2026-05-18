@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,25 +15,137 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, UserRound } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, ImagePlus, UserRound } from 'lucide-react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/Colors';
+import { CURRENCY_OPTIONS } from '../../constants/currencies';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+import { authService } from '../../services/auth';
+import { API_BASE_URLS } from '../../services/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
+type AvatarUploadFile = {
+  uri: string;
+  name: string;
+  type: string;
+};
 
-const ProfileScreen = ({ navigation }: Props) => {
-  const { user, isLoading, updateProfile } = useAuth();
+const resolveAvatarUrl = (avatar?: string | null) => {
+  if (!avatar) {
+    return null;
+  }
+
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+    return avatar;
+  }
+
+  return `${API_BASE_URLS[0]}/uploads/avatars/${avatar}`;
+};
+
+const ProfileScreen = ({ navigation, route }: Props) => {
+  const { token, user, isLoading, updateProfile, signOut, uploadAvatar } = useAuth();
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [birthday, setBirthday] = useState(user?.birthday ? String(user.birthday).slice(0, 10) : '');
   const [address, setAddress] = useState(user?.address ?? '');
   const [currency, setCurrency] = useState(user?.currency_default ?? 'VND');
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  const [profileErrors, setProfileErrors] = useState<{ phone?: string; form?: string }>({});
+  const [passwordErrors, setPasswordErrors] = useState<{
+    oldPassword?: string;
+    newPassword?: string;
+    confirmPassword?: string;
+    form?: string;
+  }>({});
+
+  const selectedCurrency = useMemo(
+    () => CURRENCY_OPTIONS.find(item => item.code === currency) ?? CURRENCY_OPTIONS[0],
+    [currency],
+  );
+  const avatarUrl = resolveAvatarUrl(user?.avatar);
+  const displayPlan = user?.role === 'PREMIUM' || user?.role === 'ADMIN' ? 'PREMIUM' : 'BASIC';
+
+  useEffect(() => {
+    if (route.params?.selectedCurrency) {
+      setCurrency(route.params.selectedCurrency);
+      navigation.setParams({ selectedCurrency: undefined });
+    }
+  }, [navigation, route.params?.selectedCurrency]);
+
+  const closePasswordModal = () => {
+    if (isChangingPassword) {
+      return;
+    }
+
+    setIsPasswordModalVisible(false);
+    setPasswordErrors({});
+  };
+
+  const handlePickAvatar = async () => {
+    let result;
+
+    try {
+      result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        selectionLimit: 1,
+      });
+    } catch {
+      Alert.alert('Chưa mở được thư viện ảnh', 'Vui lòng thử lại sau.');
+      return;
+    }
+
+    if (result.didCancel) {
+      return;
+    }
+
+    const asset = result.assets?.[0];
+
+    if (!asset?.uri) {
+      Alert.alert('Chưa chọn được ảnh', 'Vui lòng chọn ảnh JPG, PNG hoặc WEBP.');
+      return;
+    }
+
+    const type = asset.type ?? 'image/jpeg';
+
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
+      Alert.alert('Ảnh chưa hợp lệ', 'Avatar chỉ hỗ trợ JPG, PNG hoặc WEBP.');
+      return;
+    }
+
+    const file: AvatarUploadFile = {
+      uri: asset.uri,
+      name: asset.fileName ?? `avatar-${Date.now()}.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`,
+      type,
+    };
+
+    setIsUploadingAvatar(true);
+
+    try {
+      await uploadAvatar(file);
+      Alert.alert('Đã cập nhật', 'Avatar của bạn đã được thay đổi.');
+    } catch (error) {
+      Alert.alert('Chưa đổi được avatar', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const handleSave = async () => {
+    if (phone.trim() && !/^0\d{9}$/.test(phone.trim())) {
+      setProfileErrors({ phone: 'Số điện thoại phải bắt đầu bằng 0 và đủ 10 số.' });
+      return;
+    }
+
     try {
-      // Chỉ gửi các trường profile người dùng được phép tự cập nhật.
+      setProfileErrors({});
       await updateProfile({
         full_name: fullName.trim() || undefined,
         phone: phone.trim() || undefined,
@@ -39,66 +156,234 @@ const ProfileScreen = ({ navigation }: Props) => {
       Alert.alert('Đã lưu', 'Thông tin hồ sơ đã được cập nhật.');
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Không thể lưu', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      const message = error instanceof Error ? error.message : 'Vui lòng thử lại sau.';
+      setProfileErrors(/sđt|sdt|điện thoại|phone/i.test(message) ? { phone: message } : { form: message });
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!token) {
+      Alert.alert('Phiên đăng nhập đã hết hạn', 'Vui lòng đăng nhập lại để đổi mật khẩu.');
+      return;
+    }
+
+    const nextErrors: typeof passwordErrors = {};
+
+    if (!oldPassword) {
+      nextErrors.oldPassword = 'Vui lòng nhập mật khẩu hiện tại.';
+    }
+    if (!newPassword) {
+      nextErrors.newPassword = 'Vui lòng nhập mật khẩu mới.';
+    }
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu mới.';
+    } else if (newPassword !== confirmPassword) {
+      nextErrors.confirmPassword = 'Mật khẩu xác nhận chưa khớp.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setPasswordErrors(nextErrors);
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setPasswordErrors({});
+
+    try {
+      const response = await authService.changePassword(token, {
+        oldPassword,
+        newPassword,
+        confirmPassword,
+      });
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setIsPasswordModalVisible(false);
+      Alert.alert('Đã đổi mật khẩu', response.message, [
+        {
+          text: 'Đăng nhập lại',
+          onPress: signOut,
+        },
+      ]);
+    } catch (error) {
+      setPasswordErrors({ form: error instanceof Error ? error.message : 'Vui lòng thử lại sau.' });
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
-          <ArrowLeft size={22} color="#593420" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Thông tin hồ sơ</Text>
-        <View style={styles.headerButtonPlaceholder} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <UserRound size={34} color={Colors.primary} />
-          </View>
-          <Text style={styles.email}>{user?.email}</Text>
-          <Text style={styles.role}>{user?.role ?? 'BASIC'}</Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+            <ArrowLeft size={22} color="#593420" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Thông tin hồ sơ</Text>
+          <View style={styles.headerButtonPlaceholder} />
         </View>
 
-        <Text style={styles.label}>Họ tên</Text>
-        <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Nguyễn Văn A" />
-
-        <Text style={styles.label}>Số điện thoại</Text>
-        <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="0900000000" />
-
-        <Text style={styles.label}>Ngày sinh</Text>
-        <TextInput style={styles.input} value={birthday} onChangeText={setBirthday} placeholder="YYYY-MM-DD" />
-
-        <Text style={styles.label}>Địa chỉ</Text>
-        <TextInput style={[styles.input, styles.addressInput]} value={address} onChangeText={setAddress} multiline placeholder="Địa chỉ" />
-
-        <Text style={styles.label}>Tiền tệ mặc định</Text>
-        <View style={styles.currencyRow}>
-          {['VND', 'USD', 'EUR', 'JPY'].map(item => (
-            <TouchableOpacity
-              key={item}
-              style={[styles.currencyChip, currency === item && styles.currencyChipActive]}
-              onPress={() => setCurrency(item)}>
-              <Text style={[styles.currencyText, currency === item && styles.currencyTextActive]}>{item}</Text>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.profileCard}>
+            <TouchableOpacity style={styles.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.86}>
+              <View style={styles.avatar}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <UserRound size={34} color={Colors.primary} />
+                )}
+              </View>
+              <View style={styles.avatarEditBadge}>
+                {isUploadingAvatar ? (
+                  <ActivityIndicator color={Colors.white} size="small" />
+                ) : (
+                  <ImagePlus size={14} color={Colors.white} />
+                )}
+              </View>
             </TouchableOpacity>
-          ))}
-        </View>
+            <Text style={styles.email}>{user?.email}</Text>
+            <Text style={styles.role}>{displayPlan}</Text>
+          </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isLoading}>
-          {isLoading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveText}>Lưu hồ sơ</Text>}
-        </TouchableOpacity>
-      </ScrollView>
+          <Text style={styles.label}>Họ tên</Text>
+          <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Nguyễn Văn A" />
+
+          <Text style={styles.label}>Số điện thoại</Text>
+          <TextInput
+            style={[styles.input, profileErrors.phone && styles.inputError]}
+            value={phone}
+            onChangeText={value => {
+              setPhone(value);
+              setProfileErrors(current => ({ ...current, phone: undefined, form: undefined }));
+            }}
+            keyboardType="phone-pad"
+            placeholder="0900000000"
+          />
+          {profileErrors.phone ? <Text style={styles.errorText}>{profileErrors.phone}</Text> : null}
+
+          <Text style={styles.label}>Ngày sinh</Text>
+          <TextInput style={styles.input} value={birthday} onChangeText={setBirthday} placeholder="YYYY-MM-DD" />
+
+          <Text style={styles.label}>Địa chỉ</Text>
+          <TextInput
+            style={[styles.input, styles.addressInput]}
+            value={address}
+            onChangeText={setAddress}
+            multiline
+            placeholder="Địa chỉ"
+          />
+
+          <Text style={styles.label}>Tiền tệ mặc định</Text>
+          <TouchableOpacity
+            style={styles.currencySelect}
+            onPress={() =>
+              navigation.navigate('CurrencyPicker', {
+                selectedCurrency: currency,
+                returnTo: 'Profile',
+              })
+            }>
+            <View>
+              <Text style={styles.currencyCode}>{selectedCurrency.code}</Text>
+              <Text style={styles.currencyLabel}>{selectedCurrency.label}</Text>
+            </View>
+            <ChevronRight size={22} color="#9A765B" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isLoading}>
+            {isLoading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveText}>Lưu hồ sơ</Text>}
+          </TouchableOpacity>
+          {profileErrors.form ? <Text style={styles.formErrorText}>{profileErrors.form}</Text> : null}
+
+          <TouchableOpacity
+            style={styles.passwordCard}
+            activeOpacity={0.86}
+            onPress={() => setIsPasswordModalVisible(true)}>
+            <View>
+              <Text style={styles.sectionTitle}>Đổi mật khẩu</Text>
+              <Text style={styles.passwordHint}>Mở biểu mẫu đổi mật khẩu an toàn.</Text>
+            </View>
+            <ChevronRight size={22} color="#9A765B" />
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <Modal visible={isPasswordModalVisible} transparent animationType="slide" onRequestClose={closePasswordModal}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}>
+          <Pressable style={styles.backdropPressable} onPress={closePasswordModal} />
+          <View style={styles.modalCard}>
+            <View style={styles.modalHandle} />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>Đổi mật khẩu</Text>
+
+              <Text style={styles.label}>Mật khẩu hiện tại</Text>
+              <TextInput
+                style={[styles.input, passwordErrors.oldPassword && styles.inputError]}
+                value={oldPassword}
+                onChangeText={value => {
+                  setOldPassword(value);
+                  setPasswordErrors(current => ({ ...current, oldPassword: undefined, form: undefined }));
+                }}
+                secureTextEntry
+                placeholder="Nhập mật khẩu hiện tại"
+              />
+              {passwordErrors.oldPassword ? <Text style={styles.errorText}>{passwordErrors.oldPassword}</Text> : null}
+
+              <Text style={styles.label}>Mật khẩu mới</Text>
+              <TextInput
+                style={[styles.input, passwordErrors.newPassword && styles.inputError]}
+                value={newPassword}
+                onChangeText={value => {
+                  setNewPassword(value);
+                  setPasswordErrors(current => ({ ...current, newPassword: undefined, form: undefined }));
+                }}
+                secureTextEntry
+                placeholder="Tối thiểu 6 ký tự"
+              />
+              {passwordErrors.newPassword ? <Text style={styles.errorText}>{passwordErrors.newPassword}</Text> : null}
+
+              <Text style={styles.label}>Xác nhận mật khẩu mới</Text>
+              <TextInput
+                style={[styles.input, passwordErrors.confirmPassword && styles.inputError]}
+                value={confirmPassword}
+                onChangeText={value => {
+                  setConfirmPassword(value);
+                  setPasswordErrors(current => ({ ...current, confirmPassword: undefined, form: undefined }));
+                }}
+                secureTextEntry
+                placeholder="Nhập lại mật khẩu mới"
+              />
+              {passwordErrors.confirmPassword ? (
+                <Text style={styles.errorText}>{passwordErrors.confirmPassword}</Text>
+              ) : null}
+              {passwordErrors.form ? <Text style={styles.formErrorText}>{passwordErrors.form}</Text> : null}
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={closePasswordModal} disabled={isChangingPassword}>
+                  <Text style={styles.secondaryText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalSaveButton} onPress={handleChangePassword} disabled={isChangingPassword}>
+                  {isChangingPassword ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.saveText}>Lưu</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFF3E8',
-  },
+  container: { flex: 1, backgroundColor: '#FFF3E8' },
+  keyboardView: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -115,21 +400,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerButtonPlaceholder: {
-    width: 42,
-    height: 42,
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#4A2B1A',
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
+  headerButtonPlaceholder: { width: 42, height: 42 },
+  title: { flex: 1, textAlign: 'center', color: '#4A2B1A', fontSize: 22, fontWeight: '800' },
+  content: { padding: 16, paddingBottom: 40 },
   profileCard: {
     backgroundColor: '#FFFDFB',
     borderRadius: 24,
@@ -146,25 +419,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0E2',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  email: {
-    color: '#4A2B1A',
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 12,
+  avatarWrap: {
+    width: 86,
+    height: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  role: {
-    color: Colors.primary,
-    fontWeight: '800',
-    marginTop: 6,
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
-  label: {
-    color: '#7B573C',
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 14,
-    marginBottom: 8,
+  avatarEditBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 4,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: '#FFFDFB',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  email: { color: '#4A2B1A', fontSize: 18, fontWeight: '800', marginTop: 12 },
+  role: { color: Colors.primary, fontWeight: '800', marginTop: 6 },
+  label: { color: '#7B573C', fontSize: 13, fontWeight: '800', marginTop: 14, marginBottom: 8 },
   input: {
     backgroundColor: '#FFFDFB',
     borderWidth: 1.5,
@@ -175,34 +457,23 @@ const styles = StyleSheet.create({
     color: '#4A2B1A',
     fontSize: 16,
   },
-  addressInput: {
-    minHeight: 88,
-    textAlignVertical: 'top',
-  },
-  currencyRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  currencyChip: {
+  inputError: { borderColor: '#E45B5B', backgroundColor: '#FFF8F8' },
+  errorText: { color: '#C24141', fontSize: 12, fontWeight: '700', marginTop: 6 },
+  formErrorText: { color: '#C24141', fontSize: 13, fontWeight: '700', lineHeight: 18, marginTop: 12 },
+  addressInput: { minHeight: 88, textAlignVertical: 'top' },
+  currencySelect: {
+    minHeight: 74,
+    borderRadius: 20,
     backgroundColor: '#FFFDFB',
     borderWidth: 1.5,
     borderColor: '#EBC4A4',
-    borderRadius: 999,
     paddingHorizontal: 16,
-    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  currencyChipActive: {
-    backgroundColor: '#F28C28',
-    borderColor: '#F28C28',
-  },
-  currencyText: {
-    color: '#8B6548',
-    fontWeight: '800',
-  },
-  currencyTextActive: {
-    color: Colors.white,
-  },
+  currencyCode: { color: Colors.primary, fontSize: 18, fontWeight: '900' },
+  currencyLabel: { color: '#8B6548', fontWeight: '700', marginTop: 4 },
   saveButton: {
     backgroundColor: '#F28C28',
     borderRadius: 18,
@@ -210,10 +481,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 22,
   },
-  saveText: {
-    color: Colors.white,
-    fontWeight: '800',
-    fontSize: 16,
+  passwordCard: {
+    backgroundColor: '#FFFDFB',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: '#EBC4A4',
+    padding: 16,
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: { color: '#4A2B1A', fontSize: 18, fontWeight: '900' },
+  passwordHint: { color: '#8B6548', fontWeight: '700', marginTop: 5 },
+  saveText: { color: Colors.white, fontWeight: '800', fontSize: 16 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(42, 24, 12, 0.36)',
+    justifyContent: 'flex-end',
+  },
+  backdropPressable: { flex: 1 },
+  modalCard: {
+    maxHeight: '86%',
+    backgroundColor: '#FFF9F3',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    padding: 20,
+    paddingBottom: 28,
+    borderWidth: 1,
+    borderColor: '#E8B680',
+  },
+  modalHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#E5B98E',
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: { color: '#4A2B1A', fontSize: 22, fontWeight: '900' },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: '#FFF1E3',
+    borderWidth: 1.2,
+    borderColor: '#EBC4A4',
+  },
+  secondaryText: { color: '#7A4A28', fontWeight: '900' },
+  modalSaveButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
   },
 });
 

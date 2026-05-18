@@ -1,4 +1,4 @@
-import { apiRequest } from './api';
+import { apiRequest, apiUploadRequest } from './api';
 import type { ApiCategoryType, Category } from '../types/category';
 
 export const categoriesService = {
@@ -43,5 +43,17 @@ export const categoriesService = {
       method: 'DELETE',
       token,
     });
+  },
+
+  uploadIcon(
+    token: string,
+    id: number,
+    file: {
+      uri: string;
+      name: string;
+      type: string;
+    },
+  ) {
+    return apiUploadRequest<Category>(`/categories/${id}/icon`, token, file);
   },
 };

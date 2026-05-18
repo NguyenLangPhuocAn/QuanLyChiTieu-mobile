@@ -1,20 +1,66 @@
-import React from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { useFinance } from '../../context/FinanceContext';
+import { useAuth } from '../../context/AuthContext';
+import type { TransactionItem } from '../../data/mockTransactions';
+import { transactionsService } from '../../services/transactions';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
+import { mapApiTransactions } from '../../utils/mapTransactions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WalletTransactions'>;
 
 const WalletTransactionsScreen = ({ navigation, route }: Props) => {
   const { walletId, walletName } = route.params;
-  const { transactions } = useFinance();
+  const { token } = useAuth();
+  const [walletTransactions, setWalletTransactions] = useState<TransactionItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Backend trả về wallet_id nên lọc theo id để không bị sai khi người dùng đổi tên ví.
-  const walletTransactions = transactions.filter(item => item.walletId === walletId);
-  const walletCurrency = walletTransactions[0]?.currency ?? 'VND';
+  const fetchWalletTransactions = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await transactionsService.getPage(token, {
+        wallet_id: walletId,
+        page: 1,
+        limit: 100,
+      });
+      setWalletTransactions(
+        mapApiTransactions(response.data, [
+          {
+            id: walletId,
+            user_id: null,
+            name: walletName,
+            currency: response.data[0]?.currency ?? 'VND',
+            balance: 0,
+            created_at: '',
+          },
+        ]),
+      );
+    } catch (error) {
+      Alert.alert('Không tải được giao dịch ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token, walletId, walletName]);
+
+  useEffect(() => {
+    fetchWalletTransactions();
+  }, [fetchWalletTransactions]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -29,7 +75,12 @@ const WalletTransactionsScreen = ({ navigation, route }: Props) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {walletTransactions.length === 0 ? (
+        {isLoading ? (
+          <View style={styles.emptyCard}>
+            <ActivityIndicator color="#D87219" />
+            <Text style={styles.emptyText}>Đang tải giao dịch ví...</Text>
+          </View>
+        ) : walletTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Chưa có giao dịch</Text>
             <Text style={styles.emptyText}>
@@ -38,18 +89,22 @@ const WalletTransactionsScreen = ({ navigation, route }: Props) => {
           </View>
         ) : (
           walletTransactions.map(item => (
-            <View key={item.id} style={styles.transactionCard}>
+            <TouchableOpacity
+              key={item.id}
+              style={styles.transactionCard}
+              activeOpacity={0.86}
+              onPress={() => navigation.navigate('TransactionDetail', { transaction: item })}>
               <View>
                 <Text style={styles.transactionTitle}>{item.note}</Text>
                 <Text style={styles.transactionMeta}>
-                  {item.category} • {formatDisplayDate(item.date)}
+                  {item.category} · {formatDisplayDate(item.date)}
                 </Text>
               </View>
               <Text style={item.type === 'income' ? styles.incomeAmount : styles.expenseAmount}>
                 {item.type === 'income' ? '+' : '-'}
                 {formatCurrency(item.amount, item.currency)}
               </Text>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>

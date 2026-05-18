@@ -7,6 +7,7 @@ export type TransactionItem = {
   categoryIcon?: string | null;
   note: string;
   receiptImage?: string | null;
+  tags?: string[];
   category: string;
   wallet: string;
   currency: string;
@@ -17,5 +18,5 @@ export type TransactionItem = {
   date: string;
 };
 
-// App hiện tại lấy giao dịch từ API, mảng này chỉ giữ lại để tránh vô tình render dữ liệu mẫu.
+// App hiện tại lấy giao dịch từ API, mảng này chỉ giữ lại để tránh và tình render dữ liệu mẫu.
 export const mockTransactions: TransactionItem[] = [];

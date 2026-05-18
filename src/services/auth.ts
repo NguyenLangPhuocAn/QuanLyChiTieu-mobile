@@ -1,4 +1,4 @@
-import { apiRequest } from './api';
+import { apiRequest, apiUploadRequest } from './api';
 import type { AuthUser, LoginResponse } from '../types/auth';
 
 export const authService = {
@@ -9,6 +9,13 @@ export const authService = {
         email,
         password,
       },
+    });
+  },
+
+  loginWithGoogle(idToken: string) {
+    return apiRequest<LoginResponse>('/auth/google/mobile', {
+      method: 'POST',
+      body: { idToken },
     });
   },
 
@@ -38,9 +45,43 @@ export const authService = {
       address?: string;
       birthday?: string;
       currency_default?: string;
+      profile_setup_completed?: boolean;
     },
   ) {
     return apiRequest<AuthUser>('/users/me', {
+      method: 'PUT',
+      token,
+      body: payload,
+    });
+  },
+
+  upgradeToPremium(token: string) {
+    return apiRequest<AuthUser>('/users/me/upgrade-premium', {
+      method: 'PUT',
+      token,
+    });
+  },
+
+  uploadAvatar(
+    token: string,
+    file: {
+      uri: string;
+      name: string;
+      type: string;
+    },
+  ) {
+    return apiUploadRequest<AuthUser>('/users/me/avatar', token, file, 'PUT');
+  },
+
+  changePassword(
+    token: string,
+    payload: {
+      oldPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    },
+  ) {
+    return apiRequest<{ message: string; forceLogout?: boolean }>('/users/change-password', {
       method: 'PUT',
       token,
       body: payload,
@@ -70,7 +111,7 @@ export const authService = {
   },
 
   forgotPassword(email: string) {
-    return apiRequest<{ message: string; resetToken?: string }>('/users/forgot-password', {
+    return apiRequest<{ message: string }>('/users/forgot-password', {
       method: 'POST',
       body: { email },
     });
@@ -84,7 +125,7 @@ export const authService = {
   },
 
   completePasswordSetup(token: string, newPassword: string, confirmPassword: string) {
-    return apiRequest<{ message: string; forceLogout?: boolean }>(
+    return apiRequest<LoginResponse>(
       '/users/complete-password-setup',
       {
         method: 'PUT',

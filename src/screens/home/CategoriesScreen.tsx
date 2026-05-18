@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,18 +15,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, MoreHorizontal, Plus, Search } from 'lucide-react-native';
+import { ArrowLeft, ImagePlus, MoreHorizontal, Plus, Search, X } from 'lucide-react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CategoryIcon from '../../components/CategoryIcon';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
+import { resolveCategoryIconUrl } from '../../utils/categoryIcons';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { ApiCategoryType, Category } from '../../types/category';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
 type ModalMode = 'create' | 'edit' | 'delete' | null;
+type CategoryIconUploadFile = {
+  uri: string;
+  name: string;
+  type: string;
+};
 
 const typeLabels: Record<ApiCategoryType, string> = {
   EXPENSE: 'Chi',
@@ -44,6 +54,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<ApiCategoryType>('EXPENSE');
+  const [iconFile, setIconFile] = useState<CategoryIconUploadFile | null>(null);
 
   const isSelectMode = Boolean(route.params?.selectMode);
   const canCreateCategory = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
@@ -85,6 +96,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setSelectedCategory(null);
     setCategoryName('');
     setCategoryType(activeType);
+    setIconFile(null);
   };
 
   const openCreateModal = () => {
@@ -96,6 +108,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setSelectedCategory(null);
     setCategoryName('');
     setCategoryType(activeType);
+    setIconFile(null);
     setModalMode('create');
   };
 
@@ -107,7 +120,47 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setSelectedCategory(category);
     setCategoryName(category.name);
     setCategoryType(category.type);
+    setIconFile(null);
     setModalMode('edit');
+  };
+
+  const handlePickIcon = async () => {
+    let result;
+
+    try {
+      result = await launchImageLibrary({
+        mediaType: 'photo',
+        quality: 0.8,
+        selectionLimit: 1,
+      });
+    } catch {
+      Alert.alert('Chưa mở được thư viện ảnh', 'Vui lòng thử lại sau.');
+      return;
+    }
+
+    if (result.didCancel) {
+      return;
+    }
+
+    const asset = result.assets?.[0];
+
+    if (!asset?.uri) {
+      Alert.alert('Chưa chọn được ảnh', 'Vui lòng chọn ảnh JPG, PNG hoặc WEBP.');
+      return;
+    }
+
+    const type = asset.type ?? 'image/jpeg';
+
+    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
+      Alert.alert('Ảnh chưa hợp lệ', 'Icon chỉ hỗ trợ JPG, PNG hoặc WEBP.');
+      return;
+    }
+
+    setIconFile({
+      uri: asset.uri,
+      name: asset.fileName ?? `category-icon-${Date.now()}.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`,
+      type,
+    });
   };
 
   const handleSelectCategory = (category: Category) => {
@@ -133,15 +186,23 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
 
     try {
       if (modalMode === 'edit' && selectedCategory) {
-        await categoriesService.update(token, selectedCategory.id, {
+        const updatedCategory = await categoriesService.update(token, selectedCategory.id, {
           name: categoryName.trim(),
           type: categoryType,
         });
+
+        if (iconFile) {
+          await categoriesService.uploadIcon(token, updatedCategory.id, iconFile);
+        }
       } else {
-        await categoriesService.create(token, {
+        const createdCategory = await categoriesService.create(token, {
           name: categoryName.trim(),
           type: categoryType,
         });
+
+        if (iconFile) {
+          await categoriesService.uploadIcon(token, createdCategory.id, iconFile);
+        }
       }
 
       await fetchCategories();
@@ -252,8 +313,12 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       )}
 
       <Modal transparent visible={modalMode !== null} animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={closeModal}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalBackdrop}>
+          <Pressable style={styles.backdropPressable} onPress={closeModal} />
           <Pressable style={styles.modalCard}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {modalMode === 'delete' ? (
               <>
                 <Text style={styles.modalTitle}>Xóa danh mục</Text>
@@ -289,6 +354,43 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
                   ))}
                 </View>
 
+                <Text style={styles.inputLabel}>Icon danh mục</Text>
+                <View style={styles.iconPreviewCard}>
+                  <View style={styles.iconPreviewBox}>
+                    {iconFile ? (
+                      <Image source={{ uri: iconFile.uri }} style={styles.iconPreviewImage} />
+                    ) : selectedCategory?.icon ? (
+                      <Image
+                        source={{ uri: resolveCategoryIconUrl(selectedCategory.icon) ?? undefined }}
+                        style={styles.iconPreviewImage}
+                      />
+                    ) : (
+                      <CategoryIcon icon={null} size={28} />
+                    )}
+                  </View>
+                  <View style={styles.iconPreviewInfo}>
+                    <Text style={styles.iconPreviewTitle} numberOfLines={1}>
+                      {iconFile ? iconFile.name : 'Chưa chọn icon mới'}
+                    </Text>
+                    <Text style={styles.iconPreviewText}>JPG, PNG hoặc WEBP.</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.iconActionButton}
+                    onPress={iconFile ? () => setIconFile(null) : handlePickIcon}>
+                    {iconFile ? (
+                      <X size={18} color="#A94F18" />
+                    ) : (
+                      <ImagePlus size={18} color={Colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {!iconFile ? (
+                  <TouchableOpacity style={styles.iconPickerButton} onPress={handlePickIcon}>
+                    <ImagePlus size={18} color={Colors.primary} />
+                    <Text style={styles.iconPickerText}>Chọn icon</Text>
+                  </TouchableOpacity>
+                ) : null}
+
                 <View style={styles.modalActions}>
                   {modalMode === 'edit' && (
                     <TouchableOpacity style={styles.outlineDangerButton} onPress={() => setModalMode('delete')}>
@@ -301,8 +403,9 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
                 </View>
               </>
             )}
+            </ScrollView>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -459,14 +562,24 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(36, 22, 12, 0.24)',
+    backgroundColor: 'rgba(36, 22, 12, 0.38)',
     justifyContent: 'flex-end',
     padding: 16,
   },
+  backdropPressable: {
+    ...StyleSheet.absoluteFill,
+  },
   modalCard: {
     backgroundColor: '#FFFDFB',
-    borderRadius: 22,
+    borderRadius: 28,
     padding: 20,
+    maxHeight: '82%',
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    shadowColor: '#7A3E12',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
   },
   modalTitle: {
     color: '#4A2B1A',
@@ -517,6 +630,67 @@ const styles = StyleSheet.create({
   modalSegmentTextActive: {
     color: Colors.white,
   },
+  iconPreviewCard: {
+    minHeight: 72,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    backgroundColor: '#FFF8F2',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconPreviewBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#FFF0E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  iconPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  iconPreviewInfo: {
+    flex: 1,
+  },
+  iconPreviewTitle: {
+    color: '#4A2B1A',
+    fontWeight: '900',
+  },
+  iconPreviewText: {
+    color: '#8B6548',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  iconActionButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FFF0E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPickerButton: {
+    marginTop: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    backgroundColor: '#FFF8F2',
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconPickerText: {
+    color: Colors.primary,
+    fontWeight: '900',
+  },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
@@ -524,7 +698,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#F28C28',
+    backgroundColor: '#FF8C00',
     borderRadius: 16,
     alignItems: 'center',
     paddingVertical: 16,

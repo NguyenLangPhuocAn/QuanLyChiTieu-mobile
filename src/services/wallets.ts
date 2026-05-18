@@ -1,5 +1,6 @@
 import { apiRequest } from './api';
 import type { Wallet } from '../types/wallet';
+import type { WalletType } from '../constants/walletTypes';
 
 export const walletsService = {
   getAll(token: string) {
@@ -16,6 +17,7 @@ export const walletsService = {
       balance?: string;
       budget_limit?: string;
       currency?: string;
+      wallet_type?: WalletType;
     },
   ) {
     return apiRequest<Wallet>('/wallets', {
@@ -30,8 +32,10 @@ export const walletsService = {
     id: number,
     payload: {
       name?: string;
+      balance?: string;
       budget_limit?: string;
       currency?: string;
+      wallet_type?: WalletType;
     },
   ) {
     return apiRequest<Wallet>(`/wallets/${id}`, {

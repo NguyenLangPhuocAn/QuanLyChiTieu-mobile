@@ -10,6 +10,7 @@ export type ApiTransaction = {
   display_currency?: string;
   note?: string | null;
   receipt_image?: string | null;
+  tags?: string[];
   transaction_date: string;
   created_at?: string | null;
   type: ApiTransactionType;

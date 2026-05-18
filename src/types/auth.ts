@@ -11,6 +11,7 @@ export type AuthUser = {
   avatar?: string | null;
   currency_default?: string | null;
   must_change_password?: boolean | number | null;
+  profile_setup_completed?: boolean | number | null;
   wallet_count: number;
 };
 

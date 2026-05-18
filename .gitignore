@@ -62,6 +62,11 @@ yarn-error.log
 
 # Temporary files created by Metro to check the health of the file watcher
 .metro-health-check*
+metro.log
+metro.err.log
+tmp-rn-assets/
+NUL
+*.keystore.backup-*
 
 # testing
 /coverage

@@ -1,11 +1,59 @@
 import { apiRequest, apiUploadRequest } from './api';
 import type { ApiTransaction, ApiTransactionType } from '../types/transaction';
 
+export type TransactionQuery = {
+  wallet_id?: number;
+  category_id?: number;
+  type?: ApiTransactionType;
+  tag?: string;
+  q?: string;
+  note?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type PaginatedTransactions = {
+  data: ApiTransaction[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    income?: number;
+    expense?: number;
+    net?: number;
+  };
+};
+
+const buildTransactionQuery = (query?: TransactionQuery) => {
+  const params = new URLSearchParams();
+
+  Object.entries(query ?? {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      params.set(key, String(value));
+    }
+  });
+
+  return params.toString() ? `?${params.toString()}` : '';
+};
+
 export const transactionsService = {
-  getAll(token: string, walletId?: number) {
-    const query = walletId ? `?wallet_id=${walletId}` : '';
+  getAll(token: string, walletIdOrQuery?: number | TransactionQuery) {
+    const query =
+      typeof walletIdOrQuery === 'number'
+        ? buildTransactionQuery({ wallet_id: walletIdOrQuery })
+        : buildTransactionQuery(walletIdOrQuery);
 
     return apiRequest<ApiTransaction[]>(`/transactions${query}`, {
+      method: 'GET',
+      token,
+    });
+  },
+
+  getPage(token: string, query: TransactionQuery) {
+    return apiRequest<PaginatedTransactions>(`/transactions${buildTransactionQuery(query)}`, {
       method: 'GET',
       token,
     });
@@ -21,6 +69,7 @@ export const transactionsService = {
       note?: string;
       receipt_image?: string;
       transaction_date?: string;
+      tags?: string[];
     },
   ) {
     return apiRequest<ApiTransaction>('/transactions', {
@@ -39,8 +88,9 @@ export const transactionsService = {
       amount?: string;
       type?: ApiTransactionType;
       note?: string;
-      receipt_image?: string;
+      receipt_image?: string | null;
       transaction_date?: string;
+      tags?: string[];
     },
   ) {
     return apiRequest<ApiTransaction>(`/transactions/${id}`, {
