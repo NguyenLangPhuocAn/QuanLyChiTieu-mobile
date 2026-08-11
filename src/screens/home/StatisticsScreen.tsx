@@ -36,7 +36,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { statisticsService, type StatisticsPeriod, type StatisticsResponse } from '../../services/statistics';
+import {
+  statisticsService,
+  type ReportDateRange,
+  type ReportPeriod,
+  type StatisticsPeriod,
+  type StatisticsResponse,
+} from '../../services/statistics';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { buildCategoryStats } from '../../utils/categoryStats';
 import { formatCurrency, formatShortDate } from '../../utils/format';
@@ -110,6 +116,83 @@ const parseInputDate = (value?: string) => {
   }
 
   return new Date(year, month - 1, day);
+};
+
+const getReportRequest = (
+  period: PeriodMode,
+  range: PeriodRange,
+): { period: ReportPeriod; range: ReportDateRange } => {
+  if (period === 'day') {
+    const value = range.selectedDate ?? formatDateInput(now);
+    return { period, range: { dateFrom: value, dateTo: value } };
+  }
+
+  if (period === 'week') {
+    const start = parseInputDate(range.selectedWeekStart) ?? startOfWeek(now);
+    const end = clampDateToToday(addDays(start, 6));
+    return {
+      period,
+      range: { dateFrom: formatDateInput(start), dateTo: formatDateInput(end) },
+    };
+  }
+
+  if (period === 'month') {
+    const year = range.selectedYear ?? now.getFullYear();
+    const month = range.selectedMonth ?? now.getMonth();
+    return {
+      period,
+      range: {
+        dateFrom: formatDateInput(new Date(year, month, 1)),
+        dateTo: formatDateInput(clampDateToToday(new Date(year, month + 1, 0))),
+      },
+    };
+  }
+
+  if (period === 'quarter') {
+    const year = range.selectedYear ?? now.getFullYear();
+    const quarter = range.selectedQuarter ?? Math.floor(now.getMonth() / 3);
+    const start = new Date(year, quarter * 3, 1);
+    return {
+      period,
+      range: {
+        dateFrom: formatDateInput(start),
+        dateTo: formatDateInput(clampDateToToday(new Date(year, quarter * 3 + 3, 0))),
+      },
+    };
+  }
+
+  if (period === 'year') {
+    const year = range.selectedYear ?? now.getFullYear();
+    return {
+      period,
+      range: {
+        dateFrom: formatDateInput(new Date(year, 0, 1)),
+        dateTo: formatDateInput(clampDateToToday(new Date(year, 11, 31))),
+      },
+    };
+  }
+
+  if (range.customDateMode === 'all') {
+    return { period: 'all', range: {} };
+  }
+  if (range.customDateMode === 'after') {
+    return { period, range: { dateFrom: range.dateFrom } };
+  }
+  if (range.customDateMode === 'before') {
+    return { period, range: { dateTo: range.dateTo } };
+  }
+
+  const sorted = sortDateRange(
+    parseInputDate(range.dateFrom) ?? new Date(now.getFullYear(), now.getMonth(), 1),
+    clampDateToToday(parseInputDate(range.dateTo) ?? now),
+  );
+  return {
+    period,
+    range: {
+      dateFrom: formatDateInput(sorted.start),
+      dateTo: formatDateInput(sorted.end),
+    },
+  };
 };
 
 const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -698,13 +781,10 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
             : false;
   const canUseApiStats =
     hasFullStats && walletId === null && apiStatsPeriod !== null && isCurrentApiStatsPeriod;
-  const exportPeriod: StatisticsPeriod | null =
-    period === 'custom' && customDateMode === 'all'
-      ? 'all'
-      : period === 'day' || period === 'week' || period === 'month' || period === 'year'
-        ? period
-        : null;
-  const canExportPeriod = exportPeriod !== null;
+  const reportRequest = useMemo(
+    () => getReportRequest(period, periodRange),
+    [period, periodRange],
+  );
 
   useEffect(() => {
     if (!token || !canUseApiStats || !apiStatsPeriod) {
@@ -908,11 +988,6 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
       return;
     }
 
-    if (!canExportPeriod) {
-      Alert.alert('Chưa hỗ trợ xuất báo cáo', 'Xuất báo cáo hiện hỗ trợ Ngày, Tuần, Tháng và Năm.');
-      return;
-    }
-
     if (format === 'excel') {
       setReportEmail(user?.email ?? reportEmail);
       setIsEmailModalVisible(true);
@@ -921,7 +996,12 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
 
     try {
       setExportingFormat(format);
-      const report = await statisticsService.exportReport(token, exportPeriod!, format);
+      const report = await statisticsService.exportReport(
+        token,
+        reportRequest.period,
+        format,
+        reportRequest.range,
+      );
       const targetDirectory = RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath;
       const targetPath = `${targetDirectory}/${report.filename}`;
 
@@ -949,11 +1029,12 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
 
     try {
       setExportingFormat('excel');
-      if (!canExportPeriod) {
-        Alert.alert('Chưa hỗ trợ gửi báo cáo', 'Gửi báo cáo hiện hỗ trợ Ngày, Tuần, Tháng và Năm.');
-        return;
-      }
-      const response = await statisticsService.sendExcelReport(token, exportPeriod!, email);
+      const response = await statisticsService.sendExcelReport(
+        token,
+        reportRequest.period,
+        email,
+        reportRequest.range,
+      );
       setIsEmailModalVisible(false);
       Alert.alert('Đã gửi báo cáo', getUserFriendlyErrorMessage(response.message, response.message));
     } catch (error) {

@@ -1,6 +1,16 @@
-import { mapApiTransactions } from '../src/utils/mapTransactions';
+import {
+  getTransactionDateKey,
+  mapApiTransactions,
+} from '../src/utils/mapTransactions';
 
 describe('mapApiTransactions', () => {
+  it('keeps the intended GMT+7 date from legacy UTC timestamps', () => {
+    expect(getTransactionDateKey('2026-08-10T17:00:00.000Z')).toBe(
+      '2026-08-11',
+    );
+    expect(getTransactionDateKey('2026-08-11')).toBe('2026-08-11');
+  });
+
   it('keeps original transaction currency separate from display currency', () => {
     const [transaction] = mapApiTransactions(
       [

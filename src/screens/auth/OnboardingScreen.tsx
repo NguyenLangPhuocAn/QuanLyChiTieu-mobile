@@ -55,6 +55,9 @@ const OnboardingScreen = ({ navigation }: Props) => {
         data={slides}
         horizontal
         pagingEnabled
+        initialNumToRender={1}
+        windowSize={3}
+        removeClippedSubviews={false}
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         keyExtractor={(item) => item.id}
@@ -64,7 +67,9 @@ const OnboardingScreen = ({ navigation }: Props) => {
             <Image 
               source={item.image} 
               style={styles.image} 
-              resizeMode="contain" 
+              resizeMode="contain"
+              resizeMethod="resize"
+              fadeDuration={0}
             />
             <Text style={styles.title}>{item.title}</Text>
             <Text style={styles.description}>{item.description}</Text>
