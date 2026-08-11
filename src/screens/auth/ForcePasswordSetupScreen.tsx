@@ -3,15 +3,16 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
+  TouchableOpacity
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 const ForcePasswordSetupScreen = () => {
   const { completePasswordSetup, isLoading } = useAuth();
@@ -45,7 +46,7 @@ const ForcePasswordSetupScreen = () => {
       setErrors({});
       await completePasswordSetup(newPassword, confirmPassword);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể tạo mật khẩu mới.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể tạo mật khẩu mới.');
       setErrors({ form: message });
     }
   };

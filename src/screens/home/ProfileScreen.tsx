@@ -7,15 +7,16 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
-import { ArrowLeft, ChevronRight, ImagePlus, UserRound } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft, CalendarDays, ChevronRight, ImagePlus, UserRound, X } from 'lucide-react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/Colors';
@@ -23,7 +24,9 @@ import { CURRENCY_OPTIONS } from '../../constants/currencies';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { authService } from '../../services/auth';
-import { API_BASE_URLS } from '../../services/api';
+import { resolveAvatarUrl } from '../../utils/avatar';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import { formatShortDate } from '../../utils/format';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type AvatarUploadFile = {
@@ -32,23 +35,67 @@ type AvatarUploadFile = {
   type: string;
 };
 
-const resolveAvatarUrl = (avatar?: string | null) => {
-  if (!avatar) {
-    return null;
+const isValidDateParts = (year: number, month: number, day: number) => {
+  const date = new Date(year, month - 1, day);
+
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+};
+
+const formatBirthdayInput = (value?: string | null) => (value ? formatShortDate(String(value)) : '');
+const toDateKey = (date: Date) =>
+  `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
+const getBirthdayPickerValue = (value: string) => {
+  const normalized = normalizeBirthdayInput(value);
+  if (!normalized) return new Date();
+  const [year, month, day] = normalized.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const normalizeBirthdayInput = (value: string) => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return '';
   }
 
-  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-    return avatar;
+  const displayMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+
+  if (displayMatch) {
+    const [, dayValue, monthValue, yearValue] = displayMatch;
+    const day = Number(dayValue);
+    const month = Number(monthValue);
+    const year = Number(yearValue);
+
+    if (!isValidDateParts(year, month, day)) {
+      return null;
+    }
+
+    return `${yearValue}-${monthValue.padStart(2, '0')}-${dayValue.padStart(2, '0')}`;
   }
 
-  return `${API_BASE_URLS[0]}/uploads/avatars/${avatar}`;
+  const apiMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+
+  if (apiMatch) {
+    const [, yearValue, monthValue, dayValue] = apiMatch;
+    const day = Number(dayValue);
+    const month = Number(monthValue);
+    const year = Number(yearValue);
+
+    if (!isValidDateParts(year, month, day)) {
+      return null;
+    }
+
+    return `${yearValue}-${monthValue.padStart(2, '0')}-${dayValue.padStart(2, '0')}`;
+  }
+
+  return null;
 };
 
 const ProfileScreen = ({ navigation, route }: Props) => {
   const { token, user, isLoading, updateProfile, signOut, uploadAvatar } = useAuth();
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
-  const [birthday, setBirthday] = useState(user?.birthday ? String(user.birthday).slice(0, 10) : '');
+  const [birthday, setBirthday] = useState(formatBirthdayInput(user?.birthday));
   const [address, setAddress] = useState(user?.address ?? '');
   const [currency, setCurrency] = useState(user?.currency_default ?? 'VND');
   const [oldPassword, setOldPassword] = useState('');
@@ -57,6 +104,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
+  const [isBirthdayPickerVisible, setIsBirthdayPickerVisible] = useState(false);
   const [profileErrors, setProfileErrors] = useState<{ phone?: string; form?: string }>({});
   const [passwordErrors, setPasswordErrors] = useState<{
     oldPassword?: string;
@@ -86,6 +134,14 @@ const ProfileScreen = ({ navigation, route }: Props) => {
 
     setIsPasswordModalVisible(false);
     setPasswordErrors({});
+  };
+
+  const handleBirthdayChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    setIsBirthdayPickerVisible(false);
+    if (selectedDate) {
+      setBirthday(formatBirthdayInput(toDateKey(selectedDate)));
+      setProfileErrors(current => ({ ...current, form: undefined }));
+    }
   };
 
   const handlePickAvatar = async () => {
@@ -132,7 +188,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
       await uploadAvatar(file);
       Alert.alert('Đã cập nhật', 'Avatar của bạn đã được thay đổi.');
     } catch (error) {
-      Alert.alert('Chưa đổi được avatar', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Chưa đổi được avatar', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -146,17 +202,24 @@ const ProfileScreen = ({ navigation, route }: Props) => {
 
     try {
       setProfileErrors({});
+      const normalizedBirthday = normalizeBirthdayInput(birthday);
+
+      if (normalizedBirthday === null) {
+        setProfileErrors({ form: 'Ngày sinh chưa hợp lệ.' });
+        return;
+      }
+
       await updateProfile({
         full_name: fullName.trim() || undefined,
         phone: phone.trim() || undefined,
-        birthday: birthday.trim() || undefined,
+        birthday: normalizedBirthday || undefined,
         address: address.trim() || undefined,
         currency_default: currency.trim() || 'VND',
       });
       Alert.alert('Đã lưu', 'Thông tin hồ sơ đã được cập nhật.');
       navigation.goBack();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Vui lòng thử lại sau.';
+      const message = getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.');
       setProfileErrors(/sđt|sdt|điện thoại|phone/i.test(message) ? { phone: message } : { form: message });
     }
   };
@@ -199,14 +262,14 @@ const ProfileScreen = ({ navigation, route }: Props) => {
       setNewPassword('');
       setConfirmPassword('');
       setIsPasswordModalVisible(false);
-      Alert.alert('Đã đổi mật khẩu', response.message, [
+      Alert.alert('Đã đổi mật khẩu', getUserFriendlyErrorMessage(response.message, response.message), [
         {
           text: 'Đăng nhập lại',
           onPress: signOut,
         },
       ]);
     } catch (error) {
-      setPasswordErrors({ form: error instanceof Error ? error.message : 'Vui lòng thử lại sau.' });
+      setPasswordErrors({ form: getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.') });
     } finally {
       setIsChangingPassword(false);
     }
@@ -264,7 +327,31 @@ const ProfileScreen = ({ navigation, route }: Props) => {
           {profileErrors.phone ? <Text style={styles.errorText}>{profileErrors.phone}</Text> : null}
 
           <Text style={styles.label}>Ngày sinh</Text>
-          <TextInput style={styles.input} value={birthday} onChangeText={setBirthday} placeholder="YYYY-MM-DD" />
+          <View style={styles.dateRow}>
+            <TouchableOpacity
+              style={styles.dateSelect}
+              onPress={() => setIsBirthdayPickerVisible(true)}>
+              <CalendarDays size={18} color="#9A5A24" />
+              <Text style={styles.dateSelectText}>
+                {birthday || 'Chọn ngày sinh'}
+              </Text>
+            </TouchableOpacity>
+            {birthday ? (
+              <TouchableOpacity
+                style={styles.clearDateButton}
+                onPress={() => setBirthday('')}>
+                <X size={18} color="#9A5A24" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {isBirthdayPickerVisible ? (
+            <DateTimePicker
+              value={getBirthdayPickerValue(birthday)}
+              mode="date"
+              maximumDate={new Date()}
+              onChange={handleBirthdayChange}
+            />
+          ) : null}
 
           <Text style={styles.label}>Địa chỉ</Text>
           <TextInput
@@ -460,6 +547,21 @@ const styles = StyleSheet.create({
   inputError: { borderColor: '#E45B5B', backgroundColor: '#FFF8F8' },
   errorText: { color: '#C24141', fontSize: 12, fontWeight: '700', marginTop: 6 },
   formErrorText: { color: '#C24141', fontSize: 13, fontWeight: '700', lineHeight: 18, marginTop: 12 },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateSelect: {
+    flex: 1,
+    minHeight: 52,
+    backgroundColor: '#FFFDFB',
+    borderWidth: 1.5,
+    borderColor: '#EBC4A4',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dateSelectText: { color: '#4A2B1A', fontSize: 16, fontWeight: '800' },
+  clearDateButton: { width: 52, height: 52, borderRadius: 16, backgroundColor: '#FFF0E2', alignItems: 'center', justifyContent: 'center' },
   addressInput: { minHeight: 88, textAlignVertical: 'top' },
   currencySelect: {
     minHeight: 74,

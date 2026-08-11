@@ -1,6 +1,6 @@
 import { apiRequest } from './api';
 
-export type StatisticsPeriod = 'day' | 'week' | 'month' | 'year';
+export type StatisticsPeriod = 'all' | 'day' | 'week' | 'month' | 'year';
 
 export type StatisticsResponse = {
   period: StatisticsPeriod;

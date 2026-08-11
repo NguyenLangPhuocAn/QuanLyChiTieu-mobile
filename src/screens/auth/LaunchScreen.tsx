@@ -1,28 +1,39 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
 
-const logo = require('../../assets/images/splash-wallet-logo-user.png');
+const logo = require('../../assets/images/splash-wallet-logo-clean.png');
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Launch'>;
 };
 
 const LaunchScreen = ({ navigation }: Props) => {
+  const [isLogoLoaded, setIsLogoLoaded] = useState(false);
+
   useEffect(() => {
+    if (!isLogoLoaded) {
+      return;
+    }
+
     const timer = setTimeout(() => {
       navigation.replace('Onboarding');
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [navigation]);
+  }, [isLogoLoaded, navigation]);
 
   return (
     <View style={styles.container}>
       <View style={styles.logoStage}>
-        <Image source={logo} style={styles.logoImage} resizeMode="contain" />
+        <Image
+          source={logo}
+          style={styles.logoImage}
+          resizeMode="contain"
+          onLoad={() => setIsLogoLoaded(true)}
+        />
       </View>
       <Text style={styles.logoText}>Tiêu gì?</Text>
       <Text style={styles.subtitle}>Tiêu gì cũng biết.</Text>

@@ -5,6 +5,7 @@ export type TransactionQuery = {
   wallet_id?: number;
   category_id?: number;
   type?: ApiTransactionType;
+  cash_flow?: 'normal' | 'loan_debt';
   tag?: string;
   q?: string;
   note?: string;

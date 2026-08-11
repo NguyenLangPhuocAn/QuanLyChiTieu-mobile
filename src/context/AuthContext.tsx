@@ -31,6 +31,11 @@ type AuthContextValue = {
     phone?: string;
   }) => Promise<void>;
   completePasswordSetup: (newPassword: string, confirmPassword: string) => Promise<void>;
+  completeResetPassword: (
+    resetToken: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) => Promise<void>;
   signOut: () => void;
 };
 
@@ -248,7 +253,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
 
   const uploadAvatar = async (file: { uri: string; name: string; type: string }) => {
     if (!tokenRef.current) {
-      throw new Error('PhiÃªn Ä‘Äƒng nháº­p Ä‘Ã£ háº¿t háº¡n, vui lÃ²ng Ä‘Äƒng nháº­p láº¡i.');
+      throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
     }
 
     setIsLoading(true);
@@ -321,6 +326,33 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     }
   };
 
+  const completeResetPassword = async (
+    resetToken: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) => {
+    setIsLoading(true);
+
+    try {
+      const response = await authService.resetPassword(
+        resetToken,
+        newPassword,
+        confirmPassword,
+      );
+      saveTokens(response);
+
+      if (response.user) {
+        setUser(response.user);
+        setIsCurrencySetupRequired(!response.user.profile_setup_completed);
+        return;
+      }
+
+      await hydrateUser(response.accessToken ?? response.token);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const signOut = () => {
     const currentToken = tokenRef.current;
     const currentRefreshToken = refreshTokenRef.current;
@@ -349,6 +381,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       uploadAvatar,
         completeCurrencySetup,
         completePasswordSetup,
+        completeResetPassword,
         signOut,
       }}>
       {children}

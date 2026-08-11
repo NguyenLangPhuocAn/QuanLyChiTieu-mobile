@@ -2,19 +2,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import { transactionsService } from '../../services/transactions';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
 import { mapApiTransactions } from '../../utils/mapTransactions';
 
@@ -52,7 +53,10 @@ const WalletTransactionsScreen = ({ navigation, route }: Props) => {
         ]),
       );
     } catch (error) {
-      Alert.alert('Không tải được giao dịch ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert(
+        'Không tải được giao dịch ví',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -94,15 +98,15 @@ const WalletTransactionsScreen = ({ navigation, route }: Props) => {
               style={styles.transactionCard}
               activeOpacity={0.86}
               onPress={() => navigation.navigate('TransactionDetail', { transaction: item })}>
-              <View>
-                <Text style={styles.transactionTitle}>{item.note}</Text>
+              <View style={styles.transactionInfo}>
+                <Text style={styles.transactionTitle} numberOfLines={2}>{item.note}</Text>
                 <Text style={styles.transactionMeta}>
                   {item.category} · {formatDisplayDate(item.date)}
                 </Text>
               </View>
-              <Text style={item.type === 'income' ? styles.incomeAmount : styles.expenseAmount}>
+              <Text style={item.type === 'income' ? styles.incomeAmount : styles.expenseAmount} numberOfLines={2}>
                 {item.type === 'income' ? '+' : '-'}
-                {formatCurrency(item.amount, item.currency)}
+                {formatCurrency(item.displayAmount, item.displayCurrency)}
               </Text>
             </TouchableOpacity>
           ))
@@ -174,8 +178,14 @@ const styles = StyleSheet.create({
     borderColor: '#F0D6C1',
     marginBottom: 12,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
+  },
+  transactionInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
   },
   transactionTitle: {
     color: '#4A2B1A',
@@ -189,12 +199,14 @@ const styles = StyleSheet.create({
   incomeAmount: {
     color: '#D87219',
     fontWeight: '800',
-    alignSelf: 'center',
+    maxWidth: 116,
+    textAlign: 'right',
   },
   expenseAmount: {
     color: '#A94F18',
     fontWeight: '800',
-    alignSelf: 'center',
+    maxWidth: 116,
+    textAlign: 'right',
   },
 });
 

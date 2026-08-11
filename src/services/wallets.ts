@@ -15,7 +15,6 @@ export const walletsService = {
     payload: {
       name: string;
       balance?: string;
-      budget_limit?: string;
       currency?: string;
       wallet_type?: WalletType;
     },
@@ -33,7 +32,6 @@ export const walletsService = {
     payload: {
       name?: string;
       balance?: string;
-      budget_limit?: string;
       currency?: string;
       wallet_type?: WalletType;
     },
@@ -42,6 +40,13 @@ export const walletsService = {
       method: 'PUT',
       token,
       body: payload,
+    });
+  },
+
+  remove(token: string, id: number) {
+    return apiRequest<Wallet>(`/wallets/${id}`, {
+      method: 'DELETE',
+      token,
     });
   },
 };

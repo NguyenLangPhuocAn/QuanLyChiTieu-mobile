@@ -6,11 +6,13 @@ const API_BASE_URLS =
     : ['http://localhost:3000', 'http://192.168.1.3:3000'];
 
 const REFRESH_THRESHOLD_SECONDS = 4 * 60;
+const REQUEST_TIMEOUT_MS = 5000;
 const SESSION_EXPIRED_MESSAGE = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.';
 const NETWORK_ERROR_MESSAGE =
   'Không thể kết nối hệ thống. Vui lòng kiểm tra mạng hoặc thử lại sau.';
 const SERVER_ERROR_MESSAGE = 'Hệ thống đang gặp sự cố. Vui lòng thử lại sau.';
 const GENERIC_ERROR_MESSAGE = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+const INVALID_INPUT_MESSAGE = 'Thông tin nhập chưa hợp lệ. Vui lòng kiểm tra lại.';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
@@ -39,13 +41,25 @@ export const configureAuthSession = (handlers: AuthSessionHandlers | null) => {
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
+
+const parseErrorCode = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') {
+    return undefined;
+  }
+
+  const record = payload as { code?: unknown };
+
+  return typeof record.code === 'string' ? record.code : undefined;
+};
 
 const parseErrorMessage = (payload: unknown) => {
   if (!payload) {
@@ -71,6 +85,40 @@ const parseErrorMessage = (payload: unknown) => {
   return GENERIC_ERROR_MESSAGE;
 };
 
+const sanitizeErrorMessage = (message: string) => {
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    return GENERIC_ERROR_MESSAGE;
+  }
+
+  if (/jwt|token|bearer|unauthorized|forbidden|\b401\b|\b403\b/i.test(trimmed)) {
+    return SESSION_EXPIRED_MESSAGE;
+  }
+
+  if (
+    /network request failed|failed to fetch|abort|timeout|econn|enotfound|socket|networkerror/i.test(
+      trimmed,
+    )
+  ) {
+    return NETWORK_ERROR_MESSAGE;
+  }
+
+  if (
+    /internal server|prisma|sql|database|exception|stack trace|\b500\b|cannot read|undefined|null|nan|\[object object\]|is not a function|request failed/i.test(
+      trimmed,
+    )
+  ) {
+    return SERVER_ERROR_MESSAGE;
+  }
+
+  if (/must be|should not|property .* should|constraint|validation failed/i.test(trimmed)) {
+    return INVALID_INPUT_MESSAGE;
+  }
+
+  return trimmed;
+};
+
 const getFriendlyErrorMessage = (status: number, payload: unknown) => {
   if (status === 401 || status === 403) {
     return SESSION_EXPIRED_MESSAGE;
@@ -80,7 +128,7 @@ const getFriendlyErrorMessage = (status: number, payload: unknown) => {
     return SERVER_ERROR_MESSAGE;
   }
 
-  return parseErrorMessage(payload);
+  return sanitizeErrorMessage(parseErrorMessage(payload));
 };
 
 const parseResponseBody = (text: string) => {
@@ -96,11 +144,25 @@ const parseResponseBody = (text: string) => {
 };
 
 const isNetworkError = (error: unknown) => {
-  return error instanceof TypeError;
+  return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError');
+};
+
+const fetchWithTimeout = async (input: RequestInfo, init?: RequestInit) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const postRefresh = async (baseUrl: string, refreshToken: string) => {
-  const response = await fetch(`${baseUrl}/users/refresh`, {
+  const response = await fetchWithTimeout(`${baseUrl}/users/refresh`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -117,7 +179,11 @@ const postRefresh = async (baseUrl: string, refreshToken: string) => {
   } | null;
 
   if (!response.ok || !payload) {
-    throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
+    throw new ApiError(
+      getFriendlyErrorMessage(response.status, payload),
+      response.status,
+      parseErrorCode(payload),
+    );
   }
 
   authSession?.onTokens(payload);
@@ -150,7 +216,7 @@ const refreshAccessToken = async () => {
       authSession?.onLogout();
 
       if (lastError instanceof ApiError) {
-        throw new ApiError(SESSION_EXPIRED_MESSAGE, lastError.status);
+          throw new ApiError(SESSION_EXPIRED_MESSAGE, lastError.status, lastError.code);
       }
 
       throw new Error(NETWORK_ERROR_MESSAGE);
@@ -188,7 +254,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
 
   for (const baseUrl of API_BASE_URLS) {
     try {
-      let response = await fetch(`${baseUrl}${path}`, {
+      let response = await fetchWithTimeout(`${baseUrl}${path}`, {
         ...restOptions,
         headers: {
           Accept: 'application/json',
@@ -201,7 +267,7 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
 
       if (response.status === 401 && authSession?.getRefreshToken()) {
         authToken = await refreshAccessToken();
-        response = await fetch(`${baseUrl}${path}`, {
+        response = await fetchWithTimeout(`${baseUrl}${path}`, {
           ...restOptions,
           headers: {
             Accept: 'application/json',
@@ -221,7 +287,11 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
           authSession?.onLogout();
         }
 
-        throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
+        throw new ApiError(
+          getFriendlyErrorMessage(response.status, payload),
+          response.status,
+          parseErrorCode(payload),
+        );
       }
 
       return payload as T;
@@ -259,7 +329,7 @@ export const apiUploadRequest = async <T>(
       const formData = new FormData();
       formData.append('file', file as unknown as Blob);
 
-      let response = await fetch(`${baseUrl}${path}`, {
+      let response = await fetchWithTimeout(`${baseUrl}${path}`, {
         method,
         headers: {
           Accept: 'application/json',
@@ -270,7 +340,7 @@ export const apiUploadRequest = async <T>(
 
       if (response.status === 401 && authSession?.getRefreshToken()) {
         authToken = await refreshAccessToken();
-        response = await fetch(`${baseUrl}${path}`, {
+        response = await fetchWithTimeout(`${baseUrl}${path}`, {
           method,
           headers: {
             Accept: 'application/json',
@@ -288,7 +358,11 @@ export const apiUploadRequest = async <T>(
           authSession?.onLogout();
         }
 
-        throw new ApiError(getFriendlyErrorMessage(response.status, payload), response.status);
+        throw new ApiError(
+          getFriendlyErrorMessage(response.status, payload),
+          response.status,
+          parseErrorCode(payload),
+        );
       }
 
       return payload as T;

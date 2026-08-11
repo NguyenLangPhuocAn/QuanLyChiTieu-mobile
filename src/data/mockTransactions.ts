@@ -1,4 +1,5 @@
 export type TransactionType = 'income' | 'expense';
+export type TransactionCashFlowType = 'normal' | 'loan_debt';
 
 export type TransactionItem = {
   id: string;
@@ -14,6 +15,7 @@ export type TransactionItem = {
   displayAmount: number;
   displayCurrency: string;
   type: TransactionType;
+  cashFlowType?: TransactionCashFlowType;
   amount: number;
   date: string;
 };

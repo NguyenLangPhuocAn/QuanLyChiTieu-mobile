@@ -6,14 +6,14 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Hash, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,6 +23,7 @@ import { useFinance } from '../../context/FinanceContext';
 import { tagsService } from '../../services/tags';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { TagItem } from '../../types/tag';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 const normalizeTagInput = (value: string) => value.trim().replace(/^#+/, '').toLowerCase();
 
@@ -49,7 +50,7 @@ const HashtagsScreen = () => {
       const response = await tagsService.getAll(token);
       setTags(response);
     } catch (error) {
-      Alert.alert('Không tải được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Không tải được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +117,7 @@ const HashtagsScreen = () => {
       setTags(nextTags);
       closeModal();
     } catch (error) {
-      Alert.alert('Chưa lưu được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Chưa lưu được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsSaving(false);
     }
@@ -140,7 +141,7 @@ const HashtagsScreen = () => {
               const nextTags = await tagsService.remove(token, tag.id);
               setTags(nextTags);
             } catch (error) {
-              Alert.alert('Chưa xóa được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+              Alert.alert('Chưa xóa được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
             }
           },
         },
@@ -167,7 +168,7 @@ const HashtagsScreen = () => {
       setTags(nextTags);
       closeModal();
     } catch (error) {
-      Alert.alert('Chưa gộp được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Chưa gộp được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsSaving(false);
     }
@@ -227,7 +228,7 @@ const HashtagsScreen = () => {
                 <Hash size={18} color={Colors.primary} />
               </View>
               <View style={styles.tagInfo}>
-                <Text style={styles.tagName}>#{tag.name}</Text>
+                <Text style={styles.tagName} numberOfLines={1}>#{tag.name}</Text>
                 <Text style={styles.tagMeta}>{tag.usage_count} giao dịch đang dùng</Text>
               </View>
               <TouchableOpacity style={styles.iconButton} onPress={() => openEditModal(tag)}>
@@ -387,7 +388,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tagInfo: { flex: 1 },
+  tagInfo: { flex: 1, minWidth: 0 },
   tagName: { color: '#4C2A18', fontSize: 16, fontWeight: '900' },
   tagMeta: { color: '#8A623F', fontSize: 12, fontWeight: '700', marginTop: 4 },
   iconButton: {
@@ -397,6 +398,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF5EB',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   deleteIconButton: { backgroundColor: '#FFF0F0' },
   modalBackdrop: {

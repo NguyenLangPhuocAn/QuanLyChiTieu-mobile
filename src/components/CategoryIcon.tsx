@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet } from 'react-native';
 import { Tag } from 'lucide-react-native';
 import { Colors } from '../constants/Colors';
@@ -11,8 +11,13 @@ type CategoryIconProps = {
 
 const CategoryIcon = ({ icon, size = 20 }: CategoryIconProps) => {
   const iconUrl = resolveCategoryIconUrl(icon);
+  const [hasLoadError, setHasLoadError] = useState(false);
 
-  if (!iconUrl) {
+  useEffect(() => {
+    setHasLoadError(false);
+  }, [iconUrl]);
+
+  if (!iconUrl || hasLoadError) {
     return <Tag size={size} color={Colors.primary} />;
   }
 
@@ -28,6 +33,7 @@ const CategoryIcon = ({ icon, size = 20 }: CategoryIconProps) => {
         },
       ]}
       resizeMode="contain"
+      onError={() => setHasLoadError(true)}
     />
   );
 };

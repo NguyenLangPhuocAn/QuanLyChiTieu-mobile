@@ -4,20 +4,21 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
 import GoogleIcon from '../../components/GoogleIcon';
 import { useAuth } from '../../context/AuthContext';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Login'>;
@@ -38,7 +39,7 @@ const LoginScreen = ({ navigation }: Props) => {
     try {
       await signIn(email.trim(), password);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Đăng nhập thất bại.';
+      const message = getUserFriendlyErrorMessage(error, 'Đăng nhập thất bại.');
       Alert.alert('Không thể đăng nhập', message);
     }
   };
@@ -47,7 +48,13 @@ const LoginScreen = ({ navigation }: Props) => {
     try {
       await signInWithGoogle();
     } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : '';
+      const rawMessage =
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error &&
+        typeof (error as { message?: unknown }).message === 'string'
+          ? (error as { message: string }).message
+          : '';
       const message =
         rawMessage.includes('idToken') ||
         rawMessage.includes('webClientId') ||
@@ -55,7 +62,7 @@ const LoginScreen = ({ navigation }: Props) => {
         rawMessage.toLowerCase().includes('non-recoverable') ||
         rawMessage.toLowerCase().includes('sign in failure')
           ? 'Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.'
-          : rawMessage || 'Không thể đăng nhập bằng Google. Vui lòng thử lại.';
+          : getUserFriendlyErrorMessage(error, 'Không thể đăng nhập bằng Google. Vui lòng thử lại.');
 
       Alert.alert('Đăng nhập Google', message);
     }

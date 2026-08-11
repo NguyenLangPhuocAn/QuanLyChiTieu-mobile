@@ -1,3 +1,5 @@
+import type { ApiCategoryCashFlowGroup } from './category';
+
 export type ApiTransactionType = 'INCOME' | 'EXPENSE';
 
 export type ApiTransaction = {
@@ -18,6 +20,7 @@ export type ApiTransaction = {
     id: number;
     name: string;
     type: ApiTransactionType;
+    cash_flow_group?: ApiCategoryCashFlowGroup | null;
     icon?: string | null;
   } | null;
 };

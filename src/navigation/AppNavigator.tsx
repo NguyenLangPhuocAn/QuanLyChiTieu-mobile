@@ -21,6 +21,13 @@ import StatisticsScreen from '../screens/home/StatisticsScreen';
 import TransactionSearchScreen from '../screens/home/TransactionSearchScreen';
 import TransactionDetailScreen from '../screens/home/TransactionDetailScreen';
 import HashtagsScreen from '../screens/home/HashtagsScreen';
+import BudgetsScreen from '../screens/home/BudgetsScreen';
+import BudgetDetailScreen from '../screens/home/BudgetDetailScreen';
+import NotificationsScreen from '../screens/home/NotificationsScreen';
+import NotificationSettingsScreen from '../screens/home/NotificationSettingsScreen';
+import LoanDebtsScreen from '../screens/home/LoanDebtsScreen';
+import LoanDebtFormScreen from '../screens/home/LoanDebtFormScreen';
+import LoanDebtDetailScreen from '../screens/home/LoanDebtDetailScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +68,8 @@ export type RootStackParamList = {
   Categories:
     | {
         selectMode?: boolean;
+        selectTarget?: 'transaction' | 'budget';
+        categoryType?: 'INCOME' | 'EXPENSE';
       }
     | undefined;
   Profile:
@@ -69,9 +78,24 @@ export type RootStackParamList = {
       }
     | undefined;
   Hashtags: undefined;
-  Statistics: undefined;
+  Budgets: undefined;
+  BudgetDetail: { budgetId: number };
+  Notifications: undefined;
+  NotificationSettings: undefined;
+  LoanDebts: undefined;
+  LoanDebtForm: { loanDebtId?: number } | undefined;
+  LoanDebtDetail: { loanDebtId: number };
+  Statistics:
+    | {
+        wallets?: Wallet[];
+      }
+    | undefined;
   TransactionSearch: {
     wallets: Wallet[];
+    initialDateMode?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'range';
+    initialFromDate?: string;
+    initialToDate?: string;
+    cashFlow?: 'normal' | 'loan_debt';
   };
   TransactionDetail: {
     transaction: TransactionItem;
@@ -111,6 +135,13 @@ const AppNavigator = () => {
           <Stack.Screen name="Categories" component={CategoriesScreen} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Hashtags" component={HashtagsScreen} />
+          <Stack.Screen name="Budgets" component={BudgetsScreen} />
+          <Stack.Screen name="BudgetDetail" component={BudgetDetailScreen} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
+          <Stack.Screen name="LoanDebts" component={LoanDebtsScreen} />
+          <Stack.Screen name="LoanDebtForm" component={LoanDebtFormScreen} />
+          <Stack.Screen name="LoanDebtDetail" component={LoanDebtDetailScreen} />
           <Stack.Screen name="CurrencyPicker" component={CurrencyPickerScreen} />
           <Stack.Screen name="Statistics" component={StatisticsScreen} />
           <Stack.Screen name="TransactionSearch" component={TransactionSearchScreen} />

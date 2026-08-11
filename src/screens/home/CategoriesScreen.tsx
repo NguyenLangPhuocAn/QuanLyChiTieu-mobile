@@ -7,14 +7,14 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ImagePlus, MoreHorizontal, Plus, Search, X } from 'lucide-react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -24,15 +24,23 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
 import { resolveCategoryIconUrl } from '../../utils/categoryIcons';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import { filterNormalCashFlowCategories } from '../../utils/transactionClassification';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import type { ApiCategoryType, Category } from '../../types/category';
+import type { ApiCategoryCashFlowGroup, ApiCategoryType, Category } from '../../types/category';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
 type ModalMode = 'create' | 'edit' | 'delete' | null;
+type CategoryScopeFilter = 'ALL' | 'SYSTEM' | 'PERSONAL';
 type CategoryIconUploadFile = {
   uri: string;
   name: string;
   type: string;
+};
+
+const cashFlowGroupLabels: Record<ApiCategoryCashFlowGroup, string> = {
+  NORMAL: 'Thu chi thường',
+  LOAN_DEBT: 'Vay/nợ',
 };
 
 const typeLabels: Record<ApiCategoryType, string> = {
@@ -40,13 +48,33 @@ const typeLabels: Record<ApiCategoryType, string> = {
   INCOME: 'Thu',
 };
 
+const scopeFilterLabels: Record<CategoryScopeFilter, string> = {
+  ALL: 'Tất cả',
+  SYSTEM: 'Hệ thống',
+  PERSONAL: 'Cá nhân',
+};
+
 const CategoriesScreen = ({ navigation, route }: Props) => {
   const { token, user } = useAuth();
-  const { categories, selectedTransactionCategory, setCategories, setSelectedTransactionCategory } =
+  const {
+    categories,
+    selectedBudgetCategory,
+    selectedTransactionCategory,
+    setCategories,
+    setSelectedBudgetCategory,
+    setSelectedTransactionCategory,
+  } =
     useFinance();
+  const selectTarget = route.params?.selectTarget ?? 'transaction';
+  const isBudgetSelectTarget = selectTarget === 'budget';
   const [activeType, setActiveType] = useState<ApiCategoryType>(
-    selectedTransactionCategory?.type ?? 'EXPENSE',
+    isBudgetSelectTarget
+      ? 'EXPENSE'
+      : route.params?.categoryType ??
+          selectedTransactionCategory?.type ??
+          'EXPENSE',
   );
+  const [scopeFilter, setScopeFilter] = useState<CategoryScopeFilter>('ALL');
   const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,10 +82,12 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<ApiCategoryType>('EXPENSE');
+  const [categoryCashFlowGroup, setCategoryCashFlowGroup] = useState<ApiCategoryCashFlowGroup>('NORMAL');
   const [iconFile, setIconFile] = useState<CategoryIconUploadFile | null>(null);
 
   const isSelectMode = Boolean(route.params?.selectMode);
   const canCreateCategory = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
+  const canUseScopeFilter = canCreateCategory;
 
   const fetchCategories = useCallback(async () => {
     if (!token) {
@@ -70,7 +100,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       const response = await categoriesService.getAll(token);
       setCategories(response);
     } catch (error) {
-      Alert.alert('Lỗi tải danh mục', error instanceof Error ? error.message : 'Không thể tải danh mục.');
+      Alert.alert('Lỗi tải danh mục', getUserFriendlyErrorMessage(error, 'Không thể tải danh mục.'));
     } finally {
       setIsLoading(false);
     }
@@ -80,22 +110,35 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     fetchCategories();
   }, [fetchCategories]);
 
+  useEffect(() => {
+    if (!canUseScopeFilter && scopeFilter !== 'ALL') {
+      setScopeFilter('ALL');
+    }
+  }, [canUseScopeFilter, scopeFilter]);
+
   const visibleCategories = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
 
-    return categories.filter(category => {
-      const matchedType = category.type === activeType;
+    return filterNormalCashFlowCategories(categories).filter(category => {
+      const matchedType = category.type === (isBudgetSelectTarget ? 'EXPENSE' : activeType);
       const matchedKeyword = !keyword || category.name.toLowerCase().includes(keyword);
+      const matchedScope =
+        scopeFilter === 'ALL'
+          ? true
+          : scopeFilter === 'SYSTEM'
+            ? Boolean(category.is_system)
+            : !category.is_system;
 
-      return matchedType && matchedKeyword;
+      return matchedType && matchedKeyword && matchedScope;
     });
-  }, [activeType, categories, searchText]);
+  }, [activeType, categories, isBudgetSelectTarget, scopeFilter, searchText]);
 
   const closeModal = () => {
     setModalMode(null);
     setSelectedCategory(null);
     setCategoryName('');
     setCategoryType(activeType);
+    setCategoryCashFlowGroup('NORMAL');
     setIconFile(null);
   };
 
@@ -108,6 +151,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setSelectedCategory(null);
     setCategoryName('');
     setCategoryType(activeType);
+    setCategoryCashFlowGroup('NORMAL');
     setIconFile(null);
     setModalMode('create');
   };
@@ -120,6 +164,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setSelectedCategory(category);
     setCategoryName(category.name);
     setCategoryType(category.type);
+    setCategoryCashFlowGroup(category.cash_flow_group ?? 'NORMAL');
     setIconFile(null);
     setModalMode('edit');
   };
@@ -168,7 +213,11 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       return;
     }
 
-    setSelectedTransactionCategory(category);
+    if (selectTarget === 'budget') {
+      setSelectedBudgetCategory(category);
+    } else {
+      setSelectedTransactionCategory(category);
+    }
     navigation.goBack();
   };
 
@@ -189,6 +238,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
         const updatedCategory = await categoriesService.update(token, selectedCategory.id, {
           name: categoryName.trim(),
           type: categoryType,
+          cash_flow_group: categoryCashFlowGroup,
         });
 
         if (iconFile) {
@@ -198,6 +248,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
         const createdCategory = await categoriesService.create(token, {
           name: categoryName.trim(),
           type: categoryType,
+          cash_flow_group: categoryCashFlowGroup,
         });
 
         if (iconFile) {
@@ -208,7 +259,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       await fetchCategories();
       closeModal();
     } catch (error) {
-      Alert.alert('Lưu danh mục thất bại', error instanceof Error ? error.message : 'Không thể lưu danh mục.');
+      Alert.alert('Lưu danh mục thất bại', getUserFriendlyErrorMessage(error, 'Không thể lưu danh mục.'));
     } finally {
       setIsSaving(false);
     }
@@ -226,7 +277,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       await fetchCategories();
       closeModal();
     } catch (error) {
-      Alert.alert('Xóa danh mục thất bại', error instanceof Error ? error.message : 'Không thể xóa danh mục.');
+      Alert.alert('Xóa danh mục thất bại', getUserFriendlyErrorMessage(error, 'Không thể xóa danh mục.'));
     } finally {
       setIsSaving(false);
     }
@@ -239,9 +290,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Danh mục</Text>
-        <TouchableOpacity style={styles.headerButton} onPress={openCreateModal}>
-          <Plus size={22} color="#593420" />
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <View style={styles.searchBox}>
@@ -255,18 +304,35 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
         />
       </View>
 
-      <View style={styles.segment}>
-        {(['EXPENSE', 'INCOME'] as ApiCategoryType[]).map(type => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.segmentButton, activeType === type && styles.segmentButtonActive]}
-            onPress={() => setActiveType(type)}>
-            <Text style={[styles.segmentText, activeType === type && styles.segmentTextActive]}>
-              {typeLabels[type]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {!isBudgetSelectTarget ? (
+        <View style={styles.segment}>
+          {(['EXPENSE', 'INCOME'] as ApiCategoryType[]).map(type => (
+            <TouchableOpacity
+              key={type}
+              style={[styles.segmentButton, activeType === type && styles.segmentButtonActive]}
+              onPress={() => setActiveType(type)}>
+              <Text style={[styles.segmentText, activeType === type && styles.segmentTextActive]}>
+                {typeLabels[type]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+
+      {canUseScopeFilter ? (
+        <View style={styles.scopeSegment}>
+          {(['ALL', 'SYSTEM', 'PERSONAL'] as CategoryScopeFilter[]).map(scope => (
+            <TouchableOpacity
+              key={scope}
+              style={[styles.scopeButton, scopeFilter === scope && styles.scopeButtonActive]}
+              onPress={() => setScopeFilter(scope)}>
+              <Text style={[styles.scopeText, scopeFilter === scope && styles.scopeTextActive]}>
+                {scopeFilterLabels[scope]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
         {isLoading ? (
@@ -279,7 +345,11 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
           </View>
         ) : (
           visibleCategories.map(category => {
-            const isSelected = isSelectMode && selectedTransactionCategory?.id === category.id;
+            const isSelected =
+              isSelectMode &&
+              (selectTarget === 'budget'
+                ? selectedBudgetCategory?.id
+                : selectedTransactionCategory?.id) === category.id;
             const canEditCategory = !category.is_system && canCreateCategory;
 
             return (
@@ -349,6 +419,19 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
                       onPress={() => setCategoryType(type)}>
                       <Text style={[styles.modalSegmentText, categoryType === type && styles.modalSegmentTextActive]}>
                         {typeLabels[type]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.inputLabel}>Nhóm dòng tiền</Text>
+                <View style={styles.modalSegment}>
+                  {(['NORMAL', 'LOAN_DEBT'] as ApiCategoryCashFlowGroup[]).map(group => (
+                    <TouchableOpacity
+                      key={group}
+                      style={[styles.modalSegmentButton, categoryCashFlowGroup === group && styles.modalSegmentButtonActive]}
+                      onPress={() => setCategoryCashFlowGroup(group)}>
+                      <Text style={[styles.modalSegmentText, categoryCashFlowGroup === group && styles.modalSegmentTextActive]}>
+                        {cashFlowGroupLabels[group]}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -432,6 +515,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSpacer: {
+    width: 42,
+    height: 42,
+  },
   title: {
     flex: 1,
     color: '#4A2B1A',
@@ -478,6 +565,35 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   segmentTextActive: {
+    color: Colors.white,
+  },
+  scopeSegment: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 10,
+    gap: 8,
+  },
+  scopeButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 999,
+    backgroundColor: '#FFFDFB',
+    borderWidth: 1.2,
+    borderColor: '#EBC4A4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  scopeButtonActive: {
+    backgroundColor: '#F28C28',
+    borderColor: '#F28C28',
+  },
+  scopeText: {
+    color: '#8B6548',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  scopeTextActive: {
     color: Colors.white,
   },
   content: {
@@ -730,3 +846,4 @@ const styles = StyleSheet.create({
 });
 
 export default CategoriesScreen;
+

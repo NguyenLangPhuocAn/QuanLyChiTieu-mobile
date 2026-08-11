@@ -6,17 +6,17 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { CalendarDays, ChartColumnBig, History, ImagePlus, MessageCircleMore, Plus, UserRound, X } from 'lucide-react-native';
+import { ArrowLeft, CalendarDays, ChartColumnBig, History, ImagePlus, MessageCircleMore, Plus, UserRound, X } from 'lucide-react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { Colors } from '../../constants/Colors';
@@ -31,15 +31,28 @@ import { categoriesService } from '../../services/categories';
 import { transactionsService } from '../../services/transactions';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
+import { budgetsService } from '../../services/budgets';
+import { notificationsService } from '../../services/notifications';
+import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
-import { formatCurrency } from '../../utils/format';
+import { toDateKey } from '../../utils/budgetPeriod';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import { formatCurrency, formatShortDate } from '../../utils/format';
+import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
+import { mapApiTransactions as mapSharedApiTransactions } from '../../utils/mapTransactions';
+import { getLoanDebtErrorMessage } from '../../utils/loanDebt';
+import {
+  filterNormalCashFlowCategories,
+  isLoanDebtCategory,
+} from '../../utils/transactionClassification';
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import type { ApiTransaction } from '../../types/transaction';
+import type { LoanDebtType } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
+type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
 
 const tabs: Array<{
   key: TabKey;
@@ -63,14 +76,12 @@ const formatAmountInput = (value: string) => {
 };
 
 const normalizeAmountInput = (value: string) => value.replace(/[^\d]/g, '');
-const toDateKey = (date: Date) => date.toISOString().slice(0, 10);
-const parseTagsInput = (value: string) =>
-  value
-    .split(/[,\s]+/)
-    .map(tag => tag.trim().replace(/^#+/, '').toLowerCase())
-    .filter(Boolean)
-    .slice(0, 8);
-
+const parseDateKey = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date();
+};
 type ReceiptUploadFile = {
   uri: string;
   name: string;
@@ -104,37 +115,6 @@ const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: n
   };
 };
 
-const mapApiTransactions = (
-  apiTransactions: ApiTransaction[],
-  currentWallets: Wallet[],
-): TransactionItem[] => {
-  const walletMap = new Map(currentWallets.map(wallet => [wallet.id, wallet]));
-
-  return apiTransactions.map(transaction => {
-    const wallet = walletMap.get(transaction.wallet_id);
-
-    return {
-      id: String(transaction.id),
-      walletId: transaction.wallet_id,
-      categoryId: transaction.category_id,
-      categoryIcon: transaction.category?.icon ?? null,
-      receiptImage: transaction.receipt_image ?? null,
-      tags: transaction.tags ?? [],
-      note: transaction.note || 'Không có ghi chú',
-      category:
-      transaction.category?.name || (transaction.type === 'INCOME' ? 'Thu nhập' : 'Chi tiêu'),
-    wallet: wallet?.name || 'Ví',
-      currency: transaction.currency || wallet?.currency || 'VND',
-      displayAmount: Number(transaction.display_amount ?? transaction.amount),
-      displayCurrency:
-      transaction.display_currency || wallet?.display_currency || 'VND',
-      type: transaction.type === 'INCOME' ? 'income' : 'expense',
-      amount: Number(transaction.amount),
-      date: transaction.transaction_date,
-    };
-  });
-};
-
 const MainScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
@@ -145,9 +125,11 @@ const MainScreen = () => {
     setCategories,
     setSelectedTransactionCategory,
     setTransactions,
+    setBudgets,
     setTags,
     tags,
     transactions,
+    budgets,
   } = useFinance();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [isTabLoading, setIsTabLoading] = useState(false);
@@ -155,16 +137,23 @@ const MainScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [transactionAmount, setTransactionAmount] = useState('');
+  const [transactionEntryType, setTransactionEntryType] = useState<TransactionEntryType>('EXPENSE');
   const [transactionDate, setTransactionDate] = useState(new Date());
   const [isTransactionDatePickerVisible, setIsTransactionDatePickerVisible] = useState(false);
   const [transactionNote, setTransactionNote] = useState('');
   const [transactionTags, setTransactionTags] = useState('');
+  const [loanDebtType, setLoanDebtType] = useState<LoanDebtType>('BORROWED');
+  const [loanDebtPersonName, setLoanDebtPersonName] = useState('');
+  const [loanDebtDueDate, setLoanDebtDueDate] = useState('');
+  const [isLoanDebtDueDatePickerVisible, setIsLoanDebtDueDatePickerVisible] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [isTagModalVisible, setIsTagModalVisible] = useState(false);
   const [receiptFile, setReceiptFile] = useState<ReceiptUploadFile | null>(null);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const shouldReopenTransactionForm = useRef(false);
   const amountInputRef = useRef<TextInput>(null);
+  const transactionFormScrollRef = useRef<ScrollView>(null);
 
   const fetchDashboardData = useCallback(async () => {
     if (!token) {
@@ -174,24 +163,30 @@ const MainScreen = () => {
     setRefreshing(true);
 
     try {
-      const [nextWallets, nextTransactions, nextCategories, nextTags] = await Promise.all([
+      const [nextWallets, nextTransactions, nextCategories, nextTags, nextBudgets] = await Promise.all([
         walletsService.getAll(token),
-        transactionsService.getPage(token, { page: 1, limit: 10 }),
+        transactionsService.getAll(token),
         categoriesService.getAll(token),
         tagsService.getAll(token),
+        budgetsService.getAll(token),
       ]);
 
       setWallets(nextWallets);
       setCategories(nextCategories);
       setTags(nextTags);
-      setTransactions(mapApiTransactions(nextTransactions.data, nextWallets));
+      setBudgets(nextBudgets);
+      setTransactions(mapSharedApiTransactions(nextTransactions, nextWallets));
+      notificationsService
+        .getUnreadCount(token)
+        .then(nextUnread => setNotificationUnreadCount(nextUnread.count))
+        .catch(() => undefined);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể tải dữ liệu.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể tải dữ liệu.');
       Alert.alert('Không tải được dữ liệu', message);
     } finally {
       setRefreshing(false);
     }
-  }, [setCategories, setTags, setTransactions, token]);
+  }, [setBudgets, setCategories, setTags, setTransactions, token]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -209,11 +204,19 @@ const MainScreen = () => {
     }
   }, [wallets, selectedWalletId]);
 
+  const normalTransactionCategories = useMemo(
+    () => filterNormalCashFlowCategories(categories),
+    [categories],
+  );
+
   useEffect(() => {
-    if (!selectedTransactionCategory && categories.length > 0) {
-      setSelectedTransactionCategory(categories[0]);
+    if (
+      (!selectedTransactionCategory || isLoanDebtCategory(selectedTransactionCategory)) &&
+      normalTransactionCategories.length > 0
+    ) {
+      setSelectedTransactionCategory(normalTransactionCategories[0]);
     }
-  }, [categories, selectedTransactionCategory, setSelectedTransactionCategory]);
+  }, [normalTransactionCategories, selectedTransactionCategory, setSelectedTransactionCategory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -222,7 +225,6 @@ const MainScreen = () => {
       if (shouldReopenTransactionForm.current) {
         shouldReopenTransactionForm.current = false;
         setIsModalVisible(true);
-        setTimeout(() => amountInputRef.current?.focus(), 180);
       }
     }, [fetchDashboardData]),
   );
@@ -231,13 +233,20 @@ const MainScreen = () => {
     () => wallets.find(wallet => wallet.id === selectedWalletId) ?? null,
     [selectedWalletId, wallets],
   );
-  const selectedTransactionType = selectedTransactionCategory?.type ?? 'EXPENSE';
+  const selectedTransactionType =
+    transactionEntryType === 'LOAN_DEBT'
+      ? 'LOAN_DEBT'
+      : selectedTransactionCategory?.type ?? transactionEntryType;
   const recentHashtags = useMemo(() => {
     const counter = new Map<string, number>();
 
     transactions.forEach(transaction => {
       (transaction.tags ?? []).forEach(tag => {
-        counter.set(tag, (counter.get(tag) ?? 0) + 1);
+        const normalized = normalizeTagName(tag);
+
+        if (normalized) {
+          counter.set(normalized, (counter.get(normalized) ?? 0) + 1);
+        }
       });
     });
 
@@ -245,7 +254,7 @@ const MainScreen = () => {
       .sort((left, right) => right[1] - left[1])
       .map(([tag]) => tag)
       .slice(0, 8);
-    const managedTags = tags.map(tag => tag.name);
+    const managedTags = tags.map(tag => normalizeTagName(tag.name)).filter(Boolean);
 
     return [...new Set([...usedTags, ...managedTags])].slice(0, 10);
   }, [tags, transactions]);
@@ -253,7 +262,6 @@ const MainScreen = () => {
 
   const openTransactionModal = () => {
     setIsModalVisible(true);
-    setTimeout(() => amountInputRef.current?.focus(), 180);
   };
 
   const handleChangeTab = (tab: TabKey) => {
@@ -266,8 +274,14 @@ const MainScreen = () => {
     setTimeout(() => setIsTabLoading(false), 220);
   };
 
-  const handleSelectTransactionType = (type: 'INCOME' | 'EXPENSE') => {
-    const nextCategory = categories.find(category => category.type === type);
+  const handleSelectTransactionType = (type: TransactionEntryType) => {
+    setTransactionEntryType(type);
+
+    if (type === 'LOAN_DEBT') {
+      return;
+    }
+
+    const nextCategory = normalTransactionCategories.find(category => category.type === type);
 
     if (nextCategory) {
       setSelectedTransactionCategory(nextCategory);
@@ -281,7 +295,7 @@ const MainScreen = () => {
   };
 
   const toggleTag = (tag: string) => {
-    const normalized = tag.replace(/^#+/, '').toLowerCase();
+    const normalized = normalizeTagName(tag);
     const nextTags = currentTags.includes(normalized)
       ? currentTags.filter(item => item !== normalized)
       : [...currentTags, normalized].slice(0, 8);
@@ -294,7 +308,7 @@ const MainScreen = () => {
       return;
     }
 
-    const normalized = newTagName.trim().replace(/^#+/, '').toLowerCase();
+    const normalized = normalizeTagName(newTagName);
 
     if (!normalized) {
       Alert.alert('Thiếu hashtag', 'Nhập tên hashtag cần tạo.');
@@ -308,7 +322,7 @@ const MainScreen = () => {
       setNewTagName('');
       setIsTagModalVisible(false);
     } catch (error) {
-      Alert.alert('Chưa tạo được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Chưa tạo được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     }
   };
 
@@ -319,6 +333,11 @@ const MainScreen = () => {
     setTransactionNote('');
     setTransactionTags('');
     setReceiptFile(null);
+    setTransactionEntryType('EXPENSE');
+    setLoanDebtType('BORROWED');
+    setLoanDebtPersonName('');
+    setLoanDebtDueDate('');
+    setIsLoanDebtDueDatePickerVisible(false);
     setSelectedWalletId(wallets[0]?.id ?? null);
   };
 
@@ -333,6 +352,14 @@ const MainScreen = () => {
 
     if (selectedDate) {
       setTransactionDate(selectedDate);
+    }
+  };
+
+  const handleLoanDebtDueDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    setIsLoanDebtDueDatePickerVisible(false);
+
+    if (selectedDate) {
+      setLoanDebtDueDate(toDateKey(selectedDate));
     }
   };
 
@@ -407,14 +434,18 @@ const MainScreen = () => {
     const [alert] = buildWalletBudgetAlerts(
       [predictedWallet],
       [...transactions, predictedTransaction],
+      budgets,
     );
 
     if (!alert) {
       return;
     }
 
+    const budgetRange = alert.periodStart && alert.periodEnd
+      ? `${formatShortDate(alert.periodStart)} - ${formatShortDate(alert.periodEnd)}`
+      : 'kỳ ngân sách hiện tại';
     const budgetLine = alert.budgetLimit
-      ? `\nĐã chi ${formatCurrency(alert.monthExpense, wallet.currency)} / ${formatCurrency(alert.budgetLimit, wallet.currency)} trong tháng này.`
+      ? `\nĐã chi ${formatCurrency(alert.periodExpense, wallet.currency)} / ${formatCurrency(alert.budgetLimit, wallet.currency)} trong kỳ ${budgetRange}.`
       : '';
 
     Alert.alert('Cảnh báo ngân sách', `${alert.walletName}: ${alert.reasons.join(' · ')}.${budgetLine}`);
@@ -433,7 +464,7 @@ const MainScreen = () => {
       return;
     }
 
-    if (!selectedTransactionCategory) {
+    if (transactionEntryType !== 'LOAN_DEBT' && !selectedTransactionCategory) {
       Alert.alert('Chưa có danh mục', 'Vui lòng chọn danh mục thu hoặc chi cho giao dịch.');
       return;
     }
@@ -446,6 +477,41 @@ const MainScreen = () => {
 
     if (!Number.isFinite(amount) || amount <= 0) {
       Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0.');
+      return;
+    }
+
+    if (transactionEntryType === 'LOAN_DEBT') {
+      if (!loanDebtPersonName.trim()) {
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên người vay/nợ.');
+        return;
+      }
+
+      try {
+        await loanDebtsService.create(token, {
+          person_name: loanDebtPersonName.trim(),
+          type: loanDebtType,
+          principal_amount: normalizedAmount,
+          wallet_id: selectedWallet.id,
+          due_date: loanDebtDueDate.trim() || null,
+          note: transactionNote.trim() || undefined,
+          transaction_date: toDateKey(transactionDate),
+        });
+        await fetchDashboardData();
+      } catch (error) {
+        const message = getLoanDebtErrorMessage(
+          error,
+          'Không thể lưu khoản vay/nợ. Vui lòng thử lại.',
+        );
+        Alert.alert('Lưu vay/nợ thất bại', message);
+        return;
+      }
+
+      setIsModalVisible(false);
+      resetTransactionForm();
+      return;
+    }
+
+    if (!selectedTransactionCategory) {
       return;
     }
 
@@ -473,7 +539,7 @@ const MainScreen = () => {
       await fetchDashboardData();
       showBudgetAlertIfNeeded(selectedWallet, amount, transactionType);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể lưu giao dịch.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể lưu giao dịch.');
       Alert.alert('Lưu giao dịch thất bại', message);
       return;
     }
@@ -491,6 +557,7 @@ const MainScreen = () => {
             refreshing={refreshing}
             onRefresh={fetchDashboardData}
             onAddTransaction={openTransactionModal}
+            notificationUnreadCount={notificationUnreadCount}
           />
         );
       case 'history':
@@ -498,7 +565,7 @@ const MainScreen = () => {
       case 'chatbot':
         return <ChatbotScreen />;
       case 'account':
-        return <AccountScreen />;
+        return <AccountScreen wallets={wallets} notificationUnreadCount={notificationUnreadCount} />;
       default:
         return null;
     }
@@ -517,23 +584,27 @@ const MainScreen = () => {
         ) : null}
       </View>
 
-      <Modal transparent visible={isModalVisible} animationType="fade">
+      {isModalVisible ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.modalBackdrop, styles.inlineModalLayer]}>
           <Pressable style={styles.backdropPressable} onPress={() => setIsModalVisible(false)} />
           <Pressable style={styles.modalShell}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              ref={transactionFormScrollRef}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.transactionFormContent}>
               <View style={styles.sheetHandle} />
               <View style={styles.modalTitleRow}>
                 <TouchableOpacity style={styles.backFormButton} onPress={() => setIsModalVisible(false)}>
-                  <Text style={styles.backFormButtonText}>Lùi</Text>
+                  <ArrowLeft size={18} color="#7A4A28" />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
               </View>
               <Text style={styles.modalDescription}>Ghi lại khoản tiền vừa phát sinh.</Text>
               <View style={styles.typeSegment}>
-                {(['EXPENSE', 'INCOME'] as const).map(type => {
+                {(['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const).map(type => {
                   const active = selectedTransactionType === type;
 
                   return (
@@ -542,7 +613,11 @@ const MainScreen = () => {
                       style={[styles.typeSegmentButton, active && styles.typeSegmentButtonActive]}
                       onPress={() => handleSelectTransactionType(type)}>
                       <Text style={[styles.typeSegmentText, active && styles.typeSegmentTextActive]}>
-                        {type === 'EXPENSE' ? 'Chi tiền' : 'Thu tiền'}
+                        {type === 'EXPENSE'
+                          ? 'Chi'
+                          : type === 'INCOME'
+                            ? 'Thu'
+                            : 'Vay/Nợ'}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -558,8 +633,45 @@ const MainScreen = () => {
                 keyboardType="numeric"
                 value={transactionAmount}
                 onChangeText={value => setTransactionAmount(formatAmountInput(value))}
+                onFocus={() => transactionFormScrollRef.current?.scrollTo({ y: 120, animated: true })}
               />
 
+              {transactionEntryType === 'LOAN_DEBT' ? (
+                <>
+                  <Text style={styles.fieldLabel}>Loại vay/nợ</Text>
+                  <View style={styles.loanDebtSegment}>
+                    {(['BORROWED', 'LENT'] as LoanDebtType[]).map(type => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[
+                          styles.loanDebtSegmentButton,
+                          loanDebtType === type && styles.loanDebtSegmentButtonActive,
+                        ]}
+                        onPress={() => setLoanDebtType(type)}>
+                        <Text
+                          style={[
+                            styles.loanDebtSegmentText,
+                            loanDebtType === type && styles.loanDebtSegmentTextActive,
+                          ]}>
+                          {type === 'BORROWED' ? 'Vay' : 'Cho vay'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Tên người</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ví dụ: Nguyễn Văn A"
+                    placeholderTextColor="#B58A6A"
+                    value={loanDebtPersonName}
+                    onChangeText={setLoanDebtPersonName}
+                  />
+                </>
+              ) : null}
+
+              {transactionEntryType !== 'LOAN_DEBT' ? (
+                <>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.fieldLabel}>Danh mục</Text>
                 <TouchableOpacity onPress={openCategoryPicker}>
@@ -578,6 +690,8 @@ const MainScreen = () => {
                 </View>
                 <Text style={styles.selectorHint}>Đổi</Text>
               </TouchableOpacity>
+                </>
+              ) : null}
 
               <Text style={styles.fieldLabel}>Ví</Text>
               {selectedWallet ? (
@@ -626,7 +740,7 @@ const MainScreen = () => {
                   style={[styles.dateShortcut, styles.dateShortcutWide]}
                   onPress={() => setIsTransactionDatePickerVisible(true)}>
                   <CalendarDays size={16} color="#D87219" />
-                  <Text style={styles.dateShortcutText}>{toDateKey(transactionDate)}</Text>
+                  <Text style={styles.dateShortcutText}>{formatShortDate(toDateKey(transactionDate))}</Text>
                 </TouchableOpacity>
               </View>
               {isTransactionDatePickerVisible ? (
@@ -636,6 +750,37 @@ const MainScreen = () => {
                   display="default"
                   onChange={handleTransactionDateChange}
                 />
+              ) : null}
+
+              {transactionEntryType === 'LOAN_DEBT' ? (
+                <>
+                  <Text style={styles.fieldLabel}>Ngày hẹn trả</Text>
+                  <View style={styles.dateShortcutRow}>
+                    <TouchableOpacity
+                      style={[styles.dateShortcut, styles.dateShortcutWide]}
+                      onPress={() => setIsLoanDebtDueDatePickerVisible(true)}>
+                      <CalendarDays size={16} color="#D87219" />
+                      <Text style={styles.dateShortcutText}>
+                        {loanDebtDueDate ? formatShortDate(loanDebtDueDate) : 'Không có hạn trả'}
+                      </Text>
+                    </TouchableOpacity>
+                    {loanDebtDueDate ? (
+                      <TouchableOpacity
+                        style={styles.dateShortcut}
+                        onPress={() => setLoanDebtDueDate('')}>
+                        <Text style={styles.dateShortcutText}>Bỏ ngày</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  {isLoanDebtDueDatePickerVisible ? (
+                    <DateTimePicker
+                      value={loanDebtDueDate ? parseDateKey(loanDebtDueDate) : new Date()}
+                      mode="date"
+                      display="default"
+                      onChange={handleLoanDebtDueDateChange}
+                    />
+                  ) : null}
+                </>
               ) : null}
 
               <Text style={styles.fieldLabel}>Ghi chú</Text>
@@ -649,6 +794,8 @@ const MainScreen = () => {
                 onChangeText={setTransactionNote}
               />
 
+              {transactionEntryType !== 'LOAN_DEBT' ? (
+                <>
               <Text style={styles.fieldLabel}>Hashtag</Text>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.optionalText}>Không bắt buộc</Text>
@@ -665,30 +812,35 @@ const MainScreen = () => {
                 autoCapitalize="none"
               />
               {currentTags.length > 0 ? (
-                <View style={styles.tagPreviewRow}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagPreviewRow}>
                   {currentTags.map(tag => (
                     <TouchableOpacity key={tag} style={styles.tagChip} onPress={() => toggleTag(tag)}>
                       <Text style={styles.tagChipText}>#{tag}</Text>
                       <X size={12} color="#A94F18" />
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               ) : null}
               {recentHashtags.length > 0 ? (
                 <>
                   <Text style={styles.suggestLabel}>Gợi ý gần đây</Text>
-                  <View style={styles.tagPreviewRow}>
-                    {recentHashtags.map(tag => (
-                      <TouchableOpacity
-                        key={tag}
-                        style={[styles.suggestTagChip, currentTags.includes(tag) && styles.suggestTagChipActive]}
-                        onPress={() => toggleTag(tag)}>
-                        <Text style={[styles.suggestTagText, currentTags.includes(tag) && styles.suggestTagTextActive]}>
-                          #{tag}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagPreviewRow}>
+                    {recentHashtags.map(tag => {
+                      const normalizedTag = normalizeTagName(tag);
+                      const isSelected = currentTags.includes(normalizedTag);
+
+                      return (
+                        <TouchableOpacity
+                          key={normalizedTag}
+                          style={[styles.suggestTagChip, isSelected && styles.suggestTagChipActive]}
+                          onPress={() => toggleTag(normalizedTag)}>
+                          <Text style={[styles.suggestTagText, isSelected && styles.suggestTagTextActive]}>
+                            #{normalizedTag}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </>
               ) : null}
 
@@ -719,14 +871,18 @@ const MainScreen = () => {
                   <Text style={styles.receiptPickerText}>Chọn ảnh hóa đơn</Text>
                 </TouchableOpacity>
               )}
+                </>
+              ) : null}
 
               <TouchableOpacity style={styles.primaryButton} onPress={handleSaveTransaction}>
-                <Text style={styles.primaryButtonText}>Lưu giao dịch</Text>
+                <Text style={styles.primaryButtonText}>
+                  {transactionEntryType === 'LOAN_DEBT' ? 'Lưu khoản vay/nợ' : 'Lưu giao dịch'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
-      </Modal>
+      ) : null}
 
       <Modal transparent visible={isTagModalVisible} animationType="fade">
         <KeyboardAvoidingView
@@ -746,7 +902,7 @@ const MainScreen = () => {
             />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.secondaryButton} onPress={() => setIsTagModalVisible(false)}>
-                <Text style={styles.secondaryButtonText}>Lùi</Text>
+                <ArrowLeft size={18} color="#7A4A28" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={handleCreateQuickTag}>
                 <Text style={styles.saveButtonText}>Tạo</Text>
@@ -874,6 +1030,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: 14,
   },
+  inlineModalLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 60,
+    elevation: 60,
+  },
   backdropPressable: {
     ...StyleSheet.absoluteFill,
   },
@@ -883,13 +1044,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 28,
-    maxHeight: '86%',
+    maxHeight: '100%',
     borderWidth: 1,
     borderColor: '#F0D6C1',
     shadowColor: '#7A3E12',
     shadowOpacity: 0.18,
     shadowRadius: 20,
     elevation: 12,
+  },
+  transactionFormContent: {
+    paddingBottom: 24,
   },
   sheetHandle: {
     alignSelf: 'center',
@@ -943,6 +1107,30 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   typeSegmentTextActive: {
+    color: Colors.white,
+  },
+  loanDebtSegment: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF6EF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F2D9C0',
+    padding: 4,
+  },
+  loanDebtSegmentButton: {
+    flex: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 11,
+  },
+  loanDebtSegmentButtonActive: {
+    backgroundColor: '#FF8C00',
+  },
+  loanDebtSegmentText: {
+    color: '#8A623F',
+    fontWeight: '900',
+  },
+  loanDebtSegmentTextActive: {
     color: Colors.white,
   },
   fieldLabel: {
@@ -1183,9 +1371,9 @@ const styles = StyleSheet.create({
   },
   tagPreviewRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginTop: 10,
+    paddingRight: 18,
   },
   tagChip: {
     flexDirection: 'row',

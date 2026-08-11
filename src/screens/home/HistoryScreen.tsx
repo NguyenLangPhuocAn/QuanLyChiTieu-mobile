@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Image as ImageIcon, ImagePlus, MoreHorizontal, Search, WalletCards, X } from 'lucide-react-native';
+import { ArrowLeft, Image as ImageIcon, ImagePlus, MoreHorizontal, Search, WalletCards, X } from 'lucide-react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -25,13 +25,16 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
-import { transactionsService } from '../../services/transactions';
+import { transactionsService, type TransactionQuery } from '../../services/transactions';
 import { tagsService } from '../../services/tags';
 import { mapApiTransactions } from '../../utils/mapTransactions';
 import type { Category } from '../../types/category';
 import type { Wallet } from '../../types/wallet';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { formatCurrency, formatDisplayDate } from '../../utils/format';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import { formatCurrency, formatDisplayDate, formatShortDate } from '../../utils/format';
+import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
+import { getWalletTypeMeta } from '../../constants/walletTypes';
 import { API_BASE_URLS } from '../../services/api';
 
 type HistoryScreenProps = {
@@ -67,12 +70,6 @@ const parseDateKey = (value: string) => {
 const defaultMonth = `${today.getFullYear()}-${`${today.getMonth() + 1}`.padStart(2, '0')}`;
 const defaultDay = toDateKey(today);
 const PAGE_SIZE = 10;
-const parseTagsInput = (value: string) =>
-  value
-    .split(/[,\s]+/)
-    .map(tag => tag.trim().replace(/^#+/, '').toLowerCase())
-    .filter(Boolean)
-    .slice(0, 8);
 
 type DateFilterMode = 'all' | 'day' | 'month' | 'year' | 'custom';
 type TypeFilter = 'all' | 'income' | 'expense';
@@ -81,6 +78,43 @@ type ReceiptUploadFile = {
   uri: string;
   name: string;
   type: string;
+};
+
+const getMonthEndDate = (monthKey: string) => {
+  const [year, month] = monthKey.split('-').map(Number);
+
+  if (!year || !month) {
+    return defaultDay;
+  }
+
+  return toDateKey(new Date(year, month, 0));
+};
+
+const getHistoryDateRange = (
+  mode: DateFilterMode,
+  day: string,
+  month: string,
+  year: string,
+  from: string,
+  to: string,
+) => {
+  if (mode === 'day') {
+    return { from: day, to: day };
+  }
+
+  if (mode === 'month') {
+    return { from: `${month}-01`, to: getMonthEndDate(month) };
+  }
+
+  if (mode === 'year') {
+    return { from: `${year}-01-01`, to: `${year}-12-31` };
+  }
+
+  if (mode === 'custom') {
+    return from <= to ? { from, to } : { from: to, to: from };
+  }
+
+  return {};
 };
 
 const resolveReceiptUrl = (receipt?: string | null) => {
@@ -163,6 +197,43 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
   const [page, setPage] = useState(1);
   const shouldReopenEditForm = useRef(false);
   const hasPremiumFilters = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
+  const transactionQuery = useMemo<TransactionQuery>(() => {
+    const dateRange = getHistoryDateRange(dateMode, dayFilter, monthFilter, yearFilter, fromDate, toDate);
+    const normalizedTag = tagFilter.trim().replace(/^#+/, '').toLowerCase();
+    const normalizedSearch = searchText.trim();
+
+    return {
+      page,
+      limit: PAGE_SIZE,
+      ...dateRange,
+      wallet_id: hasPremiumFilters ? (walletFilter ?? undefined) : undefined,
+      category_id: hasPremiumFilters ? (categoryFilter ?? undefined) : undefined,
+      type:
+        hasPremiumFilters && typeFilter !== 'all'
+          ? typeFilter === 'income'
+            ? 'INCOME'
+            : 'EXPENSE'
+          : undefined,
+      cash_flow:
+        hasPremiumFilters && typeFilter !== 'all' ? 'normal' : undefined,
+      tag: hasPremiumFilters ? normalizedTag || undefined : undefined,
+      q: normalizedSearch || undefined,
+    };
+  }, [
+    categoryFilter,
+    dateMode,
+    dayFilter,
+    fromDate,
+    hasPremiumFilters,
+    monthFilter,
+    page,
+    searchText,
+    tagFilter,
+    toDate,
+    typeFilter,
+    walletFilter,
+    yearFilter,
+  ]);
 
   const fetchTransactionPage = useCallback(async () => {
     if (!token) {
@@ -172,10 +243,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     setIsPageLoading(true);
 
     try {
-      const response = await transactionsService.getPage(token, {
-        page,
-        limit: PAGE_SIZE,
-      });
+      const response = await transactionsService.getPage(token, transactionQuery);
       setServerTransactions(mapApiTransactions(response.data, wallets));
       setServerMeta({
         total: response.meta.total,
@@ -185,11 +253,11 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
         net: response.meta.net ?? 0,
       });
     } catch (error) {
-      Alert.alert('Không tải được lịch sử', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Không tải được lịch sử', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsPageLoading(false);
     }
-  }, [page, token, wallets]);
+  }, [token, transactionQuery, wallets]);
 
   useEffect(() => {
     fetchTransactionPage();
@@ -243,84 +311,12 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     setEditDate(value);
   };
 
-  const filteredTransactions = useMemo(() => {
-    const normalizedTag = tagFilter.trim().replace(/^#+/, '').toLowerCase();
-    const rangeStart = fromDate <= toDate ? fromDate : toDate;
-    const rangeEnd = fromDate <= toDate ? toDate : fromDate;
-
-    return serverTransactions.filter(item => {
-      const normalizedSearch = searchText.trim().toLowerCase();
-      const date = new Date(item.date);
-      const dateKey = item.date.slice(0, 10);
-      const monthKey = item.date.slice(0, 7);
-      const yearKey = String(date.getFullYear());
-
-      if (dateMode === 'day' && dateKey !== dayFilter) {
-        return false;
-      }
-
-      if (dateMode === 'month' && monthKey !== monthFilter) {
-        return false;
-      }
-
-      if (dateMode === 'year' && yearKey !== yearFilter) {
-        return false;
-      }
-
-      if (dateMode === 'custom' && (dateKey < rangeStart || dateKey > rangeEnd)) {
-        return false;
-      }
-
-      if (hasPremiumFilters && walletFilter && item.walletId !== walletFilter) {
-        return false;
-      }
-
-      if (hasPremiumFilters && categoryFilter && item.categoryId !== categoryFilter) {
-        return false;
-      }
-
-      if (hasPremiumFilters && typeFilter !== 'all' && item.type !== typeFilter) {
-        return false;
-      }
-
-      if (normalizedTag && !(item.tags ?? []).some(tag => tag.toLowerCase().includes(normalizedTag))) {
-        return false;
-      }
-
-      if (
-        normalizedSearch &&
-        ![item.note, item.category, item.wallet, ...(item.tags ?? []).map(tag => `#${tag}`)]
-          .join(' ')
-          .toLowerCase()
-          .includes(normalizedSearch)
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [
-    categoryFilter,
-    dateMode,
-    dayFilter,
-    fromDate,
-    hasPremiumFilters,
-    monthFilter,
-    searchText,
-    tagFilter,
-    toDate,
-    serverTransactions,
-    typeFilter,
-    walletFilter,
-    yearFilter,
-  ]);
-
   const summary = {
     income: serverMeta.income,
     expense: serverMeta.expense,
   };
   const totalPages = serverMeta.totalPages;
-  const paginatedTransactions = filteredTransactions;
+  const paginatedTransactions = serverTransactions;
   const groupedTransactions = useMemo(() => {
     const groups = new Map<string, TransactionItem[]>();
 
@@ -354,10 +350,16 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
   }, [page, totalPages]);
 
   const selectedCategory = categories.find(category => category.id === editCategoryId);
+  const selectedEditWallet = wallets.find(wallet => wallet.id === editWalletId) ?? null;
   const currentEditTags = useMemo(() => parseTagsInput(editTags), [editTags]);
   const recentHashtags = useMemo(() => {
-    const usedTags = serverTransactions.flatMap(transaction => transaction.tags ?? []);
-    return [...new Set([...usedTags, ...tags.map(tag => tag.name)])].slice(0, 10);
+    const usedTags = serverTransactions
+      .flatMap(transaction => transaction.tags ?? [])
+      .map(normalizeTagName)
+      .filter(Boolean);
+    const managedTags = tags.map(tag => normalizeTagName(tag.name)).filter(Boolean);
+
+    return [...new Set([...usedTags, ...managedTags])].slice(0, 10);
   }, [serverTransactions, tags]);
 
   useFocusEffect(
@@ -378,6 +380,21 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
 
     if (!Number.isFinite(transactionId)) {
       Alert.alert('Thông báo', 'Giao dịch này chưa đồng bộ nên chưa thể chỉnh sửa.');
+      return;
+    }
+
+    if (item.cashFlowType === 'loan_debt') {
+      Alert.alert(
+        'Giao dịch vay/nợ',
+        'Khoản này thuộc nhóm vay/nợ nên không sửa bằng form thu/chi thường. Hãy quản lý trong mục Vay/Nợ để tránh sai nghiệp vụ.',
+        [
+          { text: 'Đóng', style: 'cancel' },
+          {
+            text: 'Mở Vay/Nợ',
+            onPress: () => navigation.navigate('LoanDebts'),
+          },
+        ],
+      );
       return;
     }
 
@@ -408,7 +425,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
   };
 
   const toggleEditTag = (tag: string) => {
-    const normalized = tag.replace(/^#+/, '').toLowerCase();
+    const normalized = normalizeTagName(tag);
     const nextTags = currentEditTags.includes(normalized)
       ? currentEditTags.filter(item => item !== normalized)
       : [...currentEditTags, normalized].slice(0, 8);
@@ -438,7 +455,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
       return;
     }
 
-    const normalized = newTagName.trim().replace(/^#+/, '').toLowerCase();
+    const normalized = normalizeTagName(newTagName);
 
     if (!normalized) {
       Alert.alert('Thiếu hashtag', 'Nhập tên hashtag cần tạo.');
@@ -452,7 +469,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
       setNewTagName('');
       setIsTagModalVisible(false);
     } catch (error) {
-      Alert.alert('Chưa tạo được hashtag', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Chưa tạo được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     }
   };
 
@@ -548,7 +565,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
       await Promise.all([fetchTransactionPage(), onRefresh?.()]);
       closeEditModal();
     } catch (error) {
-      Alert.alert('Không thể cập nhật', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert('Không thể cập nhật', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setIsSaving(false);
     }
@@ -579,7 +596,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             await Promise.all([fetchTransactionPage(), onRefresh?.()]);
             closeEditModal();
           } catch (error) {
-            Alert.alert('Không thể xóa', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+            Alert.alert('Không thể xóa', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
           } finally {
             setIsSaving(false);
           }
@@ -624,12 +641,12 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
           </View>
         </View>
 
-        {isPageLoading && filteredTransactions.length === 0 ? (
+        {isPageLoading && paginatedTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
             <ActivityIndicator color={Colors.primary} />
             <Text style={styles.emptyText}>Đang tải lịch sử giao dịch...</Text>
           </View>
-        ) : filteredTransactions.length === 0 ? (
+        ) : paginatedTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <WalletCards size={28} color="#D87219" />
@@ -702,7 +719,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.modalTitleRow}>
               <TouchableOpacity style={styles.backButton} onPress={closeEditModal}>
-                <Text style={styles.backButtonText}>Lùi</Text>
+                <ArrowLeft size={18} color="#7A4A28" />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Sửa giao dịch</Text>
             </View>
@@ -718,7 +735,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
 
             <Text style={styles.fieldLabel}>Ngày giao dịch</Text>
             <TouchableOpacity style={styles.dateButton} onPress={() => setDatePickerTarget('edit')}>
-              <Text style={styles.dateButtonText}>{editDate}</Text>
+              <Text style={styles.dateButtonText}>{formatShortDate(editDate)}</Text>
               <Text style={styles.dateButtonHint}>Chọn ngày</Text>
             </TouchableOpacity>
 
@@ -727,18 +744,40 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             ) : null}
 
             <Text style={styles.fieldLabel}>Ví</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {wallets.map(wallet => (
-                <TouchableOpacity
-                  key={wallet.id}
-                  style={[styles.chip, editWalletId === wallet.id && styles.activeChip]}
-                  onPress={() => setEditWalletId(wallet.id)}>
-                  <Text style={[styles.chipText, editWalletId === wallet.id && styles.activeChipText]}>
-                    {wallet.name} · {wallet.currency}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {selectedEditWallet ? (
+              <Text style={styles.walletCurrencyHint}>
+                Giao dịch này sẽ dùng tiền tệ của ví: {selectedEditWallet.currency}
+              </Text>
+            ) : null}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.walletCardRow}>
+              {wallets.map(wallet => {
+                const typeMeta = getWalletTypeMeta(wallet.wallet_type);
+                const WalletTypeIcon = typeMeta.Icon;
+                const active = editWalletId === wallet.id;
+
+                return (
+                  <TouchableOpacity
+                    key={wallet.id}
+                    style={[styles.walletPickerCard, active && styles.walletPickerCardActive]}
+                    onPress={() => setEditWalletId(wallet.id)}>
+                    <View style={[styles.walletPickerIcon, active && styles.walletPickerIconActive]}>
+                      <WalletTypeIcon size={18} color={active ? Colors.white : '#D87219'} />
+                    </View>
+                    <Text style={styles.walletPickerName} numberOfLines={1}>
+                      {wallet.name}
+                    </Text>
+                    <Text style={styles.walletPickerBalance} numberOfLines={1}>
+                      {formatCurrency(Number(wallet.balance || 0), wallet.currency)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
+            {wallets.length === 0 ? (
+              <Text style={styles.emptyWalletText}>
+                Bạn cần tạo ví trước khi lưu giao dịch.
+              </Text>
+            ) : null}
 
             <Text style={styles.fieldLabel}>Danh mục</Text>
             <View style={styles.typeSegment}>
@@ -788,18 +827,23 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
               autoCapitalize="none"
             />
             {recentHashtags.length > 0 ? (
-              <View style={styles.tagWrap}>
-                {recentHashtags.map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[styles.suggestTagChip, currentEditTags.includes(tag) && styles.suggestTagChipActive]}
-                    onPress={() => toggleEditTag(tag)}>
-                    <Text style={[styles.suggestTagText, currentEditTags.includes(tag) && styles.suggestTagTextActive]}>
-                      #{tag}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagWrap}>
+                {recentHashtags.map(tag => {
+                  const normalizedTag = normalizeTagName(tag);
+                  const isSelected = currentEditTags.includes(normalizedTag);
+
+                  return (
+                    <TouchableOpacity
+                      key={normalizedTag}
+                      style={[styles.suggestTagChip, isSelected && styles.suggestTagChipActive]}
+                      onPress={() => toggleEditTag(normalizedTag)}>
+                      <Text style={[styles.suggestTagText, isSelected && styles.suggestTagTextActive]}>
+                        #{normalizedTag}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             ) : null}
 
             <Text style={styles.fieldLabel}>Ảnh hóa đơn</Text>
@@ -873,7 +917,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelButton} onPress={() => setIsTagModalVisible(false)}>
-                <Text style={styles.cancelButtonText}>Lùi</Text>
+                <ArrowLeft size={18} color="#7A4A28" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={handleCreateQuickTag}>
                 <Text style={styles.saveButtonText}>Tạo</Text>
@@ -1151,6 +1195,7 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
+    minWidth: 0,
     paddingRight: 8,
   },
   itemTitle: {
@@ -1180,6 +1225,7 @@ const styles = StyleSheet.create({
   amountColumn: {
     alignItems: 'flex-end',
     gap: 8,
+    maxWidth: 116,
   },
   paginationRow: {
     flexDirection: 'row',
@@ -1214,10 +1260,12 @@ const styles = StyleSheet.create({
   income: {
     color: '#E77700',
     fontWeight: '800',
+    textAlign: 'right',
   },
   expense: {
     color: '#C75A1B',
     fontWeight: '800',
+    textAlign: 'right',
   },
   receiptImage: {
     width: '100%',
@@ -1397,9 +1445,9 @@ const styles = StyleSheet.create({
   optionalText: { color: '#8B6548', fontSize: 12, fontWeight: '800' },
   tagWrap: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginTop: 10,
+    paddingRight: 18,
   },
   suggestTagChip: {
     borderRadius: 999,
@@ -1412,6 +1460,55 @@ const styles = StyleSheet.create({
   },
   suggestTagText: { color: '#A94F18', fontSize: 12, fontWeight: '900' },
   suggestTagTextActive: { color: Colors.white },
+  walletCurrencyHint: {
+    color: '#8A623F',
+    marginBottom: 8,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  walletCardRow: {
+    gap: 10,
+    paddingRight: 10,
+  },
+  walletPickerCard: {
+    width: 138,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F2D9C0',
+    backgroundColor: '#FFF6EF',
+    padding: 12,
+  },
+  walletPickerCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFF0DF',
+  },
+  walletPickerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 14,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  walletPickerIconActive: {
+    backgroundColor: Colors.primary,
+  },
+  walletPickerName: {
+    color: '#4C2A18',
+    fontWeight: '900',
+  },
+  walletPickerBalance: {
+    color: '#8A623F',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  emptyWalletText: {
+    color: '#C75A1B',
+    marginTop: 10,
+    lineHeight: 20,
+  },
   chipRow: {
     gap: 10,
     paddingRight: 20,

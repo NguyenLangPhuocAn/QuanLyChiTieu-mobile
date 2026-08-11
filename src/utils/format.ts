@@ -18,10 +18,42 @@ export const formatCompactCurrency = (value: number, currency = 'VND') => {
   return currency === 'VND' ? compactValue : `${compactValue} ${currency}`;
 };
 
-export const formatDisplayDate = (value: string) => {
+const parseDateValue = (value: string) => {
+  const dateOnly = value.slice(0, 10);
+  const [year, month, day] = dateOnly.split('-').map(Number);
+
+  if (year && month && day) {
+    return new Date(year, month - 1, day);
+  }
+
+  return new Date(value);
+};
+
+export const formatShortDate = (value: string) => {
+  const date = parseDateValue(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
   return new Intl.DateTimeFormat('vi-VN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(new Date(value));
+  }).format(date);
+};
+
+export const formatDisplayDate = (value: string) => {
+  const date = parseDateValue(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('vi-VN', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
 };

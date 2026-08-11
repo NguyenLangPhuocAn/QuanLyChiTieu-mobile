@@ -7,15 +7,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
-import { ArrowLeft, ChevronRight, Ellipsis, MoreHorizontal, Plus } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft, ChevronRight, Ellipsis, MoreHorizontal, Plus, Trash2 } from 'lucide-react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
@@ -23,8 +23,11 @@ import { CURRENCY_OPTIONS } from '../../constants/currencies';
 import { WALLET_TYPES, getWalletTypeMeta, type WalletType } from '../../constants/walletTypes';
 import { useAuth } from '../../context/AuthContext';
 import { walletsService } from '../../services/wallets';
+import { budgetsService } from '../../services/budgets';
 import type { Wallet } from '../../types/wallet';
+import type { Budget } from '../../types/budget';
 import { useFinance } from '../../context/FinanceContext';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Wallets'>;
@@ -40,11 +43,28 @@ const formatAmountInput = (value: string) => {
 };
 
 const getPlainAmount = (value: string) => value.replace(/,/g, '');
+const findActiveBudget = (budgets: Budget[], walletId: number) => {
+  const now = new Date();
+
+  return budgets
+    .filter(budget => {
+      const start = new Date(budget.start_date);
+      const end = new Date(budget.end_date);
+
+      return budget.scope === 'WALLET' && budget.wallet_id === walletId && start <= now && end >= now;
+    })
+    .sort(
+      (left, right) =>
+        new Date(right.start_date).getTime() - new Date(left.start_date).getTime() ||
+        right.id - left.id,
+    )[0];
+};
 
 const WalletsScreen = ({ navigation, route }: Props) => {
   const { token, user } = useAuth();
   const { preferredCurrency, transactions } = useFinance();
   const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingWallet, setIsSavingWallet] = useState(false);
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
@@ -52,7 +72,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
   const [walletName, setWalletName] = useState('');
   const [walletBalance, setWalletBalance] = useState('');
-  const [walletBudget, setWalletBudget] = useState('');
   const [walletCurrency, setWalletCurrency] = useState('VND');
   const [walletType, setWalletType] = useState<WalletType>('CASH');
   const selectedCurrency = useMemo(
@@ -69,9 +88,11 @@ const WalletsScreen = ({ navigation, route }: Props) => {
 
     try {
       const response = await walletsService.getAll(token);
+      const nextBudgets = await budgetsService.getAll(token);
       setWallets(response);
+      setBudgets(nextBudgets);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể tải danh sách và.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể tải danh sách ví.');
       Alert.alert('Lỗi tải ví', message);
     } finally {
       setIsLoading(false);
@@ -104,7 +125,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     setEditingWallet(null);
     setWalletName('');
     setWalletBalance('');
-    setWalletBudget('');
     setWalletCurrency(user?.currency_default ?? 'VND');
     setWalletType('CASH');
     setIsWalletModalVisible(true);
@@ -114,7 +134,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     setEditingWallet(wallet);
     setWalletName(wallet.name);
     setWalletBalance(formatAmountInput(String(wallet.balance ?? 0)));
-    setWalletBudget(wallet.budget_limit ? formatAmountInput(String(wallet.budget_limit)) : '');
     setWalletCurrency(wallet.currency ?? 'VND');
     setWalletType(wallet.wallet_type ?? 'CASH');
     setIsWalletModalVisible(true);
@@ -137,7 +156,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
         await walletsService.update(token, editingWallet.id, {
           name: walletName.trim(),
           balance: getPlainAmount(walletBalance.trim()) || '0',
-          budget_limit: getPlainAmount(walletBudget.trim()) || undefined,
           currency: walletCurrency,
           wallet_type: walletType,
         });
@@ -145,7 +163,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
         await walletsService.create(token, {
           name: walletName.trim(),
           balance: getPlainAmount(walletBalance.trim()) || '0',
-          budget_limit: getPlainAmount(walletBudget.trim()) || undefined,
           currency: walletCurrency,
           wallet_type: walletType,
         });
@@ -154,11 +171,45 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       await fetchWallets();
       setIsWalletModalVisible(false);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể lưu ví.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể lưu ví.');
       Alert.alert('Lưu ví thất bại', message);
     } finally {
       setIsSavingWallet(false);
     }
+  };
+
+  const handleDeleteWallet = () => {
+    if (!token || !editingWallet) {
+      return;
+    }
+
+    Alert.alert(
+      'Xóa ví',
+      'Ví sẽ được xóa mềm khỏi danh sách đang dùng. Giao dịch cũ vẫn được giữ để thống kê lịch sử.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa ví',
+          style: 'destructive',
+          onPress: async () => {
+            setIsSavingWallet(true);
+
+            try {
+              await walletsService.remove(token, editingWallet.id);
+              await fetchWallets();
+              setIsWalletModalVisible(false);
+              setEditingWallet(null);
+              Alert.alert('Đã xóa ví', 'Ví đã được xóa mềm. Dữ liệu giao dịch cũ vẫn được giữ nguyên.');
+            } catch (error) {
+              const message = getUserFriendlyErrorMessage(error, 'Không thể xóa ví.');
+              Alert.alert('Xóa ví thất bại', message);
+            } finally {
+              setIsSavingWallet(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const walletLimitText =
@@ -216,20 +267,9 @@ const WalletsScreen = ({ navigation, route }: Props) => {
             const typeMeta = getWalletTypeMeta(wallet.wallet_type);
             const WalletTypeIcon = typeMeta.Icon;
             const walletTransactions = transactions.filter(transaction => transaction.walletId === wallet.id);
-            const budgetLimit = Number(wallet.budget_limit ?? 0);
-            const monthExpense = walletTransactions
-              .filter(transaction => {
-                const date = new Date(transaction.date);
-                const now = new Date();
-
-                return (
-                  transaction.type === 'expense' &&
-                  date.getFullYear() === now.getFullYear() &&
-                  date.getMonth() === now.getMonth()
-                );
-              })
-              .reduce((sum, transaction) => sum + transaction.displayAmount, 0);
-            const budgetProgress = budgetLimit > 0 ? Math.min(100, (monthExpense / budgetLimit) * 100) : 0;
+            const activeBudget = findActiveBudget(budgets, wallet.id);
+            const budgetLimit = Number(activeBudget?.limit_amount ?? activeBudget?.amount ?? 0);
+            const budgetProgress = activeBudget ? Math.min(100, activeBudget.percentage) : 0;
 
             return (
             <TouchableOpacity
@@ -269,14 +309,14 @@ const WalletsScreen = ({ navigation, route }: Props) => {
                     ) : null}
                   </View>
                   {budgetLimit > 0 ? (
-                    <View style={styles.walletBudgetTrack}>
+                    <View style={styles.budgetProgressTrack}>
                       <View
                         style={[
-                          styles.walletBudgetFill,
+                          styles.budgetProgressFill,
                           budgetProgress >= 100
-                            ? styles.walletBudgetDanger
+                            ? styles.budgetProgressDanger
                             : budgetProgress >= 80
-                              ? styles.walletBudgetWarn
+                              ? styles.budgetProgressWarn
                               : null,
                           { width: `${Math.max(5, budgetProgress)}%` },
                         ]}
@@ -369,15 +409,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
               </>
             )}
 
-            <Text style={styles.inputLabel}>Hạn mức chi tiêu</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Không bắt buộc"
-              keyboardType="numeric"
-              value={walletBudget}
-              onChangeText={value => setWalletBudget(formatAmountInput(value))}
-            />
-
             <Text style={styles.inputLabel}>Tiền tệ của ví</Text>
             <TouchableOpacity
               style={styles.currencySelect}
@@ -401,6 +432,12 @@ const WalletsScreen = ({ navigation, route }: Props) => {
                 <Text style={styles.primaryButtonText}>Lưu ví</Text>
               )}
             </TouchableOpacity>
+            {editingWallet ? (
+              <TouchableOpacity style={styles.dangerButton} onPress={handleDeleteWallet} disabled={isSavingWallet}>
+                <Trash2 size={18} color="#B42318" />
+                <Text style={styles.dangerButtonText}>Xóa ví</Text>
+              </TouchableOpacity>
+            ) : null}
             </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
@@ -588,22 +625,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  walletBudgetTrack: {
+  budgetProgressTrack: {
     height: 7,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.24)',
     marginTop: 9,
     overflow: 'hidden',
   },
-  walletBudgetFill: {
+  budgetProgressFill: {
     height: '100%',
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
   },
-  walletBudgetWarn: {
+  budgetProgressWarn: {
     backgroundColor: '#FFE2A8',
   },
-  walletBudgetDanger: {
+  budgetProgressDanger: {
     backgroundColor: '#FFB4A2',
   },
   walletMenuButton: {
@@ -793,6 +830,23 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: Colors.white,
     fontSize: 16,
+    fontWeight: '800',
+  },
+  dangerButton: {
+    marginTop: 12,
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#F4B6B0',
+    backgroundColor: '#FFF4F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dangerButtonText: {
+    color: '#B42318',
+    fontSize: 15,
     fontWeight: '800',
   },
 });

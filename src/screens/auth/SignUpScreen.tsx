@@ -3,19 +3,21 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
+import { ApiError } from '../../services/api';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
@@ -61,7 +63,10 @@ const SignUpScreen = ({ navigation }: Props) => {
       setErrors({});
       await signUp(email.trim(), password, confirmPassword);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Đăng ký thất bại.';
+      const message =
+        error instanceof ApiError && error.code === 'ACCOUNT_RESTORE_REQUIRED'
+          ? 'Email này thuộc tài khoản đã xóa. Vui lòng quay lại đăng nhập để khôi phục tài khoản và giữ nguyên dữ liệu cũ.'
+          : getUserFriendlyErrorMessage(error, 'Đăng ký thất bại.');
       setErrors({ form: message });
     }
   };

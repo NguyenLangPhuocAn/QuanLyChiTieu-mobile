@@ -1,5 +1,5 @@
 import { apiRequest, apiUploadRequest } from './api';
-import type { ApiCategoryType, Category } from '../types/category';
+import type { ApiCategoryCashFlowGroup, ApiCategoryType, Category } from '../types/category';
 
 export const categoriesService = {
   getAll(token: string) {
@@ -14,6 +14,7 @@ export const categoriesService = {
     payload: {
       name: string;
       type: ApiCategoryType;
+      cash_flow_group?: ApiCategoryCashFlowGroup;
     },
   ) {
     return apiRequest<Category>('/categories', {
@@ -29,6 +30,7 @@ export const categoriesService = {
     payload: {
       name?: string;
       type?: ApiCategoryType;
+      cash_flow_group?: ApiCategoryCashFlowGroup;
     },
   ) {
     return apiRequest<Category>(`/categories/${id}`, {

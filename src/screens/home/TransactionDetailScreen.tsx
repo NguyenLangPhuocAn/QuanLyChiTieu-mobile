@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CalendarDays, Hash, Image as ImageIcon, WalletCards } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CategoryIcon from '../../components/CategoryIcon';
@@ -33,6 +33,12 @@ const resolveReceiptUrl = (receipt?: string | null) => {
 const TransactionDetailScreen = ({ navigation, route }: Props) => {
   const { transaction } = route.params;
   const receiptUrl = resolveReceiptUrl(transaction.receiptImage);
+  const typeLabel =
+    transaction.cashFlowType === 'loan_debt'
+      ? 'Dòng tiền vay/nợ'
+      : transaction.type === 'income'
+        ? 'Khoản thu'
+        : 'Khoản chi';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -50,11 +56,15 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
             <CategoryIcon icon={transaction.categoryIcon} size={26} />
           </View>
           <Text style={styles.note}>{transaction.note}</Text>
-          <Text style={transaction.type === 'income' ? styles.incomeAmount : styles.expenseAmount}>
+          <Text
+            style={transaction.type === 'income' ? styles.incomeAmount : styles.expenseAmount}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.72}>
             {transaction.type === 'income' ? '+' : '-'}
             {formatCurrency(transaction.amount, transaction.currency)}
           </Text>
-          <Text style={styles.typeText}>{transaction.type === 'income' ? 'Khoản thu' : 'Khoản chi'}</Text>
+                    <Text style={styles.typeText}>{typeLabel}</Text>
         </View>
 
         <View style={styles.infoCard}>
@@ -140,8 +150,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   note: { color: '#4C2A18', fontSize: 20, fontWeight: '900', marginTop: 12, textAlign: 'center' },
-  incomeAmount: { color: '#188F5A', fontSize: 24, fontWeight: '900', marginTop: 8 },
-  expenseAmount: { color: '#C75A1B', fontSize: 24, fontWeight: '900', marginTop: 8 },
+  incomeAmount: { color: '#188F5A', fontSize: 24, fontWeight: '900', marginTop: 8, width: '100%', textAlign: 'center' },
+  expenseAmount: { color: '#C75A1B', fontSize: 24, fontWeight: '900', marginTop: 8, width: '100%', textAlign: 'center' },
   typeText: { color: '#8B6548', fontWeight: '800', marginTop: 5 },
   infoCard: {
     backgroundColor: Colors.white,

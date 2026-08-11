@@ -4,20 +4,21 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
 import { authService } from '../../services/auth';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ResetPassword'>;
@@ -65,7 +66,7 @@ const ResetPasswordScreen = ({ navigation, route }: Props) => {
       Alert.alert('Thành công', 'Bạn có thể đăng nhập bằng mật khẩu mới.');
       navigation.navigate('Login');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể đặt lại mật khẩu.';
+      const message = getUserFriendlyErrorMessage(error, 'Không thể đặt lại mật khẩu.');
       setErrors({ form: message });
     } finally {
       setLoading(false);

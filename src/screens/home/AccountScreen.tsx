@@ -14,17 +14,15 @@ import {
 import {
   ChevronRight,
   Bell,
-  Cloud,
   Crown,
   Download,
   HelpCircle,
   Hash,
+  HandCoins,
   ListTree,
   LockKeyhole,
   LogOut,
   Palette,
-  Repeat,
-  Shield,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -37,16 +35,33 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { authService } from '../../services/auth';
+import type { Wallet } from '../../types/wallet';
+import { resolveAvatarUrl } from '../../utils/avatar';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 const premiumUpgradeImage = require('../../assets/premium-upgrade.png');
 
-const AccountScreen = () => {
+type AccountScreenProps = {
+  wallets?: Wallet[];
+  notificationUnreadCount?: number;
+};
+
+const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScreenProps) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user, signOut, upgradeToPremium } = useAuth();
   const [isPlanModalVisible, setIsPlanModalVisible] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const isPremium = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
   const displayPlan = isPremium ? 'PREMIUM' : 'BASIC';
+  const avatarUrl = resolveAvatarUrl(user?.avatar);
+  const notificationSubtitle =
+    notificationUnreadCount > 0
+      ? `${notificationUnreadCount > 99 ? '99+' : notificationUnreadCount} thông báo chưa đọc`
+      : 'Nhắc ngân sách và giao dịch';
+
+  const showComingSoon = (feature: string) => {
+    Alert.alert('Chức năng đang hoàn thiện', `${feature} sẽ được cập nhật trong phiên bản sắp tới.`);
+  };
 
   const handleUpgradePremium = () => {
     if (isPremium) {
@@ -69,7 +84,7 @@ const AccountScreen = () => {
               setIsPlanModalVisible(false);
               Alert.alert('Đã nâng cấp', 'Tài khoản của bạn đã chuyển sang Premium.');
             } catch (error) {
-              Alert.alert('Chưa thể nâng cấp', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+              Alert.alert('Chưa thể nâng cấp', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
             } finally {
               setIsUpgrading(false);
             }
@@ -97,7 +112,7 @@ const AccountScreen = () => {
               await authService.deactivateMe(token);
               await signOut();
             } catch (error) {
-              Alert.alert('Không thể xóa tài khoản', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+              Alert.alert('Không thể xóa tài khoản', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
             }
           },
         },
@@ -116,7 +131,11 @@ const AccountScreen = () => {
 
       <View style={styles.profileCard}>
         <View style={styles.avatar}>
-          <UserRound size={32} color={Colors.primary} />
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <UserRound size={32} color={Colors.primary} />
+          )}
         </View>
         <View style={styles.profileInfo}>
           <Text style={styles.name} numberOfLines={1}>
@@ -139,10 +158,6 @@ const AccountScreen = () => {
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{user?.currency_default ?? 'VND'}</Text>
           <Text style={styles.statLabel}>Tiền tệ</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user?.profile_setup_completed ? 'Đầy đủ' : 'Thiếu'}</Text>
-          <Text style={styles.statLabel}>Thông tin</Text>
         </View>
       </View>
 
@@ -211,15 +226,12 @@ const AccountScreen = () => {
 
         {[
           { title: 'Ví & tài khoản', subtitle: 'Số dư, hạn mức, loại ví', Icon: WalletCards, action: () => navigation.navigate('Wallets') },
-          { title: 'Ngân sách', subtitle: 'Theo dõi hạn mức theo ví', Icon: ShieldCheck, action: () => navigation.navigate('Wallets') },
-          { title: 'Giao dịch định kỳ', subtitle: 'Tính năng Premium', Icon: Repeat, locked: !isPremium },
-          { title: 'Bảo mật', subtitle: 'Mật khẩu và đăng nhập', Icon: Shield, action: () => navigation.navigate('Profile') },
-          { title: 'Giao diện', subtitle: 'Tùy chỉnh hiển thị', Icon: Palette, locked: !isPremium },
-          { title: 'Thông báo', subtitle: 'Nhắc ngân sách và giao dịch', Icon: Bell },
-          { title: 'Sao lưu / Khôi phục', subtitle: 'Đồng bộ dữ liệu Premium', Icon: Cloud, locked: !isPremium },
-          { title: 'Xuất báo cáo', subtitle: 'Excel/PDF dành cho Premium', Icon: Download, locked: !isPremium, action: () => navigation.navigate('Statistics') },
-          { title: 'Hỗ trợ', subtitle: 'Câu hỏi thường gặp', Icon: HelpCircle },
-          { title: 'Chính sách bảo mật', subtitle: 'Cách ứng dụng xử lý dữ liệu', Icon: LockKeyhole },
+          { title: 'Ngân sách', subtitle: 'Theo dõi hạn mức theo ví', Icon: ShieldCheck, action: () => navigation.navigate('Budgets') },
+          { title: 'Vay/Nợ', subtitle: 'Theo dõi khoản phải thu và phải trả', Icon: HandCoins, action: () => navigation.navigate('LoanDebts') },
+          { title: 'Giao diện', subtitle: 'Tùy chỉnh hiển thị', Icon: Palette, action: () => showComingSoon('Giao diện') },
+          { title: 'Thông báo', subtitle: notificationSubtitle, Icon: Bell, action: () => navigation.navigate('Notifications') },
+          { title: 'Xuất báo cáo', subtitle: 'Excel/PDF dành cho Premium', Icon: Download, locked: !isPremium, action: () => navigation.navigate('Statistics', { wallets }) },
+          { title: 'Hỗ trợ', subtitle: 'Câu hỏi thường gặp', Icon: HelpCircle, action: () => showComingSoon('Câu hỏi thường gặp') },
         ].map(item => {
           const Icon = item.Icon;
 
@@ -358,6 +370,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0DF',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
   },
   profileInfo: {
     flex: 1,

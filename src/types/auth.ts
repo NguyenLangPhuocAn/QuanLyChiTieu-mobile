@@ -23,4 +23,6 @@ export type LoginResponse = {
   expiresIn?: number;
   refreshTokenExpiresAt?: string;
   mustChangePassword?: boolean;
+  restored?: boolean;
+  user?: AuthUser;
 };

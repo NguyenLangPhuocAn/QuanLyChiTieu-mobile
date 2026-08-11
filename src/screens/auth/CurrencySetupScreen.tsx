@@ -3,20 +3,21 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight, Coins, UserRound } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Colors } from '../../constants/Colors';
 import { CURRENCY_OPTIONS } from '../../constants/currencies';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+import { getUserFriendlyErrorMessage } from '../../utils/errors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CurrencySetup'>;
 
@@ -62,7 +63,7 @@ const CurrencySetupScreen = ({ navigation, route }: Props) => {
         phone: phone.trim() || undefined,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Vui lòng thử lại sau.';
+      const message = getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.');
       setErrors(/sđt|sdt|điện thoại|phone/i.test(message) ? { phone: message } : { form: message });
     }
   };

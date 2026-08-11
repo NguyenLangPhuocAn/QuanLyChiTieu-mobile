@@ -117,10 +117,21 @@ export const authService = {
     });
   },
 
-  resetPassword(token: string, newPassword: string, confirmPassword: string) {
-    return apiRequest<{ message: string }>('/users/reset-password', {
+  verifyResetOtp(email: string, otp: string) {
+    return apiRequest<{ message: string; reset_token: string }>('/users/verify-reset-otp', {
       method: 'POST',
-      body: { token, newPassword, confirmPassword },
+      body: { email, otp },
+    });
+  },
+
+  resetPassword(resetToken: string, newPassword: string, confirmPassword: string) {
+    return apiRequest<LoginResponse>('/users/reset-password', {
+      method: 'POST',
+      body: {
+        reset_token: resetToken,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      },
     });
   },
 
