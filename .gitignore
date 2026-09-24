@@ -71,6 +71,15 @@ NUL
 # testing
 /coverage
 
+# Private/local data is included only in the encrypted workspace backup.
+.env
+.env.*
+!.env.example
+*.log
+/demo-receipts/
+/demo-receipts-real/
+/demo-receipts-public-real/
+
 # Yarn
 .yarn/*
 !.yarn/patches

@@ -3,6 +3,7 @@ export const normalizeTagName = (tag: string) =>
     .normalize('NFC')
     .trim()
     .replace(/^#+/, '')
+    .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase()
     .slice(0, 50);
@@ -14,9 +15,10 @@ export const parseTagsInput = (value: string) => {
     return [];
   }
 
-  const rawTags = trimmed.includes('#')
-    ? [...trimmed.matchAll(/#([^#,\n\r]+)/g)].map(match => match[1])
-    : trimmed.split(/[,\n\r]+/);
+  const rawTags = trimmed.split(/[#,\n\r]+/);
 
-  return [...new Set(rawTags.map(normalizeTagName).filter(Boolean))].slice(0, 8);
+  return [...new Set(rawTags.map(normalizeTagName).filter(Boolean))].slice(
+    0,
+    8,
+  );
 };

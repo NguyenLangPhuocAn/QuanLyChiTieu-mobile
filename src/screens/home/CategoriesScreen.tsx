@@ -41,6 +41,7 @@ type CategoryIconUploadFile = {
 const cashFlowGroupLabels: Record<ApiCategoryCashFlowGroup, string> = {
   NORMAL: 'Thu chi thường',
   LOAN_DEBT: 'Vay/nợ',
+  SAVING_TRANSFER: 'Chuyển tiết kiệm',
 };
 
 const typeLabels: Record<ApiCategoryType, string> = {
@@ -846,4 +847,3 @@ const styles = StyleSheet.create({
 });
 
 export default CategoriesScreen;
-

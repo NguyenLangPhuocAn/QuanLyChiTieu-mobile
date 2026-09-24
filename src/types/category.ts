@@ -1,5 +1,8 @@
 export type ApiCategoryType = 'INCOME' | 'EXPENSE';
-export type ApiCategoryCashFlowGroup = 'NORMAL' | 'LOAN_DEBT';
+export type ApiCategoryCashFlowGroup =
+  | 'NORMAL'
+  | 'LOAN_DEBT'
+  | 'SAVING_TRANSFER';
 
 export type Category = {
   id: number;

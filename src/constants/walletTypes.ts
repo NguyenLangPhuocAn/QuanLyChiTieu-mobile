@@ -1,6 +1,11 @@
-import { Banknote, Building2, Smartphone } from 'lucide-react-native';
+import {
+  Banknote,
+  Building2,
+  PiggyBank,
+  Smartphone,
+} from 'lucide-react-native';
 
-export type WalletType = 'CASH' | 'BANK' | 'E_WALLET';
+export type WalletType = 'CASH' | 'BANK' | 'E_WALLET' | 'SAVINGS';
 
 export const WALLET_TYPES: Array<{
   value: WalletType;
@@ -33,4 +38,12 @@ export const WALLET_TYPES: Array<{
 ];
 
 export const getWalletTypeMeta = (type?: string | null) =>
-  WALLET_TYPES.find(item => item.value === type) ?? WALLET_TYPES[0];
+  type === 'SAVINGS'
+    ? {
+        value: 'SAVINGS' as const,
+        label: 'Tiết kiệm',
+        description: 'Ví được quản lý theo mục tiêu',
+        Icon: PiggyBank,
+        background: require('../assets/images/wallet-backgrounds/wallet_bank_bg.png'),
+      }
+    : WALLET_TYPES.find(item => item.value === type) ?? WALLET_TYPES[0];

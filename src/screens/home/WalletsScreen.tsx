@@ -12,15 +12,28 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, Ellipsis, MoreHorizontal, Plus, Trash2 } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  ChevronRight,
+  Ellipsis,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+} from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Colors } from '../../constants/Colors';
 import { CURRENCY_OPTIONS } from '../../constants/currencies';
-import { WALLET_TYPES, getWalletTypeMeta, type WalletType } from '../../constants/walletTypes';
+import {
+  WALLET_TYPES,
+  getWalletTypeMeta,
+  type WalletType,
+} from '../../constants/walletTypes';
 import { useAuth } from '../../context/AuthContext';
 import { walletsService } from '../../services/wallets';
 import { budgetsService } from '../../services/budgets';
@@ -29,20 +42,11 @@ import type { Budget } from '../../types/budget';
 import { useFinance } from '../../context/FinanceContext';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
+import { getWalletBalanceChange } from '../../utils/moneyInput';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Wallets'>;
 
-const formatAmountInput = (value: string) => {
-  const numericValue = value.replace(/\D/g, '');
-
-  if (!numericValue) {
-    return '';
-  }
-
-  return Number(numericValue).toLocaleString('en-US');
-};
-
-const getPlainAmount = (value: string) => value.replace(/,/g, '');
 const findActiveBudget = (budgets: Budget[], walletId: number) => {
   const now = new Date();
 
@@ -51,12 +55,17 @@ const findActiveBudget = (budgets: Budget[], walletId: number) => {
       const start = new Date(budget.start_date);
       const end = new Date(budget.end_date);
 
-      return budget.scope === 'WALLET' && budget.wallet_id === walletId && start <= now && end >= now;
+      return (
+        budget.scope === 'WALLET' &&
+        budget.wallet_id === walletId &&
+        start <= now &&
+        end >= now
+      );
     })
     .sort(
       (left, right) =>
-        new Date(right.start_date).getTime() - new Date(left.start_date).getTime() ||
-        right.id - left.id,
+        new Date(right.start_date).getTime() -
+          new Date(left.start_date).getTime() || right.id - left.id,
     )[0];
 };
 
@@ -67,6 +76,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingWallet, setIsSavingWallet] = useState(false);
+  const { run: runWalletMutation } = useSingleFlight();
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
@@ -74,8 +84,14 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const [walletBalance, setWalletBalance] = useState('');
   const [walletCurrency, setWalletCurrency] = useState('VND');
   const [walletType, setWalletType] = useState<WalletType>('CASH');
+  const regularWallets = useMemo(
+    () => wallets.filter(wallet => wallet.wallet_type !== 'SAVINGS'),
+    [wallets],
+  );
   const selectedCurrency = useMemo(
-    () => CURRENCY_OPTIONS.find(item => item.code === walletCurrency) ?? CURRENCY_OPTIONS[0],
+    () =>
+      CURRENCY_OPTIONS.find(item => item.code === walletCurrency) ??
+      CURRENCY_OPTIONS[0],
     [walletCurrency],
   );
 
@@ -92,16 +108,21 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       setWallets(response);
       setBudgets(nextBudgets);
     } catch (error) {
-      const message = getUserFriendlyErrorMessage(error, 'Không thể tải danh sách ví.');
+      const message = getUserFriendlyErrorMessage(
+        error,
+        'Không thể tải danh sách ví.',
+      );
       Alert.alert('Lỗi tải ví', message);
     } finally {
       setIsLoading(false);
     }
   }, [token]);
 
-  useEffect(() => {
-    fetchWallets();
-  }, [fetchWallets]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchWallets().catch(() => undefined);
+    }, [fetchWallets]),
+  );
 
   useEffect(() => {
     const selectedCurrencyParam = route.params?.selectedCurrency;
@@ -115,7 +136,8 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const totalBalance = useMemo(
     () =>
       wallets.reduce(
-        (sum, wallet) => sum + Number(wallet.display_balance ?? wallet.balance ?? 0),
+        (sum, wallet) =>
+          sum + Number(wallet.display_balance ?? wallet.balance ?? 0),
         0,
       ),
     [wallets],
@@ -133,50 +155,62 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const openEditWalletModal = (wallet: Wallet) => {
     setEditingWallet(wallet);
     setWalletName(wallet.name);
-    setWalletBalance(formatAmountInput(String(wallet.balance ?? 0)));
+    setWalletBalance(String(wallet.balance ?? 0));
     setWalletCurrency(wallet.currency ?? 'VND');
     setWalletType(wallet.wallet_type ?? 'CASH');
     setIsWalletModalVisible(true);
   };
 
-  const handleSaveWallet = async () => {
-    if (!token) {
-      return;
-    }
-
-    if (!walletName.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên ví.');
-      return;
-    }
-
-    setIsSavingWallet(true);
-
-    try {
-      if (editingWallet) {
-        await walletsService.update(token, editingWallet.id, {
-          name: walletName.trim(),
-          balance: getPlainAmount(walletBalance.trim()) || '0',
-          currency: walletCurrency,
-          wallet_type: walletType,
-        });
-      } else {
-        await walletsService.create(token, {
-          name: walletName.trim(),
-          balance: getPlainAmount(walletBalance.trim()) || '0',
-          currency: walletCurrency,
-          wallet_type: walletType,
-        });
+  const handleSaveWallet = () =>
+    runWalletMutation(async () => {
+      if (!token) {
+        return;
       }
 
-      await fetchWallets();
-      setIsWalletModalVisible(false);
-    } catch (error) {
-      const message = getUserFriendlyErrorMessage(error, 'Không thể lưu ví.');
-      Alert.alert('Lưu ví thất bại', message);
-    } finally {
-      setIsSavingWallet(false);
-    }
-  };
+      if (!walletName.trim()) {
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên ví.');
+        return;
+      }
+
+      const balance = getWalletBalanceChange(
+        walletBalance,
+        editingWallet ? Number(editingWallet.balance ?? 0) : undefined,
+      );
+      if (balance === null) {
+        Alert.alert(
+          'Số dư chưa hợp lệ',
+          'Nhập số không âm, tối đa 2 số thập phân (ví dụ 12,50). Không nhập dấu phân cách hàng nghìn.',
+        );
+        return;
+      }
+      setIsSavingWallet(true);
+
+      try {
+        if (editingWallet) {
+          await walletsService.update(token, editingWallet.id, {
+            name: walletName.trim(),
+            ...(balance !== undefined ? { balance } : {}),
+            currency: walletCurrency,
+            wallet_type: walletType,
+          });
+        } else {
+          await walletsService.create(token, {
+            name: walletName.trim(),
+            balance: balance ?? '0',
+            currency: walletCurrency,
+            wallet_type: walletType,
+          });
+        }
+
+        await fetchWallets();
+        setIsWalletModalVisible(false);
+      } catch (error) {
+        const message = getUserFriendlyErrorMessage(error, 'Không thể lưu ví.');
+        Alert.alert('Lưu ví thất bại', message);
+      } finally {
+        setIsSavingWallet(false);
+      }
+    });
 
   const handleDeleteWallet = () => {
     if (!token || !editingWallet) {
@@ -191,22 +225,29 @@ const WalletsScreen = ({ navigation, route }: Props) => {
         {
           text: 'Xóa ví',
           style: 'destructive',
-          onPress: async () => {
-            setIsSavingWallet(true);
+          onPress: () =>
+            runWalletMutation(async () => {
+              setIsSavingWallet(true);
 
-            try {
-              await walletsService.remove(token, editingWallet.id);
-              await fetchWallets();
-              setIsWalletModalVisible(false);
-              setEditingWallet(null);
-              Alert.alert('Đã xóa ví', 'Ví đã được xóa mềm. Dữ liệu giao dịch cũ vẫn được giữ nguyên.');
-            } catch (error) {
-              const message = getUserFriendlyErrorMessage(error, 'Không thể xóa ví.');
-              Alert.alert('Xóa ví thất bại', message);
-            } finally {
-              setIsSavingWallet(false);
-            }
-          },
+              try {
+                await walletsService.remove(token, editingWallet.id);
+                await fetchWallets();
+                setIsWalletModalVisible(false);
+                setEditingWallet(null);
+                Alert.alert(
+                  'Đã xóa ví',
+                  'Ví đã được xóa mềm. Dữ liệu giao dịch cũ vẫn được giữ nguyên.',
+                );
+              } catch (error) {
+                const message = getUserFriendlyErrorMessage(
+                  error,
+                  'Không thể xóa ví.',
+                );
+                Alert.alert('Xóa ví thất bại', message);
+              } finally {
+                setIsSavingWallet(false);
+              }
+            }),
         },
       ],
     );
@@ -220,13 +261,19 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>Ví</Text>
 
-        <TouchableOpacity style={styles.headerButton} onPress={() => setIsInfoModalVisible(true)}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => setIsInfoModalVisible(true)}
+        >
           <Ellipsis size={22} color="#593420" />
         </TouchableOpacity>
       </View>
@@ -234,7 +281,9 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Tổng số dư ví</Text>
-          <Text style={styles.summaryBalance}>{formatCurrency(totalBalance, preferredCurrency)}</Text>
+          <Text style={styles.summaryBalance}>
+            {formatCurrency(totalBalance, preferredCurrency)}
+          </Text>
 
           <View style={styles.summaryStats}>
             <View style={styles.summaryStatCard}>
@@ -248,91 +297,132 @@ const WalletsScreen = ({ navigation, route }: Props) => {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={styles.transferShortcut}
+          onPress={() => navigation.navigate('WalletTransfers')}
+        >
+          <View style={styles.transferShortcutIcon}>
+            <ArrowRightLeft size={22} color={Colors.white} />
+          </View>
+          <View style={styles.transferShortcutCopy}>
+            <Text style={styles.transferShortcutTitle}>
+              Chuyển tiền giữa các ví
+            </Text>
+            <Text style={styles.transferShortcutText}>
+              Chuyển nội bộ và xem rõ lịch sử ví nguồn → ví nhận
+            </Text>
+          </View>
+          <ChevronRight size={21} color="#9A4D00" />
+        </TouchableOpacity>
+
         {isLoading ? (
           <View style={styles.loadingBlock}>
             <ActivityIndicator color={Colors.primary} />
           </View>
-        ) : wallets.length === 0 ? (
+        ) : regularWallets.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Bạn chưa có ví nào</Text>
             <Text style={styles.emptyText}>
               Tạo ví đầu tiên để bắt đầu theo dõi số dư, ngân sách và giao dịch.
             </Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={openCreateWalletModal}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={openCreateWalletModal}
+            >
               <Text style={styles.primaryButtonText}>Tạo ví đầu tiên</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          wallets.map(wallet => {
+          regularWallets.map(wallet => {
             const typeMeta = getWalletTypeMeta(wallet.wallet_type);
             const WalletTypeIcon = typeMeta.Icon;
-            const walletTransactions = transactions.filter(transaction => transaction.walletId === wallet.id);
+            const walletTransactions = transactions.filter(
+              transaction => transaction.walletId === wallet.id,
+            );
             const activeBudget = findActiveBudget(budgets, wallet.id);
-            const budgetLimit = Number(activeBudget?.limit_amount ?? activeBudget?.amount ?? 0);
-            const budgetProgress = activeBudget ? Math.min(100, activeBudget.percentage) : 0;
+            const budgetLimit = Number(
+              activeBudget?.limit_amount ?? activeBudget?.amount ?? 0,
+            );
+            const budgetProgress = activeBudget
+              ? Math.min(100, activeBudget.percentage)
+              : 0;
 
             return (
-            <TouchableOpacity
-              key={wallet.id}
-              style={styles.walletCard}
-              onPress={() =>
-                navigation.navigate('WalletTransactions', {
-                  walletId: wallet.id,
-                  walletName: wallet.name,
-                })
-              }>
-              <ImageBackground
-                source={typeMeta.background}
-                imageStyle={styles.walletCardBackground}
-                style={styles.walletCardBackgroundWrap}>
-                <View style={styles.walletIconBox}>
-                  <WalletTypeIcon size={22} color={Colors.white} />
-                </View>
+              <TouchableOpacity
+                key={wallet.id}
+                style={styles.walletCard}
+                onPress={() =>
+                  wallet.wallet_type === 'SAVINGS'
+                    ? navigation.navigate('SavingsGoals')
+                    : navigation.navigate('WalletTransactions', {
+                        walletId: wallet.id,
+                        walletName: wallet.name,
+                      })
+                }
+              >
+                <ImageBackground
+                  source={typeMeta.background}
+                  imageStyle={styles.walletCardBackground}
+                  style={styles.walletCardBackgroundWrap}
+                >
+                  <View style={styles.walletIconBox}>
+                    <WalletTypeIcon size={22} color={Colors.white} />
+                  </View>
 
-                <View style={styles.walletInfo}>
-                  <View style={styles.walletTitleRow}>
-                    <Text style={styles.walletName}>{wallet.name}</Text>
-                    <View style={styles.walletTypeBadge}>
-                      <Text style={styles.walletTypeText}>{typeMeta.label}</Text>
+                  <View style={styles.walletInfo}>
+                    <View style={styles.walletTitleRow}>
+                      <Text style={styles.walletName}>{wallet.name}</Text>
+                      <View style={styles.walletTypeBadge}>
+                        <Text style={styles.walletTypeText}>
+                          {typeMeta.label}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                  <Text style={styles.walletBalance}>
-                    {formatCurrency(Number(wallet.balance || 0), wallet.currency)}
-                  </Text>
-                  <Text style={styles.walletCurrency}>{wallet.currency}</Text>
-                  <View style={styles.walletMiniStats}>
-                    <Text style={styles.walletMiniText}>{walletTransactions.length} giao dịch</Text>
-                    {budgetLimit > 0 ? (
+                    <Text style={styles.walletBalance}>
+                      {formatCurrency(
+                        Number(wallet.balance || 0),
+                        wallet.currency,
+                      )}
+                    </Text>
+                    <Text style={styles.walletCurrency}>{wallet.currency}</Text>
+                    <View style={styles.walletMiniStats}>
                       <Text style={styles.walletMiniText}>
-                        {Math.round(budgetProgress)}% ngân sách
+                        {walletTransactions.length} giao dịch
                       </Text>
-                    ) : null}
-                  </View>
-                  {budgetLimit > 0 ? (
-                    <View style={styles.budgetProgressTrack}>
-                      <View
-                        style={[
-                          styles.budgetProgressFill,
-                          budgetProgress >= 100
-                            ? styles.budgetProgressDanger
-                            : budgetProgress >= 80
+                      {budgetLimit > 0 ? (
+                        <Text style={styles.walletMiniText}>
+                          {Math.round(budgetProgress)}% ngân sách
+                        </Text>
+                      ) : null}
+                    </View>
+                    {budgetLimit > 0 ? (
+                      <View style={styles.budgetProgressTrack}>
+                        <View
+                          style={[
+                            styles.budgetProgressFill,
+                            budgetProgress >= 100
+                              ? styles.budgetProgressDanger
+                              : budgetProgress >= 80
                               ? styles.budgetProgressWarn
                               : null,
-                          { width: `${Math.max(5, budgetProgress)}%` },
-                        ]}
-                      />
-                    </View>
-                  ) : null}
-                </View>
+                            { width: `${Math.max(5, budgetProgress)}%` },
+                          ]}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
 
-                <TouchableOpacity
-                  style={styles.walletMenuButton}
-                  onPress={() => openEditWalletModal(wallet)}>
-                  <MoreHorizontal size={20} color={Colors.white} />
-                </TouchableOpacity>
-              </ImageBackground>
-            </TouchableOpacity>
-          );
+                  {wallet.wallet_type !== 'SAVINGS' ? (
+                    <TouchableOpacity
+                      style={styles.walletMenuButton}
+                      onPress={() => openEditWalletModal(wallet)}
+                    >
+                      <MoreHorizontal size={20} color={Colors.white} />
+                    </TouchableOpacity>
+                  ) : null}
+                </ImageBackground>
+              </TouchableOpacity>
+            );
           })
         )}
       </ScrollView>
@@ -344,116 +434,145 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       <Modal transparent visible={isWalletModalVisible} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
-          <Pressable style={styles.backdropPressable} onPress={() => setIsWalletModalVisible(false)} />
+          style={styles.modalBackdrop}
+        >
+          <Pressable
+            style={styles.backdropPressable}
+            onPress={() => setIsWalletModalVisible(false)}
+          />
           <Pressable style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={styles.modalTitle}>{editingWallet ? 'Sửa ví' : 'Thêm ví mới'}</Text>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.modalTitle}>
+                {editingWallet ? 'Sửa ví' : 'Thêm ví mới'}
+              </Text>
 
-            <Text style={styles.inputLabel}>Loại ví</Text>
-            <View style={styles.typeGrid}>
-              {WALLET_TYPES.map(item => {
-                const TypeIcon = item.Icon;
-                const active = walletType === item.value;
+              <Text style={styles.inputLabel}>Loại ví</Text>
+              <View style={styles.typeGrid}>
+                {WALLET_TYPES.map(item => {
+                  const TypeIcon = item.Icon;
+                  const active = walletType === item.value;
 
-                return (
-                  <TouchableOpacity
-                    key={item.value}
-                    style={[styles.typeCard, active && styles.typeCardActive]}
-                    onPress={() => setWalletType(item.value)}>
-                    <ImageBackground
-                      source={item.background}
-                      imageStyle={styles.typeCardBackground}
-                      style={styles.typeCardBackgroundWrap}>
-                      <View style={styles.typeIconCircle}>
-                        <TypeIcon size={20} color={Colors.white} />
-                      </View>
-                      <Text style={styles.typeLabel}>{item.label}</Text>
-                      <Text style={styles.typeDescription}>{item.description}</Text>
-                    </ImageBackground>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-
-            <Text style={styles.inputLabel}>Tên ví</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ví chính"
-              value={walletName}
-              onChangeText={setWalletName}
-            />
-
-            {editingWallet ? (
-              <>
-                <Text style={styles.inputLabel}>Số dư mới</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={walletBalance}
-                  onChangeText={value => setWalletBalance(formatAmountInput(value))}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={styles.inputLabel}>Số dư ban đầu</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={walletBalance}
-                  onChangeText={value => setWalletBalance(formatAmountInput(value))}
-                />
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>Tiền tệ của ví</Text>
-            <TouchableOpacity
-              style={styles.currencySelect}
-              onPress={() =>
-                navigation.navigate('CurrencyPicker', {
-                  selectedCurrency: walletCurrency,
-                  returnTo: 'Wallets',
-                })
-              }>
-              <View>
-                <Text style={styles.currencyCode}>{selectedCurrency.code}</Text>
-                <Text style={styles.currencyLabel}>{selectedCurrency.label}</Text>
+                  return (
+                    <TouchableOpacity
+                      key={item.value}
+                      style={[styles.typeCard, active && styles.typeCardActive]}
+                      onPress={() => setWalletType(item.value)}
+                    >
+                      <ImageBackground
+                        source={item.background}
+                        imageStyle={styles.typeCardBackground}
+                        style={styles.typeCardBackgroundWrap}
+                      >
+                        <View style={styles.typeIconCircle}>
+                          <TypeIcon size={20} color={Colors.white} />
+                        </View>
+                        <Text style={styles.typeLabel}>{item.label}</Text>
+                        <Text style={styles.typeDescription}>
+                          {item.description}
+                        </Text>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <ChevronRight size={22} color="#9A765B" />
-            </TouchableOpacity>
 
-            <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWallet}>
-              {isSavingWallet ? (
-                <ActivityIndicator color={Colors.white} />
+              <Text style={styles.inputLabel}>Tên ví</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ví chính"
+                value={walletName}
+                onChangeText={setWalletName}
+              />
+
+              {editingWallet ? (
+                <>
+                  <Text style={styles.inputLabel}>Số dư mới</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="0"
+                    keyboardType="decimal-pad"
+                    value={walletBalance}
+                    onChangeText={setWalletBalance}
+                  />
+                </>
               ) : (
-                <Text style={styles.primaryButtonText}>Lưu ví</Text>
+                <>
+                  <Text style={styles.inputLabel}>Số dư ban đầu</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="0"
+                    keyboardType="decimal-pad"
+                    value={walletBalance}
+                    onChangeText={setWalletBalance}
+                  />
+                </>
               )}
-            </TouchableOpacity>
-            {editingWallet ? (
-              <TouchableOpacity style={styles.dangerButton} onPress={handleDeleteWallet} disabled={isSavingWallet}>
-                <Trash2 size={18} color="#B42318" />
-                <Text style={styles.dangerButtonText}>Xóa ví</Text>
+
+              <Text style={styles.inputLabel}>Tiền tệ của ví</Text>
+              <TouchableOpacity
+                style={styles.currencySelect}
+                onPress={() =>
+                  navigation.navigate('CurrencyPicker', {
+                    selectedCurrency: walletCurrency,
+                    returnTo: 'Wallets',
+                  })
+                }
+              >
+                <View>
+                  <Text style={styles.currencyCode}>
+                    {selectedCurrency.code}
+                  </Text>
+                  <Text style={styles.currencyLabel}>
+                    {selectedCurrency.label}
+                  </Text>
+                </View>
+                <ChevronRight size={22} color="#9A765B" />
               </TouchableOpacity>
-            ) : null}
+
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={handleSaveWallet}
+              >
+                {isSavingWallet ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Lưu ví</Text>
+                )}
+              </TouchableOpacity>
+              {editingWallet ? (
+                <TouchableOpacity
+                  style={styles.dangerButton}
+                  onPress={handleDeleteWallet}
+                  disabled={isSavingWallet}
+                >
+                  <Trash2 size={18} color="#B42318" />
+                  <Text style={styles.dangerButtonText}>Xóa ví</Text>
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
 
       <Modal transparent visible={isInfoModalVisible} animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setIsInfoModalVisible(false)}>
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsInfoModalVisible(false)}
+        >
           <Pressable style={styles.infoCard}>
             <Text style={styles.modalTitle}>Ví là gì?</Text>
             <Text style={styles.infoText}>
-              Ví là nơi gom và quản lý tiền theo từng mục đích. Bạn có thể dùng ví để tách tiền
-              mặt, tài khoản ngân hàng, quỹ tiết kiệm hoặc khoản chi riêng.
+              Ví là nơi gom và quản lý tiền theo từng mục đích. Bạn có thể dùng
+              ví để tách tiền mặt, tài khoản ngân hàng, quỹ tiết kiệm hoặc khoản
+              chi riêng.
             </Text>
             <Text style={styles.infoText}>{walletLimitText}</Text>
             <Text style={styles.infoText}>
-              Khi có nhiều ví, bạn sẽ xem được tổng số dư và chọn đúng ví cho từng giao dịch.
+              Khi có nhiều ví, bạn sẽ xem được tổng số dư và chọn đúng ví cho
+              từng giao dịch.
             </Text>
           </Pressable>
         </Pressable>
@@ -499,6 +618,32 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: '#F0D6C1',
+  },
+  transferShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: '#FFF0DF',
+    borderWidth: 1,
+    borderColor: '#E8B680',
+  },
+  transferShortcutIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transferShortcutCopy: { flex: 1 },
+  transferShortcutTitle: { color: '#4A2B1A', fontWeight: '900', fontSize: 15 },
+  transferShortcutText: {
+    color: '#8B6548',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
   },
   summaryLabel: {
     color: '#A26B48',

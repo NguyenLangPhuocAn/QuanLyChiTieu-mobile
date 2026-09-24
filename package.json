@@ -23,7 +23,9 @@
     "react-native-image-picker": "^8.2.1",
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
-    "react-native-svg": "^15.15.4"
+    "react-native-svg": "^15.15.4",
+    "react-native-webview": "^14.0.1",
+    "rn-speech-recognition": "1.0.8"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -346,6 +346,21 @@ describe('transaction period helpers', () => {
     expect(balance).toBe(0);
   });
 
+  it('uses the current balance for a wallet that exists without transactions', () => {
+    const balance = estimateWalletBalanceAtDate(
+      {
+        id: 10,
+        balance: 12000000,
+        display_balance: 12000000,
+        created_at: '2026-09-03T00:00:00.000Z',
+      },
+      [],
+      new Date(2026, 8, 3, 23, 59, 59, 999),
+    );
+
+    expect(balance).toBe(12000000);
+  });
+
   it('calculates a historical balance when a wallet has transactions dated before its creation date', () => {
     const balance = estimateWalletBalanceAtDate(
       {

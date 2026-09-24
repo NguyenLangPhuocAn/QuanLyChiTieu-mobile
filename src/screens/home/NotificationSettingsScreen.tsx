@@ -11,7 +11,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Bell, BellRing, Clock3 } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Bell,
+  BellRing,
+  Clock3,
+  PiggyBank,
+  TrendingUp,
+} from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -23,6 +30,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'NotificationSettings'>;
 type SettingKey =
   | 'budget_alerts_enabled'
   | 'budget_expiring_enabled'
+  | 'cashflow_forecast_enabled'
+  | 'savings_plan_alerts_enabled'
   | 'system_notifications_enabled';
 
 const settingRows: Array<{
@@ -42,6 +51,18 @@ const settingRows: Array<{
     label: 'Ngân sách sắp hết hạn',
     description: 'Nhắc khi một kỳ ngân sách chuẩn bị kết thúc.',
     Icon: Clock3,
+  },
+  {
+    key: 'cashflow_forecast_enabled',
+    label: 'Dự báo thu – chi',
+    description: 'Cảnh báo khi dự báo 4 tháng tới có nguy cơ chi cao hơn thu.',
+    Icon: TrendingUp,
+  },
+  {
+    key: 'savings_plan_alerts_enabled',
+    label: 'Tiến độ tiết kiệm',
+    description: 'Nhắc khi mục tiêu tiết kiệm đang chậm hoặc đã quá hạn.',
+    Icon: PiggyBank,
   },
   {
     key: 'system_notifications_enabled',
@@ -71,7 +92,10 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
       const response = await notificationsService.getSettings(token);
       setSettings(response);
     } catch (error) {
-      Alert.alert('Không thể tải cài đặt', getErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Không thể tải cài đặt',
+        getErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -91,11 +115,16 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
     setSavingKey(key);
 
     try {
-      const updated = await notificationsService.updateSettings(token, { [key]: value });
+      const updated = await notificationsService.updateSettings(token, {
+        [key]: value,
+      });
       setSettings(updated);
     } catch (error) {
       setSettings(previousSettings);
-      Alert.alert('Chưa lưu được cài đặt', getErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Chưa lưu được cài đặt',
+        getErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setSavingKey(null);
     }
@@ -104,7 +133,10 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Cài đặt thông báo</Text>
@@ -129,14 +161,20 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
                 </View>
                 <View style={styles.settingCopy}>
                   <Text style={styles.settingLabel}>{row.label}</Text>
-                  <Text style={styles.settingDescription}>{row.description}</Text>
+                  <Text style={styles.settingDescription}>
+                    {row.description}
+                  </Text>
                 </View>
                 <View style={styles.switchWrap}>
-                  {isSaving ? <ActivityIndicator color={Colors.primary} size="small" /> : null}
+                  {isSaving ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : null}
                   <Switch
                     accessibilityLabel={row.label}
                     value={value}
-                    onValueChange={nextValue => handleToggle(row.key, nextValue)}
+                    onValueChange={nextValue =>
+                      handleToggle(row.key, nextValue)
+                    }
                     disabled={!settings || Boolean(savingKey)}
                     trackColor={{ false: '#E9D6C4', true: '#FFD9AC' }}
                     thumbColor={value ? Colors.primary : '#FFFFFF'}
@@ -171,7 +209,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerButtonPlaceholder: { width: 42, height: 42 },
-  title: { flex: 1, textAlign: 'center', color: '#4A2B1A', fontSize: 22, fontWeight: '900' },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#4A2B1A',
+    fontSize: 22,
+    fontWeight: '900',
+  },
   loadingBlock: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16, paddingBottom: 36, gap: 12 },
   settingCard: {
@@ -195,7 +239,12 @@ const styles = StyleSheet.create({
   },
   settingCopy: { flex: 1 },
   settingLabel: { color: '#4A2B1A', fontSize: 16, fontWeight: '900' },
-  settingDescription: { color: '#8B6548', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  settingDescription: {
+    color: '#8B6548',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 5,
+  },
   switchWrap: { minWidth: 54, alignItems: 'center', gap: 6 },
 });
 

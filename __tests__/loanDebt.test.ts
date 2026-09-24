@@ -2,7 +2,6 @@ import {
   buildLoanDebtUpdatePayload,
   calculateLoanDebtProgress,
   calculateRemainingAfterPayment,
-  formatLoanDebtAmountInput,
   formatLoanDebtPaymentDate,
   getFullSettlementAmount,
   getLoanDebtActionLabel,
@@ -67,10 +66,11 @@ describe('loan debt helpers', () => {
     expect(calculateLoanDebtProgress(100, 0)).toBe(0);
   });
 
-  it('formats payment input while preserving its numeric value', () => {
-    expect(formatLoanDebtAmountInput('1000000')).toBe('1.000.000');
-    expect(formatLoanDebtAmountInput('1.000.000 đ')).toBe('1.000.000');
-    expect(formatLoanDebtAmountInput('')).toBe('');
+  it('preserves cents in repayment validation and balance previews', () => {
+    expect(validateLoanDebtPayment('12,50', 12.5)).toBeNull();
+    expect(validateLoanDebtPayment('12.51', 12.5)).toBeTruthy();
+    expect(validateLoanDebtPayment('1.000.000 đ', 1000000)).toBeTruthy();
+    expect(calculateRemainingAfterPayment('0.10', 0.3)).toBe(0.2);
   });
 
   it('previews the remaining balance after a partial payment', () => {
@@ -80,13 +80,12 @@ describe('loan debt helpers', () => {
   });
 
   it('fills the exact outstanding amount for full settlement', () => {
-    expect(getFullSettlementAmount(2500000)).toBe('2.500.000');
+    expect(getFullSettlementAmount(2500000)).toBe('2500000');
+    expect(getFullSettlementAmount(12.75)).toBe('12.75');
     expect(getFullSettlementAmount(0)).toBe('');
   });
 
   it('keeps the selected local calendar date when submitting', () => {
-    expect(formatLoanDebtPaymentDate(new Date(2026, 5, 13))).toBe(
-      '2026-06-13',
-    );
+    expect(formatLoanDebtPaymentDate(new Date(2026, 5, 13))).toBe('2026-06-13');
   });
 });

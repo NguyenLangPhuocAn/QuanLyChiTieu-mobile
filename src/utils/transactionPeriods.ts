@@ -438,18 +438,23 @@ export const estimateWalletBalanceAtDate = (
   const walletTransactions = transactions.filter(
     transaction => transaction.walletId === wallet.id,
   );
-  const hasTransactionAtOrBeforeEnd = walletTransactions.some(
-    transaction => new Date(transaction.date) <= endDate,
-  );
-  if (!hasTransactionAtOrBeforeEnd) {
-    return 0;
-  }
-
   const currentBalance = Number(
     mode === 'display'
       ? wallet.display_balance ?? wallet.balance ?? 0
       : wallet.balance ?? 0,
   );
+  const hasTransactionAtOrBeforeEnd = walletTransactions.some(
+    transaction => new Date(transaction.date) <= endDate,
+  );
+  if (!hasTransactionAtOrBeforeEnd) {
+    const createdAt = wallet.created_at ? new Date(wallet.created_at) : null;
+    const existedAtPeriodEnd =
+      !createdAt || Number.isNaN(createdAt.getTime()) || createdAt <= endDate;
+
+    return walletTransactions.length === 0 && existedAtPeriodEnd
+      ? currentBalance
+      : 0;
+  }
 
   return walletTransactions.reduce((balance, transaction) => {
     if (

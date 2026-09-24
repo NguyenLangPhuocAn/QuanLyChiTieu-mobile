@@ -1,5 +1,10 @@
 import { apiRequest, apiUploadRequest } from './api';
-import type { ApiTransaction, ApiTransactionType } from '../types/transaction';
+import type {
+  ApiTransaction,
+  ApiTransactionType,
+  ReceiptItem,
+  ReceiptOcrResult,
+} from '../types/transaction';
 
 export type TransactionQuery = {
   wallet_id?: number;
@@ -54,10 +59,13 @@ export const transactionsService = {
   },
 
   getPage(token: string, query: TransactionQuery) {
-    return apiRequest<PaginatedTransactions>(`/transactions${buildTransactionQuery(query)}`, {
-      method: 'GET',
-      token,
-    });
+    return apiRequest<PaginatedTransactions>(
+      `/transactions${buildTransactionQuery(query)}`,
+      {
+        method: 'GET',
+        token,
+      },
+    );
   },
 
   create(
@@ -69,6 +77,7 @@ export const transactionsService = {
       type: ApiTransactionType;
       note?: string;
       receipt_image?: string;
+      receipt_items?: ReceiptItem[] | null;
       transaction_date?: string;
       tags?: string[];
     },
@@ -90,6 +99,7 @@ export const transactionsService = {
       type?: ApiTransactionType;
       note?: string;
       receipt_image?: string | null;
+      receipt_items?: ReceiptItem[] | null;
       transaction_date?: string;
       tags?: string[];
     },
@@ -117,6 +127,27 @@ export const transactionsService = {
       type: string;
     },
   ) {
-    return apiUploadRequest<ApiTransaction>(`/transactions/${id}/receipt`, token, file);
+    return apiUploadRequest<ApiTransaction>(
+      `/transactions/${id}/receipt`,
+      token,
+      file,
+    );
+  },
+
+  analyzeReceipt(
+    token: string,
+    file: {
+      uri: string;
+      name: string;
+      type: string;
+    },
+  ) {
+    return apiUploadRequest<ReceiptOcrResult>(
+      '/transactions/receipt-ocr',
+      token,
+      file,
+      'POST',
+      45_000,
+    );
   },
 };

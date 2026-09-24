@@ -5,30 +5,24 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, CalendarDays, Hash, Image as ImageIcon, WalletCards } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  CalendarDays,
+  Hash,
+  Image as ImageIcon,
+  WalletCards,
+} from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CategoryIcon from '../../components/CategoryIcon';
 import { Colors } from '../../constants/Colors';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { API_BASE_URLS } from '../../services/api';
+import { resolveReceiptUrl } from '../../utils/mediaUrls';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
-
-const resolveReceiptUrl = (receipt?: string | null) => {
-  if (!receipt) {
-    return null;
-  }
-
-  if (receipt.startsWith('http://') || receipt.startsWith('https://')) {
-    return receipt;
-  }
-
-  return `${API_BASE_URLS[0]}/uploads/receipts/${receipt}`;
-};
 
 const TransactionDetailScreen = ({ navigation, route }: Props) => {
   const { transaction } = route.params;
@@ -37,13 +31,16 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
     transaction.cashFlowType === 'loan_debt'
       ? 'Dòng tiền vay/nợ'
       : transaction.type === 'income'
-        ? 'Khoản thu'
-        : 'Khoản chi';
+      ? 'Khoản thu'
+      : 'Khoản chi';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết giao dịch</Text>
@@ -57,20 +54,37 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
           </View>
           <Text style={styles.note}>{transaction.note}</Text>
           <Text
-            style={transaction.type === 'income' ? styles.incomeAmount : styles.expenseAmount}
+            style={
+              transaction.type === 'income'
+                ? styles.incomeAmount
+                : styles.expenseAmount
+            }
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.72}>
+            minimumFontScale={0.72}
+          >
             {transaction.type === 'income' ? '+' : '-'}
             {formatCurrency(transaction.amount, transaction.currency)}
           </Text>
-                    <Text style={styles.typeText}>{typeLabel}</Text>
+          <Text style={styles.typeText}>{typeLabel}</Text>
         </View>
 
         <View style={styles.infoCard}>
-          <InfoRow icon={<CalendarDays size={18} color={Colors.primary} />} label="Ngày" value={formatDisplayDate(transaction.date)} />
-          <InfoRow icon={<WalletCards size={18} color={Colors.primary} />} label="Ví" value={transaction.wallet} />
-          <InfoRow icon={<Hash size={18} color={Colors.primary} />} label="Danh mục" value={transaction.category} />
+          <InfoRow
+            icon={<CalendarDays size={18} color={Colors.primary} />}
+            label="Ngày"
+            value={formatDisplayDate(transaction.date)}
+          />
+          <InfoRow
+            icon={<WalletCards size={18} color={Colors.primary} />}
+            label="Ví"
+            value={transaction.wallet}
+          />
+          <InfoRow
+            icon={<Hash size={18} color={Colors.primary} />}
+            label="Danh mục"
+            value={transaction.category}
+          />
         </View>
 
         <View style={styles.infoCard}>
@@ -78,7 +92,11 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
           {(transaction.tags ?? []).length > 0 ? (
             <View style={styles.tagRow}>
               {(transaction.tags ?? []).map(tag => (
-                <Text key={tag} style={styles.tagText}>#{tag}</Text>
+                <View key={tag} style={styles.tagBadge}>
+                <Text style={styles.tagText} numberOfLines={1} ellipsizeMode="tail">
+                  #{tag}
+                </Text>
+                </View>
               ))}
             </View>
           ) : (
@@ -102,7 +120,15 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
   );
 };
 
-const InfoRow = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
+const InfoRow = ({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) => (
   <View style={styles.infoRow}>
     <View style={styles.infoIcon}>{icon}</View>
     <View style={styles.infoCopy}>
@@ -130,7 +156,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { flex: 1, color: '#4A2B1A', fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  headerTitle: {
+    flex: 1,
+    color: '#4A2B1A',
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
   headerSpacer: { width: 42 },
   content: { padding: 16, paddingBottom: 40, gap: 14 },
   heroCard: {
@@ -149,9 +181,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  note: { color: '#4C2A18', fontSize: 20, fontWeight: '900', marginTop: 12, textAlign: 'center' },
-  incomeAmount: { color: '#188F5A', fontSize: 24, fontWeight: '900', marginTop: 8, width: '100%', textAlign: 'center' },
-  expenseAmount: { color: '#C75A1B', fontSize: 24, fontWeight: '900', marginTop: 8, width: '100%', textAlign: 'center' },
+  note: {
+    color: '#4C2A18',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  incomeAmount: {
+    color: '#188F5A',
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 8,
+    width: '100%',
+    textAlign: 'center',
+  },
+  expenseAmount: {
+    color: '#C75A1B',
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: 8,
+    width: '100%',
+    textAlign: 'center',
+  },
   typeText: { color: '#8B6548', fontWeight: '800', marginTop: 5 },
   infoCard: {
     backgroundColor: Colors.white,
@@ -172,20 +224,82 @@ const styles = StyleSheet.create({
   },
   infoCopy: { flex: 1 },
   infoLabel: { color: '#8B6548', fontSize: 12, fontWeight: '800' },
-  infoValue: { color: '#4A2B1A', fontSize: 15, fontWeight: '900', marginTop: 3 },
+  infoValue: {
+    color: '#4A2B1A',
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 3,
+  },
   sectionTitle: { color: '#4A2B1A', fontSize: 16, fontWeight: '900' },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tagText: {
-    color: '#A94F18',
+  receiptItemsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  receiptItemsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  receiptItemCount: { color: '#8B6548', fontSize: 12, fontWeight: '900' },
+  receiptItemRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E0D0',
+  },
+  receiptItemName: { flex: 1, color: '#6F4B32', fontWeight: '800' },
+  receiptItemAmount: { color: '#9A4D00', fontWeight: '900' },
+  receiptTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 3,
+  },
+  receiptTotalLabel: { color: '#6F4B32', fontWeight: '900' },
+  receiptTotalValue: { color: '#4A2B1A', fontWeight: '900' },
+  receiptDifferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    borderRadius: 13,
+    backgroundColor: '#FFF3D8',
+    padding: 10,
+  },
+  receiptDifferenceText: {
+    flex: 1,
+    color: '#8B5700',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  tagBadge: {
+    maxWidth: '100%',
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
     backgroundColor: '#FFE3C8',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    overflow: 'hidden',
+  },
+  tagText: {
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    color: '#A94F18',
     fontSize: 12,
+    lineHeight: 18,
     fontWeight: '900',
   },
   emptyText: { color: '#8B6548', fontWeight: '800', lineHeight: 20 },
-  receiptImage: { width: '100%', height: 220, borderRadius: 16, backgroundColor: '#FFF0DF' },
+  receiptImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: '#FFF0DF',
+  },
   receiptEmpty: {
     minHeight: 92,
     borderRadius: 16,

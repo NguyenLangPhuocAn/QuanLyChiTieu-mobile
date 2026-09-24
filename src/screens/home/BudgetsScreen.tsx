@@ -48,6 +48,8 @@ import type { Category } from '../../types/category';
 import type { Wallet } from '../../types/wallet';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
+import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 import {
   getBudgetDateEditPolicy,
   getBudgetPeriodRange,
@@ -114,12 +116,6 @@ const statusMeta: Record<
   EXCEEDED: { label: 'Vượt mức', color: '#B3261E', background: '#FFE4DF' },
 };
 
-const formatAmountInput = (value: string) => {
-  const digits = value.replace(/[^\d]/g, '');
-  return digits ? new Intl.NumberFormat('en-US').format(Number(digits)) : '';
-};
-
-const normalizeAmountInput = (value: string) => value.replace(/[^\d]/g, '');
 const parseDateKey = (value: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) {
@@ -162,7 +158,7 @@ const getBudgetLimit = (budget: Budget) =>
   Number(budget.limit_amount ?? budget.amount ?? 0);
 const isExpiredFixedBudget = (budget: Budget) =>
   new Date(budget.end_date).getTime() < Date.now();
-const BudgetsScreen = ({ navigation }: Props) => {
+const BudgetsScreen = ({ navigation, route }: Props) => {
   const { token } = useAuth();
   const { selectedBudgetCategory, setSelectedBudgetCategory } = useFinance();
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -171,10 +167,15 @@ const BudgetsScreen = ({ navigation }: Props) => {
   const [allBudgets, setAllBudgets] = useState<Budget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadRevision = React.useRef(0);
   const [isSaving, setIsSaving] = useState(false);
+  const { run: runBudgetMutation } = useSingleFlight();
   const [renewingBudgetId, setRenewingBudgetId] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [draftCurrency, setDraftCurrency] = useState<string | null>(null);
+  const consumedDraft = React.useRef<Props['route']['params']>(undefined);
   const [name, setName] = useState('');
   const [scope, setScope] = useState<BudgetScope>('WALLET');
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
@@ -186,6 +187,11 @@ const BudgetsScreen = ({ navigation }: Props) => {
   const [startDate, setStartDate] = useState(getDefaultRange('MONTH').start);
   const [endDate, setEndDate] = useState(getDefaultRange('MONTH').end);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   const [periodFilter, setPeriodFilter] =
     useState<BudgetPeriodFilter>('CURRENT');
   const [filterStartDate, setFilterStartDate] = useState(toDateKey(new Date()));
@@ -225,7 +231,9 @@ const BudgetsScreen = ({ navigation }: Props) => {
   );
   const fetchData = useCallback(
     async (refreshing = false) => {
+      const revision = ++loadRevision.current;
       if (!token) {
+        setIsLoading(false);
         return;
       }
 
@@ -242,7 +250,7 @@ const BudgetsScreen = ({ navigation }: Props) => {
             budgetsService.getPage(token, {
               page,
               limit: PAGE_SIZE,
-              q: searchQuery.trim() || undefined,
+              q: debouncedQuery || undefined,
               period_filter: periodFilter,
               custom_start_date:
                 periodFilter === 'CUSTOM_RANGE' ? filterStartDate : undefined,
@@ -253,6 +261,11 @@ const BudgetsScreen = ({ navigation }: Props) => {
             categoriesService.getAll(token),
             budgetsService.getAll(token),
           ]);
+        if (revision !== loadRevision.current) return;
+        if (page > Math.max(1, budgetPage.meta.totalPages)) {
+          setPage(Math.max(1, budgetPage.meta.totalPages));
+          return;
+        }
         setWallets(nextWallets);
         setLocalBudgets(budgetPage.data);
         setPageMeta({
@@ -261,13 +274,19 @@ const BudgetsScreen = ({ navigation }: Props) => {
         });
         setCategories(nextCategories);
         setAllBudgets(nextAllBudgets);
+        setLoadError(null);
       } catch (error) {
-        const message =
-          getUserFriendlyErrorMessage(error, 'Không thể tải ngân sách.');
-        Alert.alert('Lỗi tải ngân sách', message);
+        if (revision !== loadRevision.current) return;
+        const message = getUserFriendlyErrorMessage(
+          error,
+          'Không thể tải ngân sách.',
+        );
+        setLoadError(message);
       } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (revision === loadRevision.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
     [
@@ -276,14 +295,14 @@ const BudgetsScreen = ({ navigation }: Props) => {
       filterStartDate,
       page,
       periodFilter,
-      searchQuery,
+      debouncedQuery,
       token,
     ],
   );
 
   useEffect(() => {
     setPage(1);
-  }, [filterEndDate, filterStartDate, periodFilter, searchQuery]);
+  }, [filterEndDate, filterStartDate, periodFilter, debouncedQuery]);
 
   useFocusEffect(
     useCallback(() => {
@@ -293,6 +312,9 @@ const BudgetsScreen = ({ navigation }: Props) => {
         shouldReopenBudgetForm.current = false;
         setModalVisible(true);
       }
+      return () => {
+        loadRevision.current += 1;
+      };
     }, [fetchData]),
   );
 
@@ -303,6 +325,7 @@ const BudgetsScreen = ({ navigation }: Props) => {
   }, [selectedBudgetCategory]);
 
   const resetForm = (budget?: Budget) => {
+    setDraftCurrency(null);
     if (budget) {
       setEditingBudget(budget);
       setName(budget.name);
@@ -312,7 +335,7 @@ const BudgetsScreen = ({ navigation }: Props) => {
       setSelectedBudgetCategory(
         categories.find(category => category.id === budget.category_id) ?? null,
       );
-      setAmount(formatAmountInput(String(getBudgetLimit(budget))));
+      setAmount(String(getBudgetLimit(budget)));
       setPeriod(budget.period);
       setStartDate(toDateKey(new Date(budget.start_date)));
       setEndDate(toDateKey(new Date(budget.end_date)));
@@ -333,6 +356,48 @@ const BudgetsScreen = ({ navigation }: Props) => {
     setEndDate(range.end);
     setModalVisible(true);
   };
+
+  useEffect(() => {
+    const params = route.params;
+    const draft = params?.draft;
+    if (!draft || consumedDraft.current === params || isLoading || loadError)
+      return;
+    consumedDraft.current = params;
+    if (!parsePositiveMoneyInput(String(draft.monthlyLimit))) {
+      Alert.alert(
+        'Hạn mức chưa hợp lệ',
+        'Vui lòng tải lại kế hoạch trước khi lập ngân sách.',
+      );
+      return;
+    }
+    const matchingWallets = wallets.filter(
+      wallet => wallet.currency === draft.currency,
+    );
+    const category =
+      expenseCategories.find(item => item.id === draft.categoryId) ?? null;
+    const range = getDefaultRange('MONTH');
+    setEditingBudget(null);
+    setDraftCurrency(draft.currency);
+    setName(`Chi ${draft.categoryName}`.slice(0, 100));
+    setScope('CATEGORY');
+    setSelectedWalletId(
+      matchingWallets.length === 1 ? matchingWallets[0].id : null,
+    );
+    setSelectedCategoryId(category?.id ?? null);
+    setSelectedBudgetCategory(category);
+    setAmount(String(draft.monthlyLimit));
+    setPeriod('MONTH');
+    setStartDate(range.start);
+    setEndDate(range.end);
+    setModalVisible(true);
+  }, [
+    route.params,
+    isLoading,
+    loadError,
+    wallets,
+    expenseCategories,
+    setSelectedBudgetCategory,
+  ]);
 
   const handleChangePeriod = (nextPeriod: BudgetPeriod) => {
     setPeriod(nextPeriod);
@@ -450,85 +515,98 @@ const BudgetsScreen = ({ navigation }: Props) => {
     }
   };
 
-  const handleSaveBudget = async () => {
-    if (!token) {
-      return;
-    }
-
-    const normalizedAmount = normalizeAmountInput(amount);
-    const trimmedName = name.trim();
-
-    if (!trimmedName) {
-      Alert.alert('Thiếu tên ngân sách', 'Vui lòng nhập tên ngân sách.');
-      return;
-    }
-
-    if (!selectedWalletId) {
-      Alert.alert('Thiếu ví', 'Vui lòng chọn ví cho ngân sách.');
-      return;
-    }
-
-    if (scope === 'CATEGORY' && !selectedCategoryId) {
-      Alert.alert(
-        'Thiếu danh mục',
-        'Vui lòng chọn danh mục cho ngân sách danh mục.',
-      );
-      return;
-    }
-
-    if (!normalizedAmount || Number(normalizedAmount) <= 0) {
-      Alert.alert(
-        'Thiếu hạn mức',
-        'Vui lòng nhập hạn mức ngân sách lớn hơn 0.',
-      );
-      return;
-    }
-
-    const saveRange = getBudgetSaveRange(period, startDate, endDate);
-
-    if (
-      !saveRange.start ||
-      !saveRange.end ||
-      new Date(saveRange.start) > new Date(saveRange.end)
-    ) {
-      Alert.alert(
-        'Sai khoảng thời gian',
-        'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.',
-      );
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      const payload = {
-        name: trimmedName,
-        scope,
-        wallet_id: selectedWalletId,
-        category_id: scope === 'CATEGORY' ? selectedCategoryId : null,
-        limit_amount: normalizedAmount,
-        period,
-        start_date: saveRange.start,
-        end_date: saveRange.end,
-      };
-      const saved = editingBudget
-        ? await budgetsService.update(token, editingBudget.id, payload)
-        : await budgetsService.create(token, payload);
-
-      if (saved.warning?.message) {
-        Alert.alert('Cảnh báo ngân sách', getUserFriendlyErrorMessage(saved.warning.message, saved.warning.message));
+  const handleSaveBudget = () =>
+    runBudgetMutation(async () => {
+      if (!token) {
+        return;
       }
 
-      await fetchData(true);
-      setModalVisible(false);
-    } catch (error) {
-      const message =
-        getUserFriendlyErrorMessage(error, 'Không thể lưu ngân sách.');
-      Alert.alert('Lưu ngân sách thất bại', message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+      const normalizedAmount = parsePositiveMoneyInput(amount);
+      const trimmedName = name.trim();
+
+      if (!trimmedName) {
+        Alert.alert('Thiếu tên ngân sách', 'Vui lòng nhập tên ngân sách.');
+        return;
+      }
+
+      if (
+        !selectedWalletId ||
+        !selectedWallet ||
+        (draftCurrency && selectedWallet.currency !== draftCurrency)
+      ) {
+        Alert.alert('Thiếu ví', 'Vui lòng chọn ví cho ngân sách.');
+        return;
+      }
+
+      if (scope === 'CATEGORY' && !selectedCategoryId) {
+        Alert.alert(
+          'Thiếu danh mục',
+          'Vui lòng chọn danh mục cho ngân sách danh mục.',
+        );
+        return;
+      }
+
+      if (!normalizedAmount) {
+        Alert.alert(
+          'Hạn mức chưa hợp lệ',
+          'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân, ví dụ 1250 hoặc 12,50. Không nhập dấu phân cách hàng nghìn.',
+        );
+        return;
+      }
+
+      const saveRange = getBudgetSaveRange(period, startDate, endDate);
+
+      if (
+        !saveRange.start ||
+        !saveRange.end ||
+        new Date(saveRange.start) > new Date(saveRange.end)
+      ) {
+        Alert.alert(
+          'Sai khoảng thời gian',
+          'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.',
+        );
+        return;
+      }
+
+      setIsSaving(true);
+
+      try {
+        const payload = {
+          name: trimmedName,
+          scope,
+          wallet_id: selectedWalletId,
+          category_id: scope === 'CATEGORY' ? selectedCategoryId : null,
+          limit_amount: normalizedAmount,
+          period,
+          start_date: saveRange.start,
+          end_date: saveRange.end,
+        };
+        const saved = editingBudget
+          ? await budgetsService.update(token, editingBudget.id, payload)
+          : await budgetsService.create(token, payload);
+
+        if (saved.warning?.message) {
+          Alert.alert(
+            'Cảnh báo ngân sách',
+            getUserFriendlyErrorMessage(
+              saved.warning.message,
+              saved.warning.message,
+            ),
+          );
+        }
+
+        await fetchData(true);
+        setModalVisible(false);
+      } catch (error) {
+        const message = getUserFriendlyErrorMessage(
+          error,
+          'Không thể lưu ngân sách.',
+        );
+        Alert.alert('Lưu ngân sách thất bại', message);
+      } finally {
+        setIsSaving(false);
+      }
+    });
 
   const handleDeleteBudget = () => {
     if (!token || !editingBudget) {
@@ -540,68 +618,81 @@ const BudgetsScreen = ({ navigation }: Props) => {
       {
         text: 'Xóa',
         style: 'destructive',
-        onPress: async () => {
-          try {
-            setIsSaving(true);
-            await budgetsService.remove(token, editingBudget.id);
-            await fetchData(true);
-            setModalVisible(false);
-          } catch (error) {
-            const message =
-              error instanceof Error
-                ? getUserFriendlyErrorMessage(error, 'Không thể xóa ngân sách.')
-                : 'Không thể xóa ngân sách.';
-            Alert.alert('Xóa ngân sách thất bại', message);
-          } finally {
-            setIsSaving(false);
-          }
-        },
+        onPress: () =>
+          runBudgetMutation(async () => {
+            try {
+              setIsSaving(true);
+              await budgetsService.remove(token, editingBudget.id);
+              await fetchData(true);
+              setModalVisible(false);
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? getUserFriendlyErrorMessage(
+                      error,
+                      'Không thể xóa ngân sách.',
+                    )
+                  : 'Không thể xóa ngân sách.';
+              Alert.alert('Xóa ngân sách thất bại', message);
+            } finally {
+              setIsSaving(false);
+            }
+          }),
       },
     ]);
   };
 
-  const handleCreateNextPeriod = async (budget: Budget) => {
-    if (
-      !token ||
-      renewingBudgetId !== null ||
-      hasMatchingNextPeriodBudget(budget, allBudgets)
-    ) {
-      return;
-    }
+  const handleCreateNextPeriod = (budget: Budget) =>
+    runBudgetMutation(async () => {
+      if (
+        !token ||
+        renewingBudgetId !== null ||
+        hasMatchingNextPeriodBudget(budget, allBudgets)
+      ) {
+        return;
+      }
 
-    try {
-      setRenewingBudgetId(budget.id);
-      const result = await budgetsService.createNextPeriod(token, budget.id);
-      setAllBudgets(current => {
-        const withoutCreated = current.filter(
-          item => item.id !== result.budget.id,
-        );
-        return [...withoutCreated, result.budget];
-      });
-      if (result.budget.warning?.message) {
-        Alert.alert('Cảnh báo ngân sách', getUserFriendlyErrorMessage(result.budget.warning.message, result.budget.warning.message));
-      }
-      if (budgetContainsDate(result.budget)) {
-        if (periodFilter === 'CURRENT' && page === 1) {
-          await fetchData(true);
-        } else {
-          setPage(1);
-          setPeriodFilter('CURRENT');
+      try {
+        setRenewingBudgetId(budget.id);
+        const result = await budgetsService.createNextPeriod(token, budget.id);
+        setAllBudgets(current => {
+          const withoutCreated = current.filter(
+            item => item.id !== result.budget.id,
+          );
+          return [...withoutCreated, result.budget];
+        });
+        if (result.budget.warning?.message) {
+          Alert.alert(
+            'Cảnh báo ngân sách',
+            getUserFriendlyErrorMessage(
+              result.budget.warning.message,
+              result.budget.warning.message,
+            ),
+          );
         }
-      } else {
-        await fetchData(true);
+        if (budgetContainsDate(result.budget)) {
+          if (periodFilter === 'CURRENT' && page === 1) {
+            await fetchData(true);
+          } else {
+            setPage(1);
+            setPeriodFilter('CURRENT');
+          }
+        } else {
+          await fetchData(true);
+        }
+        if (result.creation_state === 'created') {
+          Alert.alert('Đã tạo kỳ mới', 'Ngân sách kỳ mới đã được tạo.');
+        }
+      } catch (error) {
+        const message = getUserFriendlyErrorMessage(
+          error,
+          'Không thể tạo kỳ mới.',
+        );
+        Alert.alert('Tạo kỳ mới thất bại', message);
+      } finally {
+        setRenewingBudgetId(null);
       }
-      if (result.creation_state === 'created') {
-        Alert.alert('Đã tạo kỳ mới', 'Ngân sách kỳ mới đã được tạo.');
-      }
-    } catch (error) {
-      const message =
-        getUserFriendlyErrorMessage(error, 'Không thể tạo kỳ mới.');
-      Alert.alert('Tạo kỳ mới thất bại', message);
-    } finally {
-      setRenewingBudgetId(null);
-    }
-  };
+    });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -727,7 +818,20 @@ const BudgetsScreen = ({ navigation }: Props) => {
           <View style={styles.loadingBlock}>
             <ActivityIndicator color={Colors.primary} />
           </View>
-        ) : localBudgets.length === 0 ? (
+        ) : loadError ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Chưa tải được ngân sách</Text>
+            <Text style={styles.emptyText}>{loadError}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Thử tải lại ngân sách"
+              onPress={() => fetchData()}
+              style={[styles.primaryButton, styles.emptyCreateButton]}
+            >
+              <Text style={styles.primaryButtonText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : localBudgets.length === 0 && allBudgets.length === 0 ? (
           <View style={styles.emptyState}>
             <WalletCards size={28} color="#D87219" />
             <Text style={styles.emptyTitle}>Chưa có ngân sách</Text>
@@ -823,7 +927,7 @@ const BudgetsScreen = ({ navigation }: Props) => {
                 </View>
                 {carryOver > 0 ? (
                   <Text style={styles.periodText}>
-                    Original {formatCurrency(limit, currency)} - over previous{' '}
+                    Hạn mức {formatCurrency(limit, currency)} − vượt kỳ trước{' '}
                     {formatCurrency(carryOver, currency)}
                   </Text>
                 ) : null}
@@ -834,7 +938,7 @@ const BudgetsScreen = ({ navigation }: Props) => {
                       styles.progressFill,
                       budget.status === 'WARNING' && styles.progressWarning,
                       budget.status === 'EXCEEDED' && styles.progressDanger,
-                      { width: `${Math.max(4, percentage)}%` },
+                      { width: `${Math.max(0, percentage)}%` },
                     ]}
                   />
                 </View>
@@ -846,6 +950,8 @@ const BudgetsScreen = ({ navigation }: Props) => {
                   <TouchableOpacity
                     style={styles.editHint}
                     onPress={() => resetForm(budget)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sửa ngân sách ${budget.name}`}
                   >
                     <Pencil size={14} color="#9A765B" />
                     <Text style={styles.editHintText}>Sửa</Text>
@@ -922,14 +1028,23 @@ const BudgetsScreen = ({ navigation }: Props) => {
         ) : null}
       </ScrollView>
 
-      <Modal transparent visible={modalVisible} animationType="fade">
+      <Modal
+        transparent
+        visible={modalVisible}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isSaving) setModalVisible(false);
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalBackdrop}
         >
           <Pressable
             style={styles.backdropPressable}
-            onPress={() => setModalVisible(false)}
+            onPress={() => {
+              if (!isSaving) setModalVisible(false);
+            }}
           />
           <Pressable style={styles.modalCard}>
             <ScrollView
@@ -985,10 +1100,23 @@ const BudgetsScreen = ({ navigation }: Props) => {
               </View>
 
               <Text style={styles.inputLabel}>Ví</Text>
+              {draftCurrency ? (
+                <Text style={styles.walletCurrencyHint}>
+                  Mức gợi ý tính trên các ví {draftCurrency}. Chọn ví áp dụng và
+                  điều chỉnh hạn mức nếu bạn chi từ nhiều ví. Chỉ lưu sau khi
+                  kiểm tra.
+                </Text>
+              ) : null}
               {selectedWallet ? (
                 <Text style={styles.walletCurrencyHint}>
                   Ngân sách này sẽ dùng tiền tệ của ví:{' '}
                   {selectedWallet.currency}
+                </Text>
+              ) : draftCurrency &&
+                !wallets.some(wallet => wallet.currency === draftCurrency) ? (
+                <Text style={styles.walletCurrencyHint}>
+                  Chưa có ví {draftCurrency} đang hoạt động. Hãy tạo ví cùng
+                  tiền tệ rồi quay lại lập ngân sách này.
                 </Text>
               ) : null}
               <ScrollView
@@ -996,45 +1124,53 @@ const BudgetsScreen = ({ navigation }: Props) => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.walletCardRow}
               >
-                {wallets.map(wallet => {
-                  const typeMeta = getWalletTypeMeta(wallet.wallet_type);
-                  const WalletTypeIcon = typeMeta.Icon;
-                  const active = selectedWalletId === wallet.id;
-                  return (
-                    <TouchableOpacity
-                      key={wallet.id}
-                      style={[
-                        styles.walletPickerCard,
-                        active && styles.walletPickerCardActive,
-                      ]}
-                      onPress={() => setSelectedWalletId(wallet.id)}
-                    >
-                      <View
+                {wallets
+                  .filter(
+                    wallet =>
+                      !draftCurrency || wallet.currency === draftCurrency,
+                  )
+                  .map(wallet => {
+                    const typeMeta = getWalletTypeMeta(wallet.wallet_type);
+                    const WalletTypeIcon = typeMeta.Icon;
+                    const active = selectedWalletId === wallet.id;
+                    return (
+                      <TouchableOpacity
+                        key={wallet.id}
                         style={[
-                          styles.walletPickerIcon,
-                          active && styles.walletPickerIconActive,
+                          styles.walletPickerCard,
+                          active && styles.walletPickerCardActive,
                         ]}
+                        onPress={() => setSelectedWalletId(wallet.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Chọn ví ${wallet.name}`}
+                        accessibilityState={{ selected: active }}
                       >
-                        <WalletTypeIcon
-                          size={18}
-                          color={active ? Colors.white : '#D87219'}
-                        />
-                      </View>
-                      <Text style={styles.walletPickerName} numberOfLines={1}>
-                        {wallet.name}
-                      </Text>
-                      <Text
-                        style={styles.walletPickerBalance}
-                        numberOfLines={1}
-                      >
-                        {formatCurrency(
-                          Number(wallet.balance || 0),
-                          wallet.currency,
-                        )}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        <View
+                          style={[
+                            styles.walletPickerIcon,
+                            active && styles.walletPickerIconActive,
+                          ]}
+                        >
+                          <WalletTypeIcon
+                            size={18}
+                            color={active ? Colors.white : '#D87219'}
+                          />
+                        </View>
+                        <Text style={styles.walletPickerName} numberOfLines={1}>
+                          {wallet.name}
+                        </Text>
+                        <Text
+                          style={styles.walletPickerBalance}
+                          numberOfLines={1}
+                        >
+                          {formatCurrency(
+                            Number(wallet.balance || 0),
+                            wallet.currency,
+                          )}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
               </ScrollView>
               {wallets.length === 0 ? (
                 <Text style={styles.emptyWalletText}>
@@ -1069,10 +1205,11 @@ const BudgetsScreen = ({ navigation }: Props) => {
               <Text style={styles.inputLabel}>Hạn mức</Text>
               <TextInput
                 style={styles.input}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                accessibilityLabel="Hạn mức ngân sách"
                 placeholder="0"
                 value={amount}
-                onChangeText={value => setAmount(formatAmountInput(value))}
+                onChangeText={setAmount}
               />
 
               <Text style={styles.inputLabel}>Kỳ ngân sách</Text>
@@ -1145,6 +1282,8 @@ const BudgetsScreen = ({ navigation }: Props) => {
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={handleSaveBudget}
+                accessibilityRole="button"
+                accessibilityLabel="Lưu ngân sách"
                 disabled={isSaving}
               >
                 {isSaving ? (

@@ -1,7 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -35,6 +34,8 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   const { token } = useAuth();
   const [records, setRecords] = useState<LoanDebt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadRevision = useRef(0);
   const [type, setType] = useState<LoanDebtType>();
   const [status, setStatus] = useState<LoanDebtStatus>();
   const [periodFilter, setPeriodFilter] = useState<LoanDebtPeriodFilter>('CURRENT');
@@ -53,23 +54,24 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   };
 
   const load = useCallback(async () => {
+    const revision = ++loadRevision.current;
     if (!token) return;
     setLoading(true);
+    setLoadError(null);
     try {
-      setRecords(await loanDebtsService.getAll(token, { type, status }));
+      const nextRecords = await loanDebtsService.getAll(token, { type, status });
+      if (revision === loadRevision.current) setRecords(nextRecords);
     } catch (error) {
-      Alert.alert(
-        'Không tải được vay/nợ',
-        getLoanDebtErrorMessage(error, 'Không tải được danh sách vay/nợ. Vui lòng thử lại.'),
-      );
+      if (revision === loadRevision.current) setLoadError(getLoanDebtErrorMessage(error, 'Không tải được danh sách vay/nợ. Vui lòng thử lại.'));
     } finally {
-      setLoading(false);
+      if (revision === loadRevision.current) setLoading(false);
     }
   }, [status, token, type]);
 
   useFocusEffect(
     useCallback(() => {
       load();
+      return () => { loadRevision.current += 1; };
     }, [load]),
   );
 
@@ -116,14 +118,17 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         <Text style={styles.filterTitle}>Thời gian</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {[
-            { value: 'CURRENT' as const, label: 'Đang áp dụng' },
+            { value: 'CURRENT' as const, label: 'Chưa tất toán' },
             { value: 'PREVIOUS_MONTH' as const, label: 'Tháng trước' },
             { value: 'PREVIOUS_QUARTER' as const, label: 'Quý trước' },
             { value: 'PREVIOUS_YEAR' as const, label: 'Năm trước' },
             { value: 'CUSTOM_RANGE' as const, label: 'Tùy chọn' },
             { value: 'ALL' as const, label: 'Tất cả' },
           ].map(item => (
-            <TouchableOpacity key={item.value} style={[styles.chip, periodFilter === item.value && styles.chipActive]} onPress={() => setPeriodFilter(item.value)}>
+            <TouchableOpacity key={item.value} style={[styles.chip, periodFilter === item.value && styles.chipActive]} onPress={() => {
+              setPeriodFilter(item.value);
+              if (item.value === 'CURRENT' && status === 'PAID') setStatus(undefined);
+            }}>
               <Text style={[styles.chipText, periodFilter === item.value && styles.chipTextActive]}>{item.label}</Text>
             </TouchableOpacity>
           ))}
@@ -147,11 +152,16 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
           ].map(item => (
             <TouchableOpacity
               key={item.label}
+              accessibilityRole="button"
+              accessibilityLabel={`Lọc vay nợ: ${item.label}`}
               style={[
                 styles.chip,
                 status === item.value && styles.chipActive,
               ]}
-              onPress={() => setStatus(item.value)}>
+              onPress={() => {
+                setStatus(item.value);
+                if (item.value === 'PAID' && periodFilter === 'CURRENT') setPeriodFilter('ALL');
+              }}>
               <Text
                 style={[
                   styles.chipText,
@@ -164,8 +174,15 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         </ScrollView>
         {loading ? (
           <ActivityIndicator color="#FF8500" style={styles.loading} />
+        ) : loadError ? (
+          <View>
+            <Text style={styles.empty}>{loadError}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại danh sách vay nợ" style={styles.retryButton} onPress={load}>
+              <Text>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
         ) : filteredRecords.length === 0 ? (
-          <Text style={styles.empty}>Chưa có khoản vay/nợ.</Text>
+          <Text style={styles.empty}>Không có khoản vay/nợ phù hợp với bộ lọc.</Text>
         ) : (
           filteredRecords.map(record => (
             <TouchableOpacity
@@ -219,6 +236,7 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  retryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   container: { flex: 1, backgroundColor: '#FFF8F1' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFF0E1', alignItems: 'center', justifyContent: 'center' },

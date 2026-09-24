@@ -3,14 +3,10 @@ import type {
   LoanDebtType,
   UpdateLoanDebtPayload,
 } from '../types/loanDebt';
+import { parsePositiveMoneyInput } from './moneyInput';
 
 const numericLoanDebtAmount = (value: string) =>
-  Number(value.replace(/\D/g, '')) || 0;
-
-export const formatLoanDebtAmountInput = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-  return digits ? Number(digits).toLocaleString('vi-VN') : '';
-};
+  Number(parsePositiveMoneyInput(value)) || 0;
 
 export const calculateLoanDebtProgress = (
   settledAmount: number,
@@ -26,12 +22,15 @@ export const calculateLoanDebtProgress = (
 export const calculateRemainingAfterPayment = (
   paymentInput: string,
   remainingAmount: number,
-) => Math.max(0, remainingAmount - numericLoanDebtAmount(paymentInput));
+) =>
+  Math.max(
+    0,
+    Math.round((remainingAmount - numericLoanDebtAmount(paymentInput)) * 100) /
+      100,
+  );
 
 export const getFullSettlementAmount = (remainingAmount: number) =>
-  remainingAmount > 0
-    ? formatLoanDebtAmountInput(String(Math.round(remainingAmount)))
-    : '';
+  remainingAmount > 0 ? String(remainingAmount) : '';
 
 export const formatLoanDebtPaymentDate = (date: Date) => {
   const year = date.getFullYear();
@@ -72,7 +71,7 @@ export const validateLoanDebtPayment = (
 ) => {
   const amount = numericLoanDebtAmount(value);
   if (!Number.isFinite(amount) || amount <= 0) {
-    return 'Vui lòng nhập số tiền lớn hơn 0.';
+    return 'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân (ví dụ 12,50), không dùng dấu phân cách hàng nghìn.';
   }
   if (amount > remainingAmount) {
     return 'Số tiền vượt quá khoản còn lại.';

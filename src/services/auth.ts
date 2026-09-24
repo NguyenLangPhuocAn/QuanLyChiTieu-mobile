@@ -1,9 +1,10 @@
 import { apiRequest, apiUploadRequest } from './api';
-import type { AuthUser, LoginResponse } from '../types/auth';
+import type { AuthUser, LoginResponse, ProfileUpdatePayload } from '../types/auth';
 
 export const authService = {
   login(email: string, password: string) {
     return apiRequest<LoginResponse>('/users/login', {
+      authMode: 'none',
       method: 'POST',
       body: {
         email,
@@ -14,6 +15,7 @@ export const authService = {
 
   loginWithGoogle(idToken: string) {
     return apiRequest<LoginResponse>('/auth/google/mobile', {
+      authMode: 'none',
       method: 'POST',
       body: { idToken },
     });
@@ -21,6 +23,7 @@ export const authService = {
 
   register(email: string, password: string, confirmPassword: string) {
     return apiRequest('/users', {
+      authMode: 'none',
       method: 'POST',
       body: {
         email,
@@ -39,26 +42,12 @@ export const authService = {
 
   updateProfile(
     token: string,
-    payload: {
-      full_name?: string;
-      phone?: string;
-      address?: string;
-      birthday?: string;
-      currency_default?: string;
-      profile_setup_completed?: boolean;
-    },
+    payload: ProfileUpdatePayload,
   ) {
     return apiRequest<AuthUser>('/users/me', {
       method: 'PUT',
       token,
       body: payload,
-    });
-  },
-
-  upgradeToPremium(token: string) {
-    return apiRequest<AuthUser>('/users/me/upgrade-premium', {
-      method: 'PUT',
-      token,
     });
   },
 
@@ -81,11 +70,14 @@ export const authService = {
       confirmPassword: string;
     },
   ) {
-    return apiRequest<{ message: string; forceLogout?: boolean }>('/users/change-password', {
-      method: 'PUT',
-      token,
-      body: payload,
-    });
+    return apiRequest<{ message: string; forceLogout?: boolean }>(
+      '/users/change-password',
+      {
+        method: 'PUT',
+        token,
+        body: payload,
+      },
+    );
   },
 
   deactivateMe(token: string) {
@@ -97,6 +89,7 @@ export const authService = {
 
   refresh(refreshToken: string) {
     return apiRequest<LoginResponse>('/users/refresh', {
+      authMode: 'none',
       method: 'POST',
       body: { refreshToken },
     });
@@ -104,6 +97,7 @@ export const authService = {
 
   logout(token: string, refreshToken?: string | null) {
     return apiRequest('/users/logout', {
+      authMode: 'none',
       method: 'POST',
       token,
       body: { refreshToken },
@@ -112,20 +106,30 @@ export const authService = {
 
   forgotPassword(email: string) {
     return apiRequest<{ message: string }>('/users/forgot-password', {
+      authMode: 'none',
       method: 'POST',
       body: { email },
     });
   },
 
   verifyResetOtp(email: string, otp: string) {
-    return apiRequest<{ message: string; reset_token: string }>('/users/verify-reset-otp', {
-      method: 'POST',
-      body: { email, otp },
-    });
+    return apiRequest<{ message: string; reset_token: string }>(
+      '/users/verify-reset-otp',
+      {
+        authMode: 'none',
+        method: 'POST',
+        body: { email, otp },
+      },
+    );
   },
 
-  resetPassword(resetToken: string, newPassword: string, confirmPassword: string) {
+  resetPassword(
+    resetToken: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) {
     return apiRequest<LoginResponse>('/users/reset-password', {
+      authMode: 'none',
       method: 'POST',
       body: {
         reset_token: resetToken,
@@ -135,14 +139,15 @@ export const authService = {
     });
   },
 
-  completePasswordSetup(token: string, newPassword: string, confirmPassword: string) {
-    return apiRequest<LoginResponse>(
-      '/users/complete-password-setup',
-      {
-        method: 'PUT',
-        token,
-        body: { newPassword, confirmPassword },
-      },
-    );
+  completePasswordSetup(
+    token: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) {
+    return apiRequest<LoginResponse>('/users/complete-password-setup', {
+      method: 'PUT',
+      token,
+      body: { newPassword, confirmPassword },
+    });
   },
 };

@@ -27,6 +27,7 @@ import { authService } from '../../services/auth';
 import { resolveAvatarUrl } from '../../utils/avatar';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatShortDate } from '../../utils/format';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 type AvatarUploadFile = {
@@ -93,6 +94,7 @@ const normalizeBirthdayInput = (value: string) => {
 
 const ProfileScreen = ({ navigation, route }: Props) => {
   const { token, user, isLoading, updateProfile, signOut, uploadAvatar } = useAuth();
+  const { run: runProfileAction, busy: isProfileBusy } = useSingleFlight();
   const [fullName, setFullName] = useState(user?.full_name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [birthday, setBirthday] = useState(formatBirthdayInput(user?.birthday));
@@ -144,7 +146,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
     }
   };
 
-  const handlePickAvatar = async () => {
+  const handlePickAvatar = () => runProfileAction(async () => {
     let result;
 
     try {
@@ -192,9 +194,9 @@ const ProfileScreen = ({ navigation, route }: Props) => {
     } finally {
       setIsUploadingAvatar(false);
     }
-  };
+  });
 
-  const handleSave = async () => {
+  const handleSave = () => runProfileAction(async () => {
     if (phone.trim() && !/^0\d{9}$/.test(phone.trim())) {
       setProfileErrors({ phone: 'Số điện thoại phải bắt đầu bằng 0 và đủ 10 số.' });
       return;
@@ -210,10 +212,10 @@ const ProfileScreen = ({ navigation, route }: Props) => {
       }
 
       await updateProfile({
-        full_name: fullName.trim() || undefined,
-        phone: phone.trim() || undefined,
-        birthday: normalizedBirthday || undefined,
-        address: address.trim() || undefined,
+        full_name: fullName.trim() || null,
+        phone: phone.trim() || null,
+        birthday: normalizedBirthday || null,
+        address: address.trim() || null,
         currency_default: currency.trim() || 'VND',
       });
       Alert.alert('Đã lưu', 'Thông tin hồ sơ đã được cập nhật.');
@@ -222,9 +224,9 @@ const ProfileScreen = ({ navigation, route }: Props) => {
       const message = getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.');
       setProfileErrors(/sđt|sdt|điện thoại|phone/i.test(message) ? { phone: message } : { form: message });
     }
-  };
+  });
 
-  const handleChangePassword = async () => {
+  const handleChangePassword = () => runProfileAction(async () => {
     if (!token) {
       Alert.alert('Phiên đăng nhập đã hết hạn', 'Vui lòng đăng nhập lại để đổi mật khẩu.');
       return;
@@ -273,7 +275,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
     } finally {
       setIsChangingPassword(false);
     }
-  };
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -290,7 +292,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.profileCard}>
-            <TouchableOpacity style={styles.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.86}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Đổi ảnh đại diện" disabled={isLoading || isProfileBusy} style={styles.avatarWrap} onPress={handlePickAvatar} activeOpacity={0.86}>
               <View style={styles.avatar}>
                 {avatarUrl ? (
                   <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
@@ -311,11 +313,13 @@ const ProfileScreen = ({ navigation, route }: Props) => {
           </View>
 
           <Text style={styles.label}>Họ tên</Text>
-          <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Nguyễn Văn A" />
+          <TextInput accessibilityLabel="Họ tên hồ sơ" editable={!isProfileBusy} style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Nguyễn Văn A" />
 
           <Text style={styles.label}>Số điện thoại</Text>
           <TextInput
             style={[styles.input, profileErrors.phone && styles.inputError]}
+            accessibilityLabel="Số điện thoại hồ sơ"
+            editable={!isProfileBusy}
             value={phone}
             onChangeText={value => {
               setPhone(value);
@@ -329,6 +333,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
           <Text style={styles.label}>Ngày sinh</Text>
           <View style={styles.dateRow}>
             <TouchableOpacity
+              disabled={isProfileBusy}
               style={styles.dateSelect}
               onPress={() => setIsBirthdayPickerVisible(true)}>
               <CalendarDays size={18} color="#9A5A24" />
@@ -338,6 +343,9 @@ const ProfileScreen = ({ navigation, route }: Props) => {
             </TouchableOpacity>
             {birthday ? (
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Xóa ngày sinh"
+                disabled={isProfileBusy}
                 style={styles.clearDateButton}
                 onPress={() => setBirthday('')}>
                 <X size={18} color="#9A5A24" />
@@ -356,6 +364,8 @@ const ProfileScreen = ({ navigation, route }: Props) => {
           <Text style={styles.label}>Địa chỉ</Text>
           <TextInput
             style={[styles.input, styles.addressInput]}
+            accessibilityLabel="Địa chỉ hồ sơ"
+            editable={!isProfileBusy}
             value={address}
             onChangeText={setAddress}
             multiline
@@ -364,6 +374,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
 
           <Text style={styles.label}>Tiền tệ mặc định</Text>
           <TouchableOpacity
+            disabled={isProfileBusy}
             style={styles.currencySelect}
             onPress={() =>
               navigation.navigate('CurrencyPicker', {
@@ -378,12 +389,15 @@ const ProfileScreen = ({ navigation, route }: Props) => {
             <ChevronRight size={22} color="#9A765B" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isLoading}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Lưu hồ sơ" style={styles.saveButton} onPress={handleSave} disabled={isLoading || isProfileBusy}>
             {isLoading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveText}>Lưu hồ sơ</Text>}
           </TouchableOpacity>
           {profileErrors.form ? <Text style={styles.formErrorText}>{profileErrors.form}</Text> : null}
 
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Mở đổi mật khẩu"
+            disabled={isProfileBusy}
             style={styles.passwordCard}
             activeOpacity={0.86}
             onPress={() => setIsPasswordModalVisible(true)}>
@@ -409,6 +423,8 @@ const ProfileScreen = ({ navigation, route }: Props) => {
               <Text style={styles.label}>Mật khẩu hiện tại</Text>
               <TextInput
                 style={[styles.input, passwordErrors.oldPassword && styles.inputError]}
+                accessibilityLabel="Mật khẩu hiện tại"
+                editable={!isChangingPassword}
                 value={oldPassword}
                 onChangeText={value => {
                   setOldPassword(value);
@@ -422,6 +438,8 @@ const ProfileScreen = ({ navigation, route }: Props) => {
               <Text style={styles.label}>Mật khẩu mới</Text>
               <TextInput
                 style={[styles.input, passwordErrors.newPassword && styles.inputError]}
+                accessibilityLabel="Mật khẩu mới"
+                editable={!isChangingPassword}
                 value={newPassword}
                 onChangeText={value => {
                   setNewPassword(value);
@@ -435,6 +453,8 @@ const ProfileScreen = ({ navigation, route }: Props) => {
               <Text style={styles.label}>Xác nhận mật khẩu mới</Text>
               <TextInput
                 style={[styles.input, passwordErrors.confirmPassword && styles.inputError]}
+                accessibilityLabel="Xác nhận mật khẩu mới"
+                editable={!isChangingPassword}
                 value={confirmPassword}
                 onChangeText={value => {
                   setConfirmPassword(value);
@@ -452,7 +472,7 @@ const ProfileScreen = ({ navigation, route }: Props) => {
                 <TouchableOpacity style={styles.secondaryButton} onPress={closePasswordModal} disabled={isChangingPassword}>
                   <Text style={styles.secondaryText}>Hủy</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalSaveButton} onPress={handleChangePassword} disabled={isChangingPassword}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Lưu mật khẩu mới" style={styles.modalSaveButton} onPress={handleChangePassword} disabled={isChangingPassword || isProfileBusy}>
                   {isChangingPassword ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (

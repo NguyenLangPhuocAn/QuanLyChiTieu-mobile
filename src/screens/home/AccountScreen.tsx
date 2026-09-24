@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,21 +23,28 @@ import {
   LockKeyhole,
   LogOut,
   Palette,
+  PiggyBank,
   ShieldCheck,
   Sparkles,
   Trash2,
+  TrendingUp,
   UserRound,
   WalletCards,
+  X,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { WebView } from 'react-native-webview';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { authService } from '../../services/auth';
+import { paymentsService } from '../../services/payments';
+import type { PremiumPlan } from '../../types/payment';
 import type { Wallet } from '../../types/wallet';
 import { resolveAvatarUrl } from '../../utils/avatar';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import { formatCurrency } from '../../utils/format';
 
 const premiumUpgradeImage = require('../../assets/premium-upgrade.png');
 
@@ -46,21 +53,165 @@ type AccountScreenProps = {
   notificationUnreadCount?: number;
 };
 
-const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScreenProps) => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token, user, signOut, upgradeToPremium } = useAuth();
+const AccountScreen = ({
+  wallets = [],
+  notificationUnreadCount = 0,
+}: AccountScreenProps) => {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { token, user, signOut, refreshProfile } = useAuth();
   const [isPlanModalVisible, setIsPlanModalVisible] = useState(false);
+  const [isUpgradeConfirmVisible, setIsUpgradeConfirmVisible] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
+  const [paymentWebUrl, setPaymentWebUrl] = useState<string | null>(null);
+  const [isPaymentPageLoading, setIsPaymentPageLoading] = useState(false);
+  const [premiumPlan, setPremiumPlan] = useState<PremiumPlan | null>(null);
+  const [activeOrderCode, setActiveOrderCode] = useState<string | null>(null);
+  const announcedPaidOrder = useRef<string | null>(null);
+  const paymentReturnHandled = useRef(false);
   const isPremium = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
   const displayPlan = isPremium ? 'PREMIUM' : 'BASIC';
   const avatarUrl = resolveAvatarUrl(user?.avatar);
   const notificationSubtitle =
     notificationUnreadCount > 0
-      ? `${notificationUnreadCount > 99 ? '99+' : notificationUnreadCount} thông báo chưa đọc`
+      ? `${
+          notificationUnreadCount > 99 ? '99+' : notificationUnreadCount
+        } thông báo chưa đọc`
       : 'Nhắc ngân sách và giao dịch';
 
   const showComingSoon = (feature: string) => {
-    Alert.alert('Chức năng đang hoàn thiện', `${feature} sẽ được cập nhật trong phiên bản sắp tới.`);
+    Alert.alert(
+      'Chức năng đang hoàn thiện',
+      `${feature} sẽ được cập nhật trong phiên bản sắp tới.`,
+    );
+  };
+
+  const loadPremiumPlan = useCallback(async () => {
+    if (!token) return;
+    try {
+      const plan = await paymentsService.getPremiumPlan(token);
+      setPremiumPlan(plan);
+    } catch {}
+  }, [token]);
+
+  const checkPaymentOrder = useCallback(
+    async (orderCode: string, showFailure = false) => {
+      if (!token) return;
+      try {
+        const order = await paymentsService.getOrder(token, orderCode);
+
+        if (order.status === 'PAID') {
+          setActiveOrderCode(null);
+          await refreshProfile();
+          setIsPlanModalVisible(false);
+          if (announcedPaidOrder.current !== order.order_code) {
+            announcedPaidOrder.current = order.order_code;
+            Alert.alert(
+              'Thanh toán thành công',
+              'Tài khoản đã được nâng cấp Premium.',
+            );
+          }
+        } else if (
+          showFailure &&
+          ['FAILED', 'CANCELLED', 'EXPIRED'].includes(order.status)
+        ) {
+          setActiveOrderCode(null);
+          Alert.alert(
+            'Thanh toán chưa thành công',
+            order.status === 'CANCELLED'
+              ? 'Bạn đã hủy giao dịch trên VNPay.'
+              : 'Đơn chưa được thanh toán. Tài khoản vẫn giữ nguyên gói Basic.',
+          );
+        }
+        return order;
+      } catch (error) {
+        if (showFailure) {
+          Alert.alert(
+            'Chưa kiểm tra được thanh toán',
+            getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+          );
+        }
+      }
+    },
+    [refreshProfile, token],
+  );
+
+  useEffect(() => {
+    if (isPlanModalVisible) loadPremiumPlan().catch(() => undefined);
+  }, [isPlanModalVisible, loadPremiumPlan]);
+
+  const finishEmbeddedPayment = useCallback(
+    async (returnUrl: string, orderCodeFromUrl: string | null) => {
+      if (paymentReturnHandled.current) return;
+      paymentReturnHandled.current = true;
+      setPaymentWebUrl(null);
+      setIsPaymentPageLoading(false);
+
+      if (returnUrl.startsWith('http')) {
+        try {
+          await fetch(returnUrl, {
+            headers: { 'ngrok-skip-browser-warning': 'true' },
+          });
+        } catch {
+          // IPN vẫn có thể đã xác nhận đơn; tiếp tục kiểm tra trạng thái bên dưới.
+        }
+      }
+
+      const orderCode = orderCodeFromUrl || activeOrderCode;
+      if (!orderCode) return;
+
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const order = await checkPaymentOrder(orderCode, attempt === 11);
+        if (order && order.status !== 'PENDING') return;
+        await new Promise<void>(resolve => setTimeout(resolve, 750));
+      }
+    },
+    [activeOrderCode, checkPaymentOrder],
+  );
+
+  const handlePaymentNavigation = useCallback(
+    (url: string) => {
+      try {
+        const parsedUrl = new URL(url);
+        const isAppReturn =
+          parsedUrl.protocol === 'quanlychitieu:' &&
+          parsedUrl.hostname === 'payment-result';
+        const isServerReturn =
+          parsedUrl.protocol === 'https:' &&
+          parsedUrl.pathname === '/payments/vnpay/return';
+        if (!isAppReturn && !isServerReturn) return true;
+
+        const orderCode =
+          parsedUrl.searchParams.get('order') ||
+          parsedUrl.searchParams.get('vnp_TxnRef');
+        finishEmbeddedPayment(url, orderCode).catch(() => undefined);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    [finishEmbeddedPayment],
+  );
+
+  const startVnpayPayment = async () => {
+    if (!token) return;
+    setIsUpgrading(true);
+    try {
+      const order = await paymentsService.createVnpayOrder(token);
+      if (!order.payment_url)
+        throw new Error('VNPay không trả về URL thanh toán.');
+      setActiveOrderCode(order.order_code);
+      paymentReturnHandled.current = false;
+      setIsUpgradeConfirmVisible(false);
+      setPaymentWebUrl(order.payment_url);
+    } catch (error) {
+      Alert.alert(
+        'Chưa thể mở VNPay',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
+    } finally {
+      setIsUpgrading(false);
+    }
   };
 
   const handleUpgradePremium = () => {
@@ -69,29 +220,7 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
       return;
     }
 
-    Alert.alert(
-      'Nâng cấp Premium',
-      'Hiện tại hệ thống chưa tích hợp thanh toán. Bạn có muốn nâng cấp thử lên Premium không?',
-      [
-        { text: 'Để sau', style: 'cancel' },
-        {
-          text: 'Đồng ý nâng cấp',
-          onPress: async () => {
-            setIsUpgrading(true);
-
-            try {
-              await upgradeToPremium();
-              setIsPlanModalVisible(false);
-              Alert.alert('Đã nâng cấp', 'Tài khoản của bạn đã chuyển sang Premium.');
-            } catch (error) {
-              Alert.alert('Chưa thể nâng cấp', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
-            } finally {
-              setIsUpgrading(false);
-            }
-          },
-        },
-      ],
-    );
+    setIsUpgradeConfirmVisible(true);
   };
 
   const confirmDeactivateAccount = () => {
@@ -112,7 +241,10 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
               await authService.deactivateMe(token);
               await signOut();
             } catch (error) {
-              Alert.alert('Không thể xóa tài khoản', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+              Alert.alert(
+                'Không thể xóa tài khoản',
+                getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+              );
             }
           },
         },
@@ -141,7 +273,9 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
           <Text style={styles.name} numberOfLines={1}>
             {user?.full_name || 'Người dùng'}
           </Text>
-          <Text style={styles.email} numberOfLines={1}>{user?.email ?? 'Chưa có email'}</Text>
+          <Text style={styles.email} numberOfLines={1}>
+            {user?.email ?? 'Chưa có email'}
+          </Text>
           <View style={styles.roleBadge}>
             <ShieldCheck size={14} color={Colors.primary} />
             <Text style={styles.roleText}>{displayPlan}</Text>
@@ -156,7 +290,9 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
           <Text style={styles.statLabel}>Ví</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user?.currency_default ?? 'VND'}</Text>
+          <Text style={styles.statValue}>
+            {user?.currency_default ?? 'VND'}
+          </Text>
           <Text style={styles.statLabel}>Tiền tệ</Text>
         </View>
       </View>
@@ -164,14 +300,19 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
       <TouchableOpacity
         style={[styles.premiumBanner, isPremium && styles.premiumBannerActive]}
         activeOpacity={0.9}
-        onPress={() => setIsPlanModalVisible(true)}>
+        onPress={() => setIsPlanModalVisible(true)}
+      >
         <Image source={premiumUpgradeImage} style={styles.premiumImage} />
         <View style={styles.premiumCopy}>
           <View style={styles.premiumEyebrow}>
             <Sparkles size={14} color="#9A4D00" />
-            <Text style={styles.premiumEyebrowText}>{isPremium ? 'Gói đang dùng' : 'Gợi ý nâng cấp'}</Text>
+            <Text style={styles.premiumEyebrowText}>
+              {isPremium ? 'Gói đang dùng' : 'Gợi ý nâng cấp'}
+            </Text>
           </View>
-          <Text style={styles.premiumTitle}>{isPremium ? 'Premium đang hoạt động' : 'Mở khóa Premium'}</Text>
+          <Text style={styles.premiumTitle}>
+            {isPremium ? 'Premium đang hoạt động' : 'Mở khóa Premium'}
+          </Text>
           <Text style={styles.premiumSubtitle}>
             {isPremium
               ? 'Bạn đang có đầy đủ quyền lọc nâng cao, thống kê và xuất báo cáo.'
@@ -179,26 +320,36 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
           </Text>
           <View style={styles.premiumCta}>
             <Crown size={15} color={Colors.white} />
-            <Text style={styles.premiumCtaText}>{isPremium ? 'Xem gói' : 'Thay đổi gói'}</Text>
+            <Text style={styles.premiumCtaText}>
+              {isPremium ? 'Xem gói' : 'Thay đổi gói'}
+            </Text>
           </View>
         </View>
       </TouchableOpacity>
 
       <View style={styles.menuGroup}>
-        <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('Profile')}>
+        <TouchableOpacity
+          style={styles.menuRow}
+          onPress={() => navigation.navigate('Profile')}
+        >
           <View style={styles.menuLeft}>
             <View style={styles.menuIcon}>
               <UserRound size={19} color={Colors.primary} />
             </View>
             <View>
               <Text style={styles.menuTitle}>Thông tin hồ sơ</Text>
-              <Text style={styles.menuSubtitle}>Tên, SĐT, tiền tệ, mật khẩu</Text>
+              <Text style={styles.menuSubtitle}>
+                Tên, SĐT, tiền tệ, mật khẩu
+              </Text>
             </View>
           </View>
           <ChevronRight size={20} color="#B57745" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('Categories')}>
+        <TouchableOpacity
+          style={styles.menuRow}
+          onPress={() => navigation.navigate('Categories')}
+        >
           <View style={styles.menuLeft}>
             <View style={styles.menuIcon}>
               <ListTree size={19} color={Colors.primary} />
@@ -211,27 +362,80 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
           <ChevronRight size={20} color="#B57745" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuRow} onPress={() => navigation.navigate('Hashtags')}>
+        <TouchableOpacity
+          style={styles.menuRow}
+          onPress={() => navigation.navigate('Hashtags')}
+        >
           <View style={styles.menuLeft}>
             <View style={styles.menuIcon}>
               <Hash size={19} color={Colors.primary} />
             </View>
             <View>
               <Text style={styles.menuTitle}>Hashtag</Text>
-              <Text style={styles.menuSubtitle}>Tạo nhanh tag để lọc và thống kê</Text>
+              <Text style={styles.menuSubtitle}>
+                Tạo nhanh tag để lọc và thống kê
+              </Text>
             </View>
           </View>
           <ChevronRight size={20} color="#B57745" />
         </TouchableOpacity>
 
         {[
-          { title: 'Ví & tài khoản', subtitle: 'Số dư, hạn mức, loại ví', Icon: WalletCards, action: () => navigation.navigate('Wallets') },
-          { title: 'Ngân sách', subtitle: 'Theo dõi hạn mức theo ví', Icon: ShieldCheck, action: () => navigation.navigate('Budgets') },
-          { title: 'Vay/Nợ', subtitle: 'Theo dõi khoản phải thu và phải trả', Icon: HandCoins, action: () => navigation.navigate('LoanDebts') },
-          { title: 'Giao diện', subtitle: 'Tùy chỉnh hiển thị', Icon: Palette, action: () => showComingSoon('Giao diện') },
-          { title: 'Thông báo', subtitle: notificationSubtitle, Icon: Bell, action: () => navigation.navigate('Notifications') },
-          { title: 'Xuất báo cáo', subtitle: 'Excel/PDF dành cho Premium', Icon: Download, locked: !isPremium, action: () => navigation.navigate('Statistics', { wallets }) },
-          { title: 'Hỗ trợ', subtitle: 'Câu hỏi thường gặp', Icon: HelpCircle, action: () => showComingSoon('Câu hỏi thường gặp') },
+          {
+            title: 'Ví & tài khoản',
+            subtitle: 'Số dư, hạn mức, loại ví',
+            Icon: WalletCards,
+            action: () => navigation.navigate('Wallets'),
+          },
+          {
+            title: 'Kế hoạch tài chính',
+            subtitle: 'Dự báo thu–chi 4 tháng và tiến độ tiết kiệm',
+            Icon: TrendingUp,
+            action: () => navigation.navigate('FinancialPlan'),
+          },
+          {
+            title: 'Ngân sách',
+            subtitle: 'Theo dõi hạn mức theo ví',
+            Icon: ShieldCheck,
+            action: () => navigation.navigate('Budgets'),
+          },
+          {
+            title: 'Kế hoạch tiết kiệm',
+            subtitle: 'Mục tiêu, tiến độ và đóng góp',
+            Icon: PiggyBank,
+            action: () => navigation.navigate('SavingsGoals'),
+          },
+          {
+            title: 'Vay/Nợ',
+            subtitle: 'Theo dõi khoản phải thu và phải trả',
+            Icon: HandCoins,
+            action: () => navigation.navigate('LoanDebts'),
+          },
+          {
+            title: 'Giao diện',
+            subtitle: 'Tùy chỉnh hiển thị',
+            Icon: Palette,
+            action: () => showComingSoon('Giao diện'),
+          },
+          {
+            title: 'Thông báo',
+            subtitle: notificationSubtitle,
+            Icon: Bell,
+            action: () => navigation.navigate('Notifications'),
+          },
+          {
+            title: 'Xuất báo cáo',
+            subtitle: 'Excel/PDF dành cho Premium',
+            Icon: Download,
+            locked: !isPremium,
+            action: () => navigation.navigate('Statistics', { wallets }),
+          },
+          {
+            title: 'Hỗ trợ',
+            subtitle: 'Câu hỏi thường gặp',
+            Icon: HelpCircle,
+            action: () => showComingSoon('Câu hỏi thường gặp'),
+          },
         ].map(item => {
           const Icon = item.Icon;
 
@@ -239,7 +443,10 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
             <TouchableOpacity
               key={item.title}
               style={styles.menuRow}
-              onPress={() => (item.locked ? setIsPlanModalVisible(true) : item.action?.())}>
+              onPress={() =>
+                item.locked ? setIsPlanModalVisible(true) : item.action?.()
+              }
+            >
               <View style={styles.menuLeft}>
                 <View style={styles.menuIcon}>
                   <Icon size={19} color={Colors.primary} />
@@ -249,7 +456,11 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
                   <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
                 </View>
               </View>
-              {item.locked ? <LockKeyhole size={18} color="#B57745" /> : <ChevronRight size={20} color="#B57745" />}
+              {item.locked ? (
+                <LockKeyhole size={18} color="#B57745" />
+              ) : (
+                <ChevronRight size={20} color="#B57745" />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -260,7 +471,10 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
         <Text style={styles.logoutText}>Đăng xuất</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.deleteAccountButton} onPress={confirmDeactivateAccount}>
+      <TouchableOpacity
+        style={styles.deleteAccountButton}
+        onPress={confirmDeactivateAccount}
+      >
         <Trash2 size={18} color="#B42318" />
         <Text style={styles.deleteAccountText}>Xóa tài khoản</Text>
       </TouchableOpacity>
@@ -269,12 +483,18 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
         visible={isPlanModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsPlanModalVisible(false)}>
+        onRequestClose={() => setIsPlanModalVisible(false)}
+      >
         <View style={styles.modalBackdrop}>
-          <Pressable style={styles.modalBackdropPressable} onPress={() => setIsPlanModalVisible(false)} />
+          <Pressable
+            style={styles.modalBackdropPressable}
+            onPress={() => setIsPlanModalVisible(false)}
+          />
           <View style={styles.planModal}>
             <Text style={styles.planTitle}>So sánh gói tài khoản</Text>
-            <Text style={styles.planSubtitle}>Premium đang mở thử trong hệ thống vì chưa tích hợp thanh toán.</Text>
+            <Text style={styles.planSubtitle}>
+              Thanh toán bảo mật qua VNPay.
+            </Text>
 
             <View style={styles.planTable}>
               <View style={styles.planColumn}>
@@ -290,11 +510,18 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
                   <Crown size={18} color="#B85C00" />
                   <Text style={styles.planNamePremium}>Premium</Text>
                 </View>
-                <Text style={styles.planPricePremium}>Mở thử</Text>
+                <Text style={styles.planPricePremium}>
+                  {formatCurrency(premiumPlan?.amount ?? 49_000, 'VND')} · trọn
+                  đời
+                </Text>
                 <Text style={styles.planCellPremium}>Không giới hạn ví</Text>
                 <Text style={styles.planCellPremium}>Tạo danh mục cá nhân</Text>
-                <Text style={styles.planCellPremium}>Lọc theo ví, danh mục, thu/chi</Text>
-                <Text style={styles.planCellPremium}>Xuất Excel/PDF, hashtag hot</Text>
+                <Text style={styles.planCellPremium}>
+                  Lọc theo ví, danh mục, thu/chi
+                </Text>
+                <Text style={styles.planCellPremium}>
+                  Xuất Excel/PDF, hashtag hot
+                </Text>
               </View>
             </View>
 
@@ -302,21 +529,124 @@ const AccountScreen = ({ wallets = [], notificationUnreadCount = 0 }: AccountScr
               <TouchableOpacity
                 style={styles.planSecondaryButton}
                 onPress={() => setIsPlanModalVisible(false)}
-                disabled={isUpgrading}>
+                disabled={isUpgrading}
+              >
                 <Text style={styles.planSecondaryText}>Để sau</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.planPrimaryButton, isPremium && styles.planPrimaryButtonDisabled]}
+                style={[
+                  styles.planPrimaryButton,
+                  isPremium && styles.planPrimaryButtonDisabled,
+                ]}
                 onPress={handleUpgradePremium}
-                disabled={isUpgrading || isPremium}>
+                disabled={isUpgrading || isPremium}
+              >
                 {isUpgrading ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.planPrimaryText}>{isPremium ? 'Đã là Premium' : 'Nâng cấp'}</Text>
+                  <Text style={styles.planPrimaryText}>
+                    {isPremium ? 'Đã là Premium' : 'Nâng cấp'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isUpgradeConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsUpgradeConfirmVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={styles.modalBackdropPressable}
+            onPress={() => setIsUpgradeConfirmVisible(false)}
+          />
+          <View style={styles.upgradeConfirmCard}>
+            <View style={styles.upgradeConfirmIcon}>
+              <Crown size={27} color="#B85C00" />
+            </View>
+            <Text style={styles.upgradeConfirmTitle}>Nâng cấp Premium</Text>
+            <Text style={styles.upgradeConfirmCopy}>
+              Mở khóa không giới hạn ví, bộ lọc nâng cao và xuất báo cáo.
+            </Text>
+            <View style={styles.upgradePriceRow}>
+              <Text style={styles.upgradePriceLabel}>Gói trọn đời</Text>
+              <Text style={styles.upgradePriceValue}>
+                {formatCurrency(premiumPlan?.amount ?? 49_000, 'VND')}
+              </Text>
+            </View>
+            <View style={styles.planActions}>
+              <TouchableOpacity
+                style={styles.planSecondaryButton}
+                onPress={() => setIsUpgradeConfirmVisible(false)}
+                disabled={isUpgrading}
+              >
+                <Text style={styles.planSecondaryText}>Để sau</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.planPrimaryButton}
+                onPress={() => startVnpayPayment().catch(() => undefined)}
+                disabled={isUpgrading}
+              >
+                {isUpgrading ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.planPrimaryText}>Tiếp tục</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(paymentWebUrl)}
+        animationType="slide"
+        onRequestClose={() => setPaymentWebUrl(null)}
+      >
+        <View style={styles.paymentModal}>
+          <View style={styles.paymentHeader}>
+            <TouchableOpacity
+              style={styles.paymentCloseButton}
+              onPress={() => setPaymentWebUrl(null)}
+              accessibilityLabel="Đóng trang thanh toán"
+            >
+              <X size={22} color="#4C2A18" />
+            </TouchableOpacity>
+            <View style={styles.paymentHeaderCopy}>
+              <Text style={styles.paymentHeaderTitle}>Thanh toán Premium</Text>
+              <Text style={styles.paymentHeaderSubtitle}>Bảo mật bởi VNPay</Text>
+            </View>
+            <ShieldCheck size={23} color="#2D7A55" />
+          </View>
+
+          {paymentWebUrl ? (
+            <View style={styles.paymentWebViewWrap}>
+              <WebView
+                source={{ uri: paymentWebUrl }}
+                onLoadStart={() => setIsPaymentPageLoading(true)}
+                onLoadEnd={() => setIsPaymentPageLoading(false)}
+                onShouldStartLoadWithRequest={request =>
+                  handlePaymentNavigation(request.url)
+                }
+                javaScriptEnabled
+                domStorageEnabled
+                sharedCookiesEnabled
+              />
+              {isPaymentPageLoading ? (
+                <View style={styles.paymentLoadingOverlay}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.paymentLoadingText}>
+                    Đang mở cổng thanh toán…
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </Modal>
     </ScrollView>
@@ -589,6 +919,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.2,
     borderColor: '#E8B680',
     padding: 16,
+    maxHeight: '92%',
   },
   planTitle: {
     color: '#3F2414',
@@ -663,6 +994,107 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 16,
+  },
+  upgradeConfirmCard: {
+    borderRadius: 26,
+    backgroundColor: '#FFF9F3',
+    borderWidth: 1.2,
+    borderColor: '#E8B680',
+    padding: 20,
+  },
+  upgradeConfirmIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 20,
+    backgroundColor: '#FFE3C8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  upgradeConfirmTitle: {
+    color: '#3F2414',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  upgradeConfirmCopy: {
+    color: '#7A563C',
+    fontWeight: '700',
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+  upgradePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 17,
+    backgroundColor: '#FFF0DF',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginTop: 16,
+  },
+  upgradePriceLabel: {
+    color: '#7A563C',
+    fontWeight: '800',
+  },
+  upgradePriceValue: {
+    color: '#B85C00',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  paymentModal: {
+    flex: 1,
+    backgroundColor: '#FFF9F3',
+  },
+  paymentHeader: {
+    minHeight: 76,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0D4B7',
+  },
+  paymentCloseButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentHeaderCopy: {
+    flex: 1,
+  },
+  paymentHeaderTitle: {
+    color: '#4C2A18',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  paymentHeaderSubtitle: {
+    color: '#7A563C',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  paymentWebViewWrap: {
+    flex: 1,
+  },
+  paymentLoadingOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#FFF9F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  paymentLoadingText: {
+    color: '#7A563C',
+    fontWeight: '800',
   },
   planSecondaryButton: {
     flex: 1,

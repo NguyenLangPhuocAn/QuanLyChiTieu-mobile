@@ -1,9 +1,22 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { configureAuthSession } from '../services/api';
+import {
+  ApiError,
+  configureAuthSession,
+  invalidateAuthSession,
+} from '../services/api';
 import { authService } from '../services/auth';
-import type { AuthUser } from '../types/auth';
+import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
 import { GOOGLE_WEB_CLIENT_ID } from '../config/google';
 
 type AuthContextValue = {
@@ -13,24 +26,31 @@ type AuthContextValue = {
   token: string | null;
   refreshToken: string | null;
   isCurrencySetupRequired: boolean;
+  sessionRestoreError: string | null;
+  retryRestoreSession: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, confirmPassword: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    confirmPassword: string,
+  ) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  updateProfile: (payload: {
-    full_name?: string;
-    phone?: string;
-    address?: string;
-    birthday?: string;
-    currency_default?: string;
+  updateProfile: (payload: ProfileUpdatePayload) => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  uploadAvatar: (file: {
+    uri: string;
+    name: string;
+    type: string;
   }) => Promise<void>;
-  upgradeToPremium: () => Promise<void>;
-  uploadAvatar: (file: { uri: string; name: string; type: string }) => Promise<void>;
   completeCurrencySetup: (payload: {
     currency_default: string;
     full_name: string;
     phone?: string;
   }) => Promise<void>;
-  completePasswordSetup: (newPassword: string, confirmPassword: string) => Promise<void>;
+  completePasswordSetup: (
+    newPassword: string,
+    confirmPassword: string,
+  ) => Promise<void>;
   completeResetPassword: (
     resetToken: string,
     newPassword: string,
@@ -54,9 +74,33 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCurrencySetupRequired, setIsCurrencySetupRequired] = useState(false);
+  const [sessionRestoreError, setSessionRestoreError] = useState<string | null>(
+    null,
+  );
   const tokenRef = useRef<string | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
   const accessTokenExpiresAtRef = useRef<number | null>(null);
+  const sessionVersionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const storageQueueRef = useRef(Promise.resolve());
+
+  const persistSession = (value: string | null) => {
+    storageQueueRef.current = storageQueueRef.current
+      .catch(() => undefined)
+      .then(() =>
+        value === null
+          ? AsyncStorage.removeItem(AUTH_STORAGE_KEY)
+          : AsyncStorage.setItem(AUTH_STORAGE_KEY, value),
+      )
+      .catch(() => undefined);
+  };
+
+  const isCurrentSession = (version: number) =>
+    mountedRef.current && version === sessionVersionRef.current;
+  const assertCurrentSession = (version: number) => {
+    if (!isCurrentSession(version))
+      throw new Error('Phiên làm việc đã thay đổi. Vui lòng thử lại.');
+  };
 
   const saveTokens = (next: {
     token?: string;
@@ -64,12 +108,14 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     refreshToken?: string;
     expiresIn?: number;
   }) => {
+    if (!mountedRef.current) return;
     const nextAccessToken = next.accessToken ?? next.token ?? null;
     const nextRefreshToken = next.refreshToken ?? refreshTokenRef.current;
 
     if (nextAccessToken) {
       tokenRef.current = nextAccessToken;
-      accessTokenExpiresAtRef.current = Date.now() + (next.expiresIn ?? 600) * 1000;
+      accessTokenExpiresAtRef.current =
+        Date.now() + (next.expiresIn ?? 600) * 1000;
       setToken(nextAccessToken);
     }
 
@@ -78,28 +124,33 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       setRefreshToken(nextRefreshToken);
     }
 
-    AsyncStorage.setItem(
-      AUTH_STORAGE_KEY,
+    persistSession(
       JSON.stringify({
         accessToken: tokenRef.current,
         refreshToken: refreshTokenRef.current,
         accessTokenExpiresAt: accessTokenExpiresAtRef.current,
       } satisfies StoredAuthSession),
-    ).catch(() => undefined);
+    );
   };
 
   const clearSession = () => {
+    sessionVersionRef.current += 1;
+    invalidateAuthSession();
     tokenRef.current = null;
     refreshTokenRef.current = null;
     accessTokenExpiresAtRef.current = null;
     setToken(null);
     setRefreshToken(null);
     setUser(null);
+    setSessionRestoreError(null);
+    setIsLoading(false);
     setIsCurrencySetupRequired(false);
-    AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => undefined);
+    persistSession(null);
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+    const version = sessionVersionRef.current;
     GoogleSignin.configure({
       webClientId: GOOGLE_WEB_CLIENT_ID,
       offlineAccess: false,
@@ -116,6 +167,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     const restoreSession = async () => {
       try {
         const rawSession = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        if (!isCurrentSession(version)) return;
 
         if (!rawSession) {
           return;
@@ -123,7 +175,15 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
 
         const stored = JSON.parse(rawSession) as StoredAuthSession;
 
-        if (!stored.accessToken) {
+        if (
+          typeof stored?.accessToken !== 'string' ||
+          !stored.accessToken ||
+          (stored.refreshToken !== null &&
+            typeof stored.refreshToken !== 'string') ||
+          (stored.accessTokenExpiresAt !== null &&
+            !Number.isFinite(stored.accessTokenExpiresAt))
+        ) {
+          clearSession();
           return;
         }
 
@@ -132,80 +192,146 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         accessTokenExpiresAtRef.current = stored.accessTokenExpiresAt;
         setToken(stored.accessToken);
         setRefreshToken(stored.refreshToken);
-        await hydrateUser(stored.accessToken);
-      } catch {
-        clearSession();
+        await hydrateUser(stored.accessToken, version);
+      } catch (error) {
+        if (isCurrentSession(version)) {
+          if (
+            !tokenRef.current ||
+            error instanceof SyntaxError ||
+            (error instanceof ApiError && [401, 403].includes(error.status))
+          )
+            clearSession();
+          else
+            setSessionRestoreError(
+              'Chưa kết nối được máy chủ để tải tài khoản. Kiểm tra mạng rồi thử lại.',
+            );
+        }
       } finally {
-        setIsLoading(false);
+        if (isCurrentSession(version)) setIsLoading(false);
       }
     };
 
     restoreSession();
 
-    return () => configureAuthSession(null);
+    return () => {
+      mountedRef.current = false;
+      sessionVersionRef.current += 1;
+      configureAuthSession(null);
+    };
     // hydrateUser is stable for this bootstrapping effect; adding it would recreate the restore flow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hydrateUser = async (nextToken: string) => {
+  const hydrateUser = async (
+    nextToken: string,
+    version = sessionVersionRef.current,
+  ) => {
     const profile = await authService.getProfile(nextToken);
-    tokenRef.current = nextToken;
-    accessTokenExpiresAtRef.current = Date.now() + 600 * 1000;
-    setToken(nextToken);
+    assertCurrentSession(version);
     setUser(profile);
-    saveTokens({ accessToken: nextToken, refreshToken: refreshTokenRef.current ?? undefined });
 
     setIsCurrencySetupRequired(!profile.profile_setup_completed);
   };
 
+  const retryRestoreSession = async () => {
+    const version = sessionVersionRef.current;
+    const currentToken = tokenRef.current;
+    if (!currentToken) {
+      clearSession();
+      return;
+    }
+    setIsLoading(true);
+    setSessionRestoreError(null);
+    try {
+      await hydrateUser(currentToken, version);
+    } catch (error) {
+      if (isCurrentSession(version)) {
+        if (error instanceof ApiError && [401, 403].includes(error.status))
+          clearSession();
+        else
+          setSessionRestoreError(
+            'Chưa kết nối được máy chủ để tải tài khoản. Kiểm tra mạng rồi thử lại.',
+          );
+      }
+    } finally {
+      if (isCurrentSession(version)) setIsLoading(false);
+    }
+  };
+
   const signIn = async (email: string, password: string) => {
+    clearSession();
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
       const response = await authService.login(email, password);
+      assertCurrentSession(version);
       saveTokens(response);
-      await hydrateUser(response.accessToken ?? response.token);
+      await hydrateUser(response.accessToken ?? response.token, version);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
-  const signUp = async (email: string, password: string, confirmPassword: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    confirmPassword: string,
+  ) => {
+    clearSession();
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
       await authService.register(email, password, confirmPassword);
+      assertCurrentSession(version);
       const response = await authService.login(email, password);
+      assertCurrentSession(version);
       saveTokens(response);
-      await hydrateUser(response.accessToken ?? response.token);
+      await hydrateUser(response.accessToken ?? response.token, version);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
   const signInWithGoogle = async () => {
-    if (!GOOGLE_WEB_CLIENT_ID || GOOGLE_WEB_CLIENT_ID.includes('YOUR_WEB_CLIENT_ID')) {
-      throw new Error('Đăng nhập Google chưa sẵn sàng. Vui lòng dùng email và mật khẩu.');
+    if (
+      !GOOGLE_WEB_CLIENT_ID ||
+      GOOGLE_WEB_CLIENT_ID.includes('YOUR_WEB_CLIENT_ID')
+    ) {
+      throw new Error(
+        'Đăng nhập Google chưa sẵn sàng. Vui lòng dùng email và mật khẩu.',
+      );
     }
 
+    clearSession();
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
       await GoogleSignin.hasPlayServices({
         showPlayServicesUpdateDialog: true,
       });
+      assertCurrentSession(version);
       await GoogleSignin.signOut().catch(() => undefined);
+      assertCurrentSession(version);
       const result = await GoogleSignin.signIn();
+      assertCurrentSession(version);
       const idToken = result.data?.idToken;
 
       if (!idToken) {
-        console.warn('Google Sign-In did not return idToken. Check GOOGLE_WEB_CLIENT_ID.');
-        throw new Error('Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.');
+        console.warn(
+          'Google Sign-In did not return idToken. Check GOOGLE_WEB_CLIENT_ID.',
+        );
+        throw new Error(
+          'Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.',
+        );
       }
 
       const response = await authService.loginWithGoogle(idToken);
+      assertCurrentSession(version);
       saveTokens(response);
-      await hydrateUser(response.accessToken ?? response.token);
+      await hydrateUser(response.accessToken ?? response.token, version);
     } catch (error) {
       const code =
         typeof error === 'object' && error !== null && 'code' in error
@@ -217,68 +343,74 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       }
 
       if (code === statusCodes.IN_PROGRESS) {
-        throw new Error('Đăng nhập Google đang được xử lý. Vui lòng chờ một chút.');
+        throw new Error(
+          'Đăng nhập Google đang được xử lý. Vui lòng chờ một chút.',
+        );
       }
 
       if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        throw new Error('Google Play Services chưa sẵn sàng. Vui lòng cập nhật rồi thử lại.');
+        throw new Error(
+          'Google Play Services chưa sẵn sàng. Vui lòng cập nhật rồi thử lại.',
+        );
       }
 
       console.warn('Google Sign-In failed', error);
-      throw new Error('Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.');
+      throw new Error(
+        'Không thể đăng nhập bằng Google. Vui lòng thử lại hoặc dùng email và mật khẩu.',
+      );
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
-  const updateProfile = async (payload: {
-    full_name?: string;
-    phone?: string;
-    address?: string;
-    birthday?: string;
-    currency_default?: string;
+  const updateProfile = async (payload: ProfileUpdatePayload) => {
+    if (!tokenRef.current) {
+      throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
+    }
+
+    const version = sessionVersionRef.current;
+    setIsLoading(true);
+
+    try {
+      const updatedUser = await authService.updateProfile(
+        tokenRef.current,
+        payload,
+      );
+      assertCurrentSession(version);
+      setUser(updatedUser);
+    } finally {
+      if (isCurrentSession(version)) setIsLoading(false);
+    }
+  };
+
+  const uploadAvatar = async (file: {
+    uri: string;
+    name: string;
+    type: string;
   }) => {
     if (!tokenRef.current) {
       throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
     }
 
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
-      const updatedUser = await authService.updateProfile(tokenRef.current, payload);
+      const updatedUser = await authService.uploadAvatar(
+        tokenRef.current,
+        file,
+      );
+      assertCurrentSession(version);
       setUser(updatedUser);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
-  const uploadAvatar = async (file: { uri: string; name: string; type: string }) => {
+  const refreshProfile = async () => {
     if (!tokenRef.current) {
       throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
     }
-
-    setIsLoading(true);
-
-    try {
-      const updatedUser = await authService.uploadAvatar(tokenRef.current, file);
-      setUser(updatedUser);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const upgradeToPremium = async () => {
-    if (!tokenRef.current) {
-      throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
-    }
-
-    setIsLoading(true);
-
-    try {
-      const updatedUser = await authService.upgradeToPremium(tokenRef.current);
-      setUser(updatedUser);
-    } finally {
-      setIsLoading(false);
-    }
+    await hydrateUser(tokenRef.current);
   };
 
   const completeCurrencySetup = async (payload: {
@@ -290,6 +422,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
     }
 
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
@@ -299,18 +432,23 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         phone: payload.phone,
         profile_setup_completed: true,
       });
+      assertCurrentSession(version);
       setUser(updatedUser);
       setIsCurrencySetupRequired(false);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
-  const completePasswordSetup = async (newPassword: string, confirmPassword: string) => {
+  const completePasswordSetup = async (
+    newPassword: string,
+    confirmPassword: string,
+  ) => {
     if (!tokenRef.current) {
       throw new Error('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
     }
 
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
@@ -319,10 +457,11 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         newPassword,
         confirmPassword,
       );
+      assertCurrentSession(version);
       saveTokens(response);
-      await hydrateUser(response.accessToken ?? response.token);
+      await hydrateUser(response.accessToken ?? response.token, version);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
@@ -331,6 +470,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     newPassword: string,
     confirmPassword: string,
   ) => {
+    clearSession();
+    const version = sessionVersionRef.current;
     setIsLoading(true);
 
     try {
@@ -339,6 +480,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         newPassword,
         confirmPassword,
       );
+      assertCurrentSession(version);
       saveTokens(response);
 
       if (response.user) {
@@ -347,9 +489,9 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         return;
       }
 
-      await hydrateUser(response.accessToken ?? response.token);
+      await hydrateUser(response.accessToken ?? response.token, version);
     } finally {
-      setIsLoading(false);
+      if (isCurrentSession(version)) setIsLoading(false);
     }
   };
 
@@ -360,7 +502,9 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     clearSession();
 
     if (currentToken) {
-      authService.logout(currentToken, currentRefreshToken).catch(() => undefined);
+      authService
+        .logout(currentToken, currentRefreshToken)
+        .catch(() => undefined);
     }
   };
 
@@ -373,17 +517,20 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         token,
         refreshToken,
         isCurrencySetupRequired,
+        sessionRestoreError,
+        retryRestoreSession,
         signIn,
         signUp,
         signInWithGoogle,
-      updateProfile,
-      upgradeToPremium,
-      uploadAvatar,
+        updateProfile,
+        refreshProfile,
+        uploadAvatar,
         completeCurrencySetup,
         completePasswordSetup,
         completeResetPassword,
         signOut,
-      }}>
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

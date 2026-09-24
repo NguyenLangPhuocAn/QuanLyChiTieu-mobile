@@ -2,7 +2,11 @@ import { apiRequest } from './api';
 
 export type StatisticsPeriod = 'all' | 'day' | 'week' | 'month' | 'year';
 export type ReportPeriod = StatisticsPeriod | 'quarter' | 'custom';
-export type ReportDateRange = { dateFrom?: string; dateTo?: string };
+export type ReportDateRange = {
+  dateFrom?: string;
+  dateTo?: string;
+  walletId?: number;
+};
 
 export type StatisticsResponse = {
   period: StatisticsPeriod;
@@ -74,6 +78,7 @@ export type StatisticsReportResponse = {
 export type SendReportResponse = {
   message: string;
   filename: string;
+  mail?: { accepted?: boolean; delivered: boolean; devOnly: boolean };
 };
 
 export const statisticsService = {
@@ -89,10 +94,14 @@ export const statisticsService = {
     format: ReportFormat,
     range: ReportDateRange = {},
   ) {
-    const dateFrom = range.dateFrom ? `&dateFrom=${encodeURIComponent(range.dateFrom)}` : '';
-    const dateTo = range.dateTo ? `&dateTo=${encodeURIComponent(range.dateTo)}` : '';
+    const dateFrom = range.dateFrom
+      ? `&dateFrom=${encodeURIComponent(range.dateFrom)}`
+      : '';
+    const dateTo = range.dateTo
+      ? `&dateTo=${encodeURIComponent(range.dateTo)}`
+      : '';
     return apiRequest<StatisticsReportResponse>(
-      `/statistics/report?period=${period}&format=${format}${dateFrom}${dateTo}`,
+      `/statistics/report?period=${period}&format=${format}${dateFrom}${dateTo}${range.walletId === undefined ? '' : `&walletId=${range.walletId}`}`,
       {
         method: 'GET',
         token,

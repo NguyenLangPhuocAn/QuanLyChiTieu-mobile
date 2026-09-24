@@ -1,22 +1,26 @@
 import { Platform } from 'react-native';
+import apiConfig from '../config/api.config.json';
+import { resolveApiEndpoints } from '../config/apiEndpoints';
 
-const API_BASE_URLS =
-  Platform.OS === 'android'
-    ? ['http://10.0.2.2:3000', 'http://192.168.1.3:3000', 'http://localhost:3000']
-    : ['http://localhost:3000', 'http://192.168.1.3:3000'];
+const API_BASE_URLS = resolveApiEndpoints(Platform.OS, apiConfig);
 
 const REFRESH_THRESHOLD_SECONDS = 4 * 60;
 const REQUEST_TIMEOUT_MS = 5000;
-const SESSION_EXPIRED_MESSAGE = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.';
+const SESSION_EXPIRED_MESSAGE =
+  'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.';
 const NETWORK_ERROR_MESSAGE =
   'Không thể kết nối hệ thống. Vui lòng kiểm tra mạng hoặc thử lại sau.';
 const SERVER_ERROR_MESSAGE = 'Hệ thống đang gặp sự cố. Vui lòng thử lại sau.';
+const FORBIDDEN_MESSAGE = 'Bạn không có quyền thực hiện thao tác này.';
 const GENERIC_ERROR_MESSAGE = 'Đã có lỗi xảy ra. Vui lòng thử lại.';
-const INVALID_INPUT_MESSAGE = 'Thông tin nhập chưa hợp lệ. Vui lòng kiểm tra lại.';
+const INVALID_INPUT_MESSAGE =
+  'Thông tin nhập chưa hợp lệ. Vui lòng kiểm tra lại.';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
   token?: string | null;
+  timeoutMs?: number;
+  authMode?: 'session' | 'none';
 };
 
 type AuthSessionHandlers = {
@@ -34,8 +38,20 @@ type AuthSessionHandlers = {
 
 let authSession: AuthSessionHandlers | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let sessionRevision = 0;
+let connectedBaseUrl: string | null = null;
+
+/** Media loaded after an API response must use the server that answered it. */
+export const getApiBaseUrl = () => connectedBaseUrl ?? API_BASE_URLS[0];
+
+export const invalidateAuthSession = () => {
+  sessionRevision += 1;
+  refreshPromise = null;
+};
 
 export const configureAuthSession = (handlers: AuthSessionHandlers | null) => {
+  invalidateAuthSession();
+  connectedBaseUrl = null;
   authSession = handlers;
 };
 
@@ -50,6 +66,16 @@ export class ApiError extends Error {
     this.code = code;
   }
 }
+
+const assertCurrentSession = (revision: number) => {
+  if (revision !== sessionRevision) {
+    throw new ApiError(
+      'Phiên làm việc đã thay đổi. Vui lòng thử lại.',
+      0,
+      'SESSION_CHANGED',
+    );
+  }
+};
 
 const parseErrorCode = (payload: unknown) => {
   if (!payload || typeof payload !== 'object') {
@@ -92,7 +118,9 @@ const sanitizeErrorMessage = (message: string) => {
     return GENERIC_ERROR_MESSAGE;
   }
 
-  if (/jwt|token|bearer|unauthorized|forbidden|\b401\b|\b403\b/i.test(trimmed)) {
+  if (
+    /jwt|token|bearer|unauthorized|forbidden|\b401\b|\b403\b/i.test(trimmed)
+  ) {
     return SESSION_EXPIRED_MESSAGE;
   }
 
@@ -112,7 +140,11 @@ const sanitizeErrorMessage = (message: string) => {
     return SERVER_ERROR_MESSAGE;
   }
 
-  if (/must be|should not|property .* should|constraint|validation failed/i.test(trimmed)) {
+  if (
+    /must be|should not|property .* should|constraint|validation failed/i.test(
+      trimmed,
+    )
+  ) {
     return INVALID_INPUT_MESSAGE;
   }
 
@@ -120,9 +152,10 @@ const sanitizeErrorMessage = (message: string) => {
 };
 
 const getFriendlyErrorMessage = (status: number, payload: unknown) => {
-  if (status === 401 || status === 403) {
+  if (status === 401) {
     return SESSION_EXPIRED_MESSAGE;
   }
+  if (status === 403) return FORBIDDEN_MESSAGE;
 
   if (status >= 500) {
     return SERVER_ERROR_MESSAGE;
@@ -144,24 +177,86 @@ const parseResponseBody = (text: string) => {
 };
 
 const isNetworkError = (error: unknown) => {
-  return error instanceof TypeError || (error instanceof Error && error.name === 'AbortError');
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
 };
 
-const fetchWithTimeout = async (input: RequestInfo, init?: RequestInit) => {
+const fetchWithTimeout = async (
+  input: RequestInfo,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    return await fetch(input, {
+    const response = await fetch(input, {
       ...init,
       signal: controller.signal,
     });
+    const responseText = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      text: async () => responseText,
+    };
   } finally {
     clearTimeout(timeoutId);
   }
 };
 
-const postRefresh = async (baseUrl: string, refreshToken: string) => {
+const orderedBaseUrls = () =>
+  connectedBaseUrl
+    ? [
+        connectedBaseUrl,
+        ...API_BASE_URLS.filter(url => url !== connectedBaseUrl),
+      ]
+    : API_BASE_URLS;
+
+// Only read requests may probe alternate addresses. Never replay a write after
+// a timeout: the server might already have committed it before the reply was lost.
+const resolveMutationBaseUrl = async (revision: number) => {
+  if (connectedBaseUrl) return connectedBaseUrl;
+  for (const baseUrl of API_BASE_URLS) {
+    assertCurrentSession(revision);
+    try {
+      const response = await fetchWithTimeout(`${baseUrl}/health`, {
+        method: 'GET',
+      });
+      const payload = parseResponseBody(await response.text()) as {
+        status?: string;
+        service?: string;
+      } | null;
+      assertCurrentSession(revision);
+      if (
+        response.ok &&
+        payload?.status === 'ok' &&
+        payload.service === 'quan-ly-chi-tieu'
+      ) {
+        connectedBaseUrl = baseUrl;
+        return baseUrl;
+      }
+    } catch {
+      assertCurrentSession(revision);
+    }
+  }
+  throw new Error(NETWORK_ERROR_MESSAGE);
+};
+
+const unknownWriteOutcome = () =>
+  new ApiError(
+    'Kết nối gián đoạn khi gửi. Chưa xác nhận được kết quả; hãy kiểm tra lịch sử thao tác trước khi thử lại.',
+    0,
+    'REQUEST_OUTCOME_UNKNOWN',
+  );
+
+const postRefresh = async (
+  baseUrl: string,
+  refreshToken: string,
+  revision: number,
+) => {
   const response = await fetchWithTimeout(`${baseUrl}/users/refresh`, {
     method: 'POST',
     headers: {
@@ -171,6 +266,7 @@ const postRefresh = async (baseUrl: string, refreshToken: string) => {
     body: JSON.stringify({ refreshToken }),
   });
   const text = await response.text();
+  assertCurrentSession(revision);
   const payload = parseResponseBody(text) as {
     accessToken?: string;
     token?: string;
@@ -191,6 +287,7 @@ const postRefresh = async (baseUrl: string, refreshToken: string) => {
 };
 
 const refreshAccessToken = async () => {
+  const revision = sessionRevision;
   const refreshToken = authSession?.getRefreshToken();
 
   if (!refreshToken) {
@@ -198,31 +295,36 @@ const refreshAccessToken = async () => {
   }
 
   if (!refreshPromise) {
-    refreshPromise = (async () => {
+    const pending = (async () => {
       let lastError: unknown;
-
-      for (const baseUrl of API_BASE_URLS) {
-        try {
-          return await postRefresh(baseUrl, refreshToken);
-        } catch (error) {
-          lastError = error;
-
-          if (!isNetworkError(error)) {
-            break;
-          }
-        }
+      const baseUrl = await resolveMutationBaseUrl(revision);
+      try {
+        assertCurrentSession(revision);
+        return await postRefresh(baseUrl, refreshToken, revision);
+      } catch (error) {
+        lastError = error;
+        if (isNetworkError(error) && connectedBaseUrl === baseUrl)
+          connectedBaseUrl = null;
       }
 
-      authSession?.onLogout();
-
+      assertCurrentSession(revision);
       if (lastError instanceof ApiError) {
-          throw new ApiError(SESSION_EXPIRED_MESSAGE, lastError.status, lastError.code);
+        if (lastError.status === 401 || lastError.status === 403) {
+          authSession?.onLogout();
+          throw new ApiError(
+            SESSION_EXPIRED_MESSAGE,
+            lastError.status,
+            lastError.code,
+          );
+        }
+        throw lastError;
       }
 
       throw new Error(NETWORK_ERROR_MESSAGE);
     })().finally(() => {
-      refreshPromise = null;
+      if (refreshPromise === pending) refreshPromise = null;
     });
+    refreshPromise = pending;
   }
 
   return refreshPromise;
@@ -247,27 +349,35 @@ const getValidToken = async (explicitToken?: string | null) => {
   return refreshAccessToken();
 };
 
-export const apiRequest = async <T>(path: string, options: RequestOptions = {}) => {
-  const { token, headers, body, ...restOptions } = options;
+export const apiRequest = async <T>(
+  path: string,
+  options: RequestOptions = {},
+) => {
+  const {
+    token,
+    headers,
+    body,
+    timeoutMs,
+    authMode = 'session',
+    ...restOptions
+  } = options;
+  const revision = sessionRevision;
   let lastError: unknown;
-  let authToken = await getValidToken(token);
+  let authToken = authMode === 'none' ? token : await getValidToken(token);
+  assertCurrentSession(revision);
 
-  for (const baseUrl of API_BASE_URLS) {
+  const readOnly = ['GET', 'HEAD'].includes(
+    (restOptions.method ?? 'GET').toUpperCase(),
+  );
+  const baseUrls = readOnly
+    ? orderedBaseUrls()
+    : [await resolveMutationBaseUrl(revision)];
+  assertCurrentSession(revision);
+  for (const baseUrl of baseUrls) {
     try {
-      let response = await fetchWithTimeout(`${baseUrl}${path}`, {
-        ...restOptions,
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          ...headers,
-        },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-      });
-
-      if (response.status === 401 && authSession?.getRefreshToken()) {
-        authToken = await refreshAccessToken();
-        response = await fetchWithTimeout(`${baseUrl}${path}`, {
+      let response = await fetchWithTimeout(
+        `${baseUrl}${path}`,
+        {
           ...restOptions,
           headers: {
             Accept: 'application/json',
@@ -276,14 +386,40 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
             ...headers,
           },
           body: body !== undefined ? JSON.stringify(body) : undefined,
-        });
+        },
+        timeoutMs,
+      );
+
+      assertCurrentSession(revision);
+      if (
+        authMode === 'session' &&
+        response.status === 401 &&
+        authSession?.getRefreshToken()
+      ) {
+        authToken = await refreshAccessToken();
+        assertCurrentSession(revision);
+        response = await fetchWithTimeout(
+          `${baseUrl}${path}`,
+          {
+            ...restOptions,
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+              ...headers,
+            },
+            body: body !== undefined ? JSON.stringify(body) : undefined,
+          },
+          timeoutMs,
+        );
       }
 
       const text = await response.text();
+      assertCurrentSession(revision);
       const payload = parseResponseBody(text);
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
+        if (authMode === 'session' && response.status === 401) {
           authSession?.onLogout();
         }
 
@@ -294,13 +430,17 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}) 
         );
       }
 
+      connectedBaseUrl = baseUrl;
       return payload as T;
     } catch (error) {
+      assertCurrentSession(revision);
       lastError = error;
 
       if (!isNetworkError(error)) {
         throw error;
       }
+      if (connectedBaseUrl === baseUrl) connectedBaseUrl = null;
+      if (!readOnly) throw unknownWriteOutcome();
     }
   }
 
@@ -320,66 +460,76 @@ export const apiUploadRequest = async <T>(
     type: string;
   },
   method = 'POST',
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ) => {
-  let lastError: unknown;
+  const revision = sessionRevision;
   let authToken = await getValidToken(token);
+  assertCurrentSession(revision);
 
-  for (const baseUrl of API_BASE_URLS) {
-    try {
-      const formData = new FormData();
-      formData.append('file', file as unknown as Blob);
+  const baseUrl = await resolveMutationBaseUrl(revision);
+  assertCurrentSession(revision);
+  try {
+    const formData = new FormData();
+    formData.append('file', file as unknown as Blob);
 
-      let response = await fetchWithTimeout(`${baseUrl}${path}`, {
+    let response = await fetchWithTimeout(
+      `${baseUrl}${path}`,
+      {
         method,
         headers: {
           Accept: 'application/json',
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: formData,
-      });
+      },
+      timeoutMs,
+    );
 
-      if (response.status === 401 && authSession?.getRefreshToken()) {
-        authToken = await refreshAccessToken();
-        response = await fetchWithTimeout(`${baseUrl}${path}`, {
+    if (response.status === 401 && authSession?.getRefreshToken()) {
+      assertCurrentSession(revision);
+      authToken = await refreshAccessToken();
+      assertCurrentSession(revision);
+      response = await fetchWithTimeout(
+        `${baseUrl}${path}`,
+        {
           method,
           headers: {
             Accept: 'application/json',
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: formData,
-        });
-      }
-
-      const text = await response.text();
-      const payload = parseResponseBody(text);
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          authSession?.onLogout();
-        }
-
-        throw new ApiError(
-          getFriendlyErrorMessage(response.status, payload),
-          response.status,
-          parseErrorCode(payload),
-        );
-      }
-
-      return payload as T;
-    } catch (error) {
-      lastError = error;
-
-      if (!isNetworkError(error)) {
-        throw error;
-      }
+        },
+        timeoutMs,
+      );
     }
-  }
 
-  if (lastError instanceof Error) {
-    throw new Error(NETWORK_ERROR_MESSAGE);
-  }
+    const text = await response.text();
+    assertCurrentSession(revision);
+    const payload = parseResponseBody(text);
 
-  throw new Error(NETWORK_ERROR_MESSAGE);
+    if (!response.ok) {
+      if (response.status === 401) {
+        authSession?.onLogout();
+      }
+
+      throw new ApiError(
+        getFriendlyErrorMessage(response.status, payload),
+        response.status,
+        parseErrorCode(payload),
+      );
+    }
+
+    connectedBaseUrl = baseUrl;
+    return payload as T;
+  } catch (error) {
+    assertCurrentSession(revision);
+
+    if (!isNetworkError(error)) {
+      throw error;
+    }
+    if (connectedBaseUrl === baseUrl) connectedBaseUrl = null;
+    throw unknownWriteOutcome();
+  }
 };
 
 export { API_BASE_URLS };

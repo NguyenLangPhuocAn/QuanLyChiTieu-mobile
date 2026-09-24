@@ -4,6 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
+import { NavigationContainer } from '@react-navigation/native';
 import App from '../App';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import NotificationsScreen from '../src/screens/home/NotificationsScreen';
@@ -40,19 +41,40 @@ jest.mock('../src/services/transactions', () => ({
   },
 }));
 
+jest.mock('react-native-webview', () => {
+  const ReactModule = require('react');
+  const { View } = require('react-native');
+
+  return {
+    WebView: (props: Record<string, unknown>) =>
+      ReactModule.createElement(View, props),
+  };
+});
+
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockedNotificationsService = notificationsService as jest.Mocked<typeof notificationsService>;
-const mockedTransactionsService = transactionsService as jest.Mocked<typeof transactionsService>;
+const mockedNotificationsService = notificationsService as jest.Mocked<
+  typeof notificationsService
+>;
+const mockedTransactionsService = transactionsService as jest.Mocked<
+  typeof transactionsService
+>;
 
 const flattenTextChildren = (children: unknown): string => {
   if (Array.isArray(children)) {
     return children.map(flattenTextChildren).join('');
   }
 
-  return typeof children === 'string' || typeof children === 'number' ? String(children) : '';
+  return typeof children === 'string' || typeof children === 'number'
+    ? String(children)
+    : '';
 };
 
 test('renders correctly', async () => {
+  mockedUseAuth.mockReturnValue({
+    user: null,
+    token: null,
+    isLoading: true,
+  } as ReturnType<typeof useAuth>);
   await ReactTestRenderer.act(() => {
     ReactTestRenderer.create(<App />);
   });
@@ -60,14 +82,36 @@ test('renders correctly', async () => {
 
 it('renders the static chatbot assistant UI', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer;
+  mockedUseAuth.mockReturnValue({ token: null } as ReturnType<typeof useAuth>);
 
   await ReactTestRenderer.act(() => {
-    renderer = ReactTestRenderer.create(<ChatbotScreen />);
+    renderer = ReactTestRenderer.create(
+      <NavigationContainer>
+        <ChatbotScreen />
+      </NavigationContainer>,
+    );
   });
 
-  expect(renderer!.root.findByProps({ children: 'Trợ lý chi tiêu' })).toBeTruthy();
-  expect(renderer!.root.findByProps({ children: 'Gợi ý nhanh' })).toBeTruthy();
-  expect(renderer!.root.findByProps({ placeholder: 'Nhập câu hỏi về chi tiêu...' })).toBeTruthy();
+  expect(
+    renderer!.root.findByProps({ children: 'Trợ lý tài chính' }),
+  ).toBeTruthy();
+  expect(renderer!.root.findByProps({ children: 'Hỏi nhanh' })).toBeTruthy();
+  await ReactTestRenderer.act(() => {
+    renderer!.root
+      .findByProps({ accessibilityLabel: 'Kế hoạch 4 tháng' })
+      .props.onPress();
+  });
+  expect(
+    renderer!.root.findByProps({ accessibilityLabel: 'Kế hoạch 4 tháng' }).props
+      .accessibilityState.selected,
+  ).toBe(true);
+  expect(
+    renderer!.root.findByProps({ accessibilityLabel: 'Kế hoạch 3 tháng' }).props
+      .accessibilityState.selected,
+  ).toBe(false);
+  expect(
+    renderer!.root.findByProps({ placeholder: 'Hỏi về chi tiêu của bạn...' }),
+  ).toBeTruthy();
 });
 
 it('loads notifications and opens notification settings', async () => {
@@ -98,14 +142,21 @@ it('loads notifications and opens notification settings', async () => {
 
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <NotificationsScreen navigation={navigation as never} route={{} as never} />,
+      <NotificationsScreen
+        navigation={navigation as never}
+        route={{} as never}
+      />,
     );
   });
 
   expect(mockedNotificationsService.getAll).toHaveBeenCalledWith('token-123');
-  expect(renderer!.root.findByProps({ children: 'Budget warning' })).toBeTruthy();
+  expect(
+    renderer!.root.findByProps({ children: 'Budget warning' }),
+  ).toBeTruthy();
 
-  const settingsButton = renderer!.root.findByProps({ accessibilityLabel: 'Cài đặt thông báo' });
+  const settingsButton = renderer!.root.findByProps({
+    accessibilityLabel: 'Cài đặt thông báo',
+  });
   await ReactTestRenderer.act(async () => {
     settingsButton.props.onPress();
   });
@@ -122,6 +173,8 @@ it('updates notification settings optimistically', async () => {
     user_id: 1,
     budget_alerts_enabled: true,
     budget_expiring_enabled: false,
+    cashflow_forecast_enabled: true,
+    savings_plan_alerts_enabled: true,
     system_notifications_enabled: true,
   });
   mockedNotificationsService.updateSettings.mockResolvedValue({
@@ -129,6 +182,8 @@ it('updates notification settings optimistically', async () => {
     user_id: 1,
     budget_alerts_enabled: false,
     budget_expiring_enabled: false,
+    cashflow_forecast_enabled: true,
+    savings_plan_alerts_enabled: true,
     system_notifications_enabled: true,
   });
 
@@ -151,9 +206,12 @@ it('updates notification settings optimistically', async () => {
     switchControl.props.onValueChange(false);
   });
 
-  expect(mockedNotificationsService.updateSettings).toHaveBeenCalledWith('token-123', {
-    budget_alerts_enabled: false,
-  });
+  expect(mockedNotificationsService.updateSettings).toHaveBeenCalledWith(
+    'token-123',
+    {
+      budget_alerts_enabled: false,
+    },
+  );
 });
 
 it('renders wallet transaction amounts in display currency', async () => {
@@ -176,7 +234,15 @@ it('renders wallet transaction amounts in display currency', async () => {
         category: { id: 3, name: 'Food', type: 'EXPENSE' },
       },
     ],
-    meta: { page: 1, limit: 100, total: 1, totalPages: 1, income: 0, expense: 10, net: -10 },
+    meta: {
+      page: 1,
+      limit: 100,
+      total: 1,
+      totalPages: 1,
+      income: 0,
+      expense: 10,
+      net: -10,
+    },
   });
 
   let renderer: ReactTestRenderer.ReactTestRenderer;
@@ -197,7 +263,9 @@ it('renders wallet transaction amounts in display currency', async () => {
   });
   expect(
     renderer!.root.findAll(
-      node => flattenTextChildren(node.props.children) === `-${formatCurrency(250000, 'VND')}`,
+      node =>
+        flattenTextChildren(node.props.children) ===
+        `-${formatCurrency(250000, 'VND')}`,
     ),
   ).toHaveLength(2);
 });

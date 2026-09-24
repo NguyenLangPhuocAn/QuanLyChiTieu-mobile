@@ -26,6 +26,8 @@ export type NotificationSettings = {
   user_id: number;
   budget_alerts_enabled: boolean | null;
   budget_expiring_enabled: boolean | null;
+  cashflow_forecast_enabled: boolean | null;
+  savings_plan_alerts_enabled: boolean | null;
   system_notifications_enabled: boolean | null;
 };
 

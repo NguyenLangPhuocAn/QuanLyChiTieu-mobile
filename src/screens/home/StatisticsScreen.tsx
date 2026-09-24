@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -47,6 +46,8 @@ import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { buildCategoryStats } from '../../utils/categoryStats';
 import { formatCurrency, formatShortDate } from '../../utils/format';
 import { filterNormalTransactions } from '../../utils/transactionPeriods';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { ActionButton, FormField } from '../../components/FormControls';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Statistics'>;
 type PeriodMode = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
@@ -742,6 +743,7 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
   const [exportingFormat, setExportingFormat] = useState<'excel' | 'pdf' | null>(null);
   const [isEmailModalVisible, setIsEmailModalVisible] = useState(false);
   const [reportEmail, setReportEmail] = useState(user?.email ?? '');
+  const { run: runReportAction, busy: reportBusy } = useSingleFlight();
   const hasFullStats = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
   const visibleTabs: StatisticsTab[] = hasFullStats ? ['overview', 'trend'] : ['overview'];
   const shouldShowPeriodFilter = hasFullStats && activeTab === 'trend';
@@ -782,8 +784,11 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
   const canUseApiStats =
     hasFullStats && walletId === null && apiStatsPeriod !== null && isCurrentApiStatsPeriod;
   const reportRequest = useMemo(
-    () => getReportRequest(period, periodRange),
-    [period, periodRange],
+    () => {
+      const request = getReportRequest(period, periodRange);
+      return { ...request, range: { ...request.range, ...(walletId === null ? {} : { walletId }) } };
+    },
+    [period, periodRange, walletId],
   );
 
   useEffect(() => {
@@ -794,14 +799,17 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
 
     setIsLoadingStats(true);
     setStatsError('');
+    let active = true;
     statisticsService
       .get(token, apiStatsPeriod)
-      .then(setApiStats)
+      .then(result => { if (active) setApiStats(result); })
       .catch(error => {
+        if (!active) return;
         setApiStats(null);
         setStatsError(getUserFriendlyErrorMessage(error, 'Không thể tải thống kê.'));
       })
-      .finally(() => setIsLoadingStats(false));
+      .finally(() => { if (active) setIsLoadingStats(false); });
+    return () => { active = false; };
   }, [apiStatsPeriod, canUseApiStats, token]);
 
   useEffect(() => {
@@ -977,7 +985,10 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
     );
   };
 
-  const handleExport = async (format: 'excel' | 'pdf') => {
+  const closeEmailModal = () => {
+    if (!reportBusy) setIsEmailModalVisible(false);
+  };
+  const handleExport = (format: 'excel' | 'pdf', download = false) => runReportAction(async () => {
     if (!token) {
       Alert.alert('Phiên đăng nhập', 'Vui lòng đăng nhập lại để xuất báo cáo.');
       return;
@@ -988,7 +999,7 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
       return;
     }
 
-    if (format === 'excel') {
+    if (format === 'excel' && !download) {
       setReportEmail(user?.email ?? reportEmail);
       setIsEmailModalVisible(true);
       return;
@@ -1012,9 +1023,9 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
     } finally {
       setExportingFormat(null);
     }
-  };
+  });
 
-  const handleSendExcelReport = async () => {
+  const handleSendExcelReport = () => runReportAction(async () => {
     if (!token) {
       Alert.alert('Phiên đăng nhập', 'Vui lòng đăng nhập lại để gửi báo cáo.');
       return;
@@ -1022,8 +1033,8 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
 
     const email = reportEmail.trim();
 
-    if (!email) {
-      Alert.alert('Thiếu email', 'Vui lòng nhập email nhận báo cáo.');
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert('Email chưa hợp lệ', 'Vui lòng nhập một địa chỉ email nhận báo cáo.');
       return;
     }
 
@@ -1035,14 +1046,18 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
         email,
         reportRequest.range,
       );
+      if (response.mail?.devOnly || (!response.mail?.accepted && !response.mail?.delivered)) {
+        Alert.alert('Chưa gửi báo cáo', 'Máy chủ chưa xác nhận gửi email. Bạn có thể tải Excel về máy.');
+        return;
+      }
       setIsEmailModalVisible(false);
-      Alert.alert('Đã gửi báo cáo', getUserFriendlyErrorMessage(response.message, response.message));
+      Alert.alert('Đã tiếp nhận yêu cầu gửi', response.message);
     } catch (error) {
       Alert.alert('Không thể gửi báo cáo', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
     } finally {
       setExportingFormat(null);
     }
-  };
+  });
 
   return (
     <View style={styles.screen}>
@@ -1800,10 +1815,10 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
             </Text>
           </View>
           <View style={styles.reportActions}>
-            <TouchableOpacity style={styles.reportButton} onPress={() => handleExport('excel')}>
+            <TouchableOpacity accessibilityLabel="Mở gửi báo cáo Excel" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('excel')}>
               <FileSpreadsheet size={16} color={hasFullStats ? Colors.primary : '#9A7255'} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reportButton} onPress={() => handleExport('pdf')}>
+            <TouchableOpacity accessibilityLabel="Tải báo cáo PDF" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('pdf')}>
               {exportingFormat === 'pdf' ? (
                 <ActivityIndicator color={Colors.primary} />
               ) : (
@@ -1815,18 +1830,20 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
         ) : null}
       </ScrollView>
 
-      <Modal transparent visible={isEmailModalVisible} animationType="slide" onRequestClose={() => setIsEmailModalVisible(false)}>
+      <Modal transparent visible={isEmailModalVisible} animationType="slide" onRequestClose={closeEmailModal}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalBackdrop}>
-          <Pressable style={styles.backdropPressable} onPress={() => setIsEmailModalVisible(false)} />
+          <Pressable style={styles.backdropPressable} onPress={closeEmailModal} />
           <View style={styles.emailModalCard}>
             <View style={styles.modalHandle} />
+            <ScrollView keyboardShouldPersistTaps="handled">
             <Text style={styles.emailModalTitle}>Gửi báo cáo Excel</Text>
-            <Text style={styles.emailModalText}>Nhập email bạn muốn nhận file báo cáo chi tiêu.</Text>
-            <Text style={styles.emailLabel}>Email nhận báo cáo</Text>
-            <TextInput
-              style={styles.emailInput}
+            <Text style={styles.emailModalText}>Kỳ: {reportRequest.range.dateFrom ?? 'Từ đầu'} → {reportRequest.range.dateTo ?? 'Hôm nay'}. {walletId === null ? 'Tất cả ví' : 'Chỉ ví đang chọn'}.</Text>
+            <Text style={styles.emailModalText}>Excel gồm tổng quan, giao dịch, chi theo danh mục, thu chi theo tháng và số dư ví hiện tại. Kiểm tra địa chỉ nhận trước khi gửi dữ liệu chi tiêu.</Text>
+            <FormField label="Email nhận báo cáo"
+              accessibilityLabel="Email nhận báo cáo"
+              editable={!reportBusy}
               value={reportEmail}
               onChangeText={setReportEmail}
               placeholder="ten@email.com"
@@ -1835,23 +1852,13 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
               autoCapitalize="none"
             />
             <View style={styles.emailActions}>
-              <TouchableOpacity
-                style={styles.secondaryModalButton}
-                onPress={() => setIsEmailModalVisible(false)}
-                disabled={exportingFormat === 'excel'}>
-                <Text style={styles.secondaryModalText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.primaryModalButton}
-                onPress={handleSendExcelReport}
-                disabled={exportingFormat === 'excel'}>
-                {exportingFormat === 'excel' ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.primaryModalText}>Gửi Excel</Text>
-                )}
-              </TouchableOpacity>
+              <View style={styles.emailAction}><ActionButton label="Hủy" secondary onPress={closeEmailModal} disabled={reportBusy} /></View>
+              <View style={styles.emailAction}><ActionButton label="Gửi Excel" accessibilityLabel="Gửi báo cáo Excel" onPress={handleSendExcelReport} loading={reportBusy} disabled={reportBusy} /></View>
             </View>
+            <TouchableOpacity accessibilityLabel="Tải báo cáo Excel về máy" disabled={reportBusy} onPress={() => handleExport('excel', true)}>
+              <Text style={styles.emailModalText}>Tải Excel về máy</Text>
+            </TouchableOpacity>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -2242,6 +2249,7 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(42, 24, 12, 0.36)', justifyContent: 'flex-end' },
   backdropPressable: { flex: 1 },
   emailModalCard: {
+    maxHeight: '85%',
     backgroundColor: '#FFF9F3',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
@@ -2265,6 +2273,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   emailActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  emailAction: { flex: 1 },
   secondaryModalButton: {
     flex: 1,
     borderRadius: 16,

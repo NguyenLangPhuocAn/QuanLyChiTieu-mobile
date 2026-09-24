@@ -34,8 +34,11 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency, formatDisplayDate, formatShortDate } from '../../utils/format';
 import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
+import HashtagChip from '../../components/HashtagChip';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
-import { API_BASE_URLS } from '../../services/api';
+import { resolveReceiptUrl } from '../../utils/mediaUrls';
+import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type HistoryScreenProps = {
   wallets?: Wallet[];
@@ -44,17 +47,6 @@ type HistoryScreenProps = {
   onRefresh?: () => Promise<void> | void;
 };
 
-const formatAmountInput = (value: string) => {
-  const numericValue = value.replace(/\D/g, '');
-
-  if (!numericValue) {
-    return '';
-  }
-
-  return Number(numericValue).toLocaleString('en-US');
-};
-
-const getPlainAmount = (value: string) => value.replace(/,/g, '');
 const today = new Date();
 const toDateKey = (date: Date) =>
   `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
@@ -117,18 +109,6 @@ const getHistoryDateRange = (
   return {};
 };
 
-const resolveReceiptUrl = (receipt?: string | null) => {
-  if (!receipt) {
-    return null;
-  }
-
-  if (receipt.startsWith('http://') || receipt.startsWith('https://')) {
-    return receipt;
-  }
-
-  return `${API_BASE_URLS[0]}/uploads/receipts/${receipt}`;
-};
-
 const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: number) => {
   if (!file) {
     return null;
@@ -156,7 +136,11 @@ const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: n
   };
 };
 
-const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRefresh }: HistoryScreenProps) => {
+const EMPTY_WALLETS: Wallet[] = [];
+const EMPTY_CATEGORIES: Category[] = [];
+
+const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES, refreshing = false, onRefresh }: HistoryScreenProps) => {
+  const { run: runTransactionMutation } = useSingleFlight();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
   const { preferredCurrency, selectedTransactionCategory, setSelectedTransactionCategory, setTags, tags } = useFinance();
@@ -169,6 +153,8 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     net: 0,
   });
   const [isPageLoading, setIsPageLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadRevision = useRef(0);
   const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
@@ -236,14 +222,22 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
   ]);
 
   const fetchTransactionPage = useCallback(async () => {
+    const revision = ++loadRevision.current;
     if (!token) {
       return;
     }
 
     setIsPageLoading(true);
+    setLoadError(null);
 
     try {
       const response = await transactionsService.getPage(token, transactionQuery);
+      if (revision !== loadRevision.current) return;
+      const lastPage = Math.max(1, response.meta.totalPages);
+      if (transactionQuery.page && transactionQuery.page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       setServerTransactions(mapApiTransactions(response.data, wallets));
       setServerMeta({
         total: response.meta.total,
@@ -253,14 +247,17 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
         net: response.meta.net ?? 0,
       });
     } catch (error) {
-      Alert.alert('Không tải được lịch sử', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      if (revision === loadRevision.current) {
+        setLoadError(getUserFriendlyErrorMessage(error, 'Không tải được lịch sử. Vui lòng thử lại.'));
+      }
     } finally {
-      setIsPageLoading(false);
+      if (revision === loadRevision.current) setIsPageLoading(false);
     }
   }, [token, transactionQuery, wallets]);
 
   useEffect(() => {
     fetchTransactionPage();
+    return () => { loadRevision.current += 1; };
   }, [fetchTransactionPage]);
 
   const handleRefresh = useCallback(async () => {
@@ -399,7 +396,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     }
 
     setSelectedTransaction(item);
-    setEditAmount(formatAmountInput(String(item.amount)));
+    setEditAmount(String(item.amount));
     setEditNote(item.note === 'Không có ghi chú' ? '' : item.note);
     setEditTags((item.tags ?? []).map(tag => `#${tag}`).join(' '));
     setEditDate(item.date.slice(0, 10));
@@ -411,7 +408,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     setShouldRemoveReceipt(false);
   };
 
-  const closeEditModal = () => {
+  const resetEditForm = () => {
     setSelectedTransaction(null);
     setEditAmount('');
     setEditNote('');
@@ -422,6 +419,10 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     setEditType('EXPENSE');
     setEditReceiptFile(null);
     setShouldRemoveReceipt(false);
+  };
+
+  const closeEditModal = () => {
+    if (!isSaving) resetEditForm();
   };
 
   const toggleEditTag = (tag: string) => {
@@ -513,22 +514,21 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     setShouldRemoveReceipt(false);
   };
 
-  const handleSaveTransaction = async () => {
+  const handleSaveTransaction = () => runTransactionMutation(async () => {
     if (!token || !selectedTransaction) {
       Alert.alert('Thông báo', 'Vui lòng đăng nhập lại để cập nhật giao dịch.');
       return;
     }
 
-    const plainAmount = getPlainAmount(editAmount);
-    const numericAmount = Number(plainAmount);
+    const plainAmount = parsePositiveMoneyInput(editAmount);
 
-    if (!editWalletId || !editCategoryId || !plainAmount) {
+    if (!editWalletId || !editCategoryId) {
       Alert.alert('Thiếu thông tin', 'Vui lòng chọn ví, danh mục và nhập số tiền.');
       return;
     }
 
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0.');
+    if (!plainAmount) {
+      Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân; không dùng dấu phân cách hàng nghìn.');
       return;
     }
 
@@ -541,35 +541,44 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
     }
 
     setIsSaving(true);
+    let detailsSaved = false;
+    let receiptSaved = !editReceiptFile;
 
     try {
+      const uploadFile = buildReceiptUploadFile(editReceiptFile, transactionId);
       // Backend lưu thu/chi theo type INCOME/EXPENSE, nên type luôn đi theo danh mục đang chọn.
       await transactionsService.update(token, transactionId, {
         wallet_id: editWalletId,
         category_id: editCategoryId,
         amount: plainAmount,
         type: category.type,
-        note: editNote.trim() || undefined,
+        note: editNote.trim(),
         receipt_image: shouldRemoveReceipt && !editReceiptFile ? null : undefined,
         transaction_date: editDate,
         tags: parseTagsInput(editTags),
       });
-      if (editReceiptFile) {
-        const uploadFile = buildReceiptUploadFile(editReceiptFile, transactionId);
-
-        if (uploadFile) {
-          await transactionsService.uploadReceipt(token, transactionId, uploadFile);
-        }
+      detailsSaved = true;
+      if (uploadFile) {
+        await transactionsService.uploadReceipt(token, transactionId, uploadFile);
+        receiptSaved = true;
       }
 
       await Promise.all([fetchTransactionPage(), onRefresh?.()]);
-      closeEditModal();
+      resetEditForm();
     } catch (error) {
-      Alert.alert('Không thể cập nhật', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      const message = getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.');
+      Alert.alert(
+        detailsSaved ? 'Giao dịch đã được lưu' : 'Không thể cập nhật',
+        detailsSaved
+          ? receiptSaved
+            ? `Chưa làm mới được dữ liệu. ${message}`
+            : `Thông tin thu chi đã lưu, nhưng ảnh hóa đơn chưa được xác nhận. ${message}`
+          : message,
+      );
     } finally {
       setIsSaving(false);
     }
-  };
+  });
 
   const handleDeleteTransaction = () => {
     if (!token || !selectedTransaction) {
@@ -588,19 +597,19 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
       {
         text: 'Xóa',
         style: 'destructive',
-        onPress: async () => {
+        onPress: () => runTransactionMutation(async () => {
           setIsSaving(true);
 
           try {
             await transactionsService.remove(token, transactionId);
             await Promise.all([fetchTransactionPage(), onRefresh?.()]);
-            closeEditModal();
+            resetEditForm();
           } catch (error) {
             Alert.alert('Không thể xóa', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
           } finally {
             setIsSaving(false);
           }
-        },
+        }),
       },
     ]);
   };
@@ -630,7 +639,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
           </View>
         </View>
 
-        <View style={styles.summaryRow}>
+        {!loadError ? <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Tổng thu</Text>
             <Text style={styles.incomeSummary}>{formatCurrency(summary.income, preferredCurrency)}</Text>
@@ -639,9 +648,17 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             <Text style={styles.summaryLabel}>Tổng chi</Text>
             <Text style={styles.expenseSummary}>{formatCurrency(summary.expense, preferredCurrency)}</Text>
           </View>
-        </View>
+        </View> : null}
 
-        {isPageLoading && paginatedTransactions.length === 0 ? (
+        {loadError ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Chưa tải được lịch sử</Text>
+            <Text style={styles.emptyText}>{loadError}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại lịch sử" style={styles.retryButton} onPress={fetchTransactionPage}>
+              <Text style={styles.selectorHint}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : isPageLoading && paginatedTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
             <ActivityIndicator color={Colors.primary} />
             <Text style={styles.emptyText}>Đang tải lịch sử giao dịch...</Text>
@@ -662,7 +679,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
                 <Text style={styles.dayCount}>{items.length} giao dịch</Text>
               </View>
               {items.map(item => (
-                <TouchableOpacity key={item.id} style={styles.card} activeOpacity={0.86} onPress={() => openEditModal(item)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Sửa giao dịch ${item.id}`} key={item.id} style={styles.card} activeOpacity={0.86} onPress={() => openEditModal(item)}>
                   <View style={styles.iconBox}>
                     <CategoryIcon icon={item.categoryIcon} size={18} />
                   </View>
@@ -672,7 +689,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
                     {(item.tags ?? []).length > 0 ? (
                       <View style={styles.tagRow}>
                         {(item.tags ?? []).slice(0, 3).map(tag => (
-                          <Text key={tag} style={styles.tagText}>#{tag}</Text>
+                          <HashtagChip key={tag} name={tag} />
                         ))}
                       </View>
                     ) : null}
@@ -689,7 +706,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             </View>
           ))
         )}
-        {serverMeta.total > PAGE_SIZE ? (
+        {!loadError && serverMeta.total > PAGE_SIZE ? (
           <View style={styles.paginationRow}>
             <TouchableOpacity
               style={[styles.pageButton, page === 1 && styles.pageButtonDisabled]}
@@ -727,9 +744,11 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             <Text style={styles.fieldLabel}>Số tiền</Text>
             <TextInput
               value={editAmount}
-              onChangeText={value => setEditAmount(formatAmountInput(value))}
+              accessibilityLabel="Số tiền giao dịch đang sửa"
+              editable={!isSaving}
+              onChangeText={setEditAmount}
               placeholder="50,000"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
               style={styles.input}
             />
 
@@ -806,6 +825,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
             <Text style={styles.fieldLabel}>Ghi chú</Text>
             <TextInput
               value={editNote}
+              accessibilityLabel="Ghi chú giao dịch đang sửa"
               onChangeText={setEditNote}
               placeholder="Ví dụ: ăn trưa, đổ xăng..."
               style={[styles.input, styles.noteInput]}
@@ -827,7 +847,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
               autoCapitalize="none"
             />
             {recentHashtags.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagWrap}>
+              <ScrollView horizontal style={styles.tagScroll} keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagWrap}>
                 {recentHashtags.map(tag => {
                   const normalizedTag = normalizeTagName(tag);
                   const isSelected = currentEditTags.includes(normalizedTag);
@@ -837,7 +857,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
                       key={normalizedTag}
                       style={[styles.suggestTagChip, isSelected && styles.suggestTagChipActive]}
                       onPress={() => toggleEditTag(normalizedTag)}>
-                      <Text style={[styles.suggestTagText, isSelected && styles.suggestTagTextActive]}>
+                      <Text numberOfLines={1} style={[styles.suggestTagText, isSelected && styles.suggestTagTextActive]}>
                         #{normalizedTag}
                       </Text>
                     </TouchableOpacity>
@@ -879,7 +899,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
                 </View>
               </View>
             ) : (
-              <TouchableOpacity style={styles.receiptEmpty} onPress={handlePickEditReceipt}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Chọn ảnh hóa đơn đang sửa" style={styles.receiptEmpty} onPress={handlePickEditReceipt}>
                 <ImageIcon size={22} color="#A06B42" />
                 <Text style={styles.receiptEmptyText}>Giao dịch này chưa có ảnh hóa đơn.</Text>
                 <Text style={styles.receiptPickerText}>Chọn ảnh</Text>
@@ -890,7 +910,7 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
               <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteTransaction} disabled={isSaving}>
                 <Text style={styles.deleteButtonText}>Xóa</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleSaveTransaction} disabled={isSaving}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Lưu giao dịch đang sửa" style={styles.saveButton} onPress={handleSaveTransaction} disabled={isSaving}>
                 {isSaving ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveButtonText}>Lưu</Text>}
               </TouchableOpacity>
             </View>
@@ -931,6 +951,12 @@ const HistoryScreen = ({ wallets = [], categories = [], refreshing = false, onRe
 };
 
 const styles = StyleSheet.create({
+  retryButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFF3E8',
@@ -1209,17 +1235,28 @@ const styles = StyleSheet.create({
   },
   tagRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 8,
   },
-  tagText: {
-    color: '#A94F18',
+  tagBadge: {
+    maxWidth: '100%',
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+    justifyContent: 'center',
     backgroundColor: '#FFE3C8',
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
+    overflow: 'hidden',
+  },
+  tagText: {
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    color: '#A94F18',
     fontSize: 11,
+    lineHeight: 16,
     fontWeight: '800',
   },
   amountColumn: {
@@ -1445,11 +1482,23 @@ const styles = StyleSheet.create({
   optionalText: { color: '#8B6548', fontSize: 12, fontWeight: '800' },
   tagWrap: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 10,
     paddingRight: 18,
+    paddingVertical: 2,
+  },
+  tagScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    marginTop: 10,
   },
   suggestTagChip: {
+    flexShrink: 0,
+    alignItems: 'center',
+    overflow: 'hidden',
+    alignSelf: 'center',
+    justifyContent: 'center',
+    minHeight: 36,
     borderRadius: 999,
     backgroundColor: '#FFF0DF',
     paddingHorizontal: 10,
@@ -1458,7 +1507,7 @@ const styles = StyleSheet.create({
   suggestTagChipActive: {
     backgroundColor: Colors.primary,
   },
-  suggestTagText: { color: '#A94F18', fontSize: 12, fontWeight: '900' },
+  suggestTagText: { color: '#A94F18', fontSize: 12, lineHeight: 18, includeFontPadding: false, textAlignVertical: 'center', fontWeight: '900' },
   suggestTagTextActive: { color: Colors.white },
   walletCurrencyHint: {
     color: '#8A623F',

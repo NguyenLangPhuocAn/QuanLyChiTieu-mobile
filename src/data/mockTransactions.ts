@@ -1,5 +1,8 @@
 export type TransactionType = 'income' | 'expense';
-export type TransactionCashFlowType = 'normal' | 'loan_debt';
+export type TransactionCashFlowType =
+  | 'normal'
+  | 'loan_debt'
+  | 'saving_transfer';
 
 export type TransactionItem = {
   id: string;
@@ -8,6 +11,7 @@ export type TransactionItem = {
   categoryIcon?: string | null;
   note: string;
   receiptImage?: string | null;
+  receiptItems?: Array<{ name: string; amount: number }> | null;
   tags?: string[];
   category: string;
   wallet: string;

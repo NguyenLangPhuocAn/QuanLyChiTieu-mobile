@@ -23,18 +23,34 @@ type FinanceContextValue = {
   setSelectedBudgetCategory: (category: Category | null) => void;
 };
 
-const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
+const FinanceContext = createContext<FinanceContextValue | undefined>(
+  undefined,
+);
 
-export const FinanceProvider = ({ children }: React.PropsWithChildren) => {
-  const [preferredCurrency, setPreferredCurrency] = useState<PreferredCurrency>('VND');
+type FinanceProviderProps = React.PropsWithChildren<{
+  ownerKey?: number | string;
+}>;
+
+export const FinanceProvider = ({
+  children,
+  ownerKey = 'anonymous',
+}: FinanceProviderProps) => (
+  <FinanceSession key={ownerKey}>{children}</FinanceSession>
+);
+
+const FinanceSession = ({ children }: React.PropsWithChildren) => {
+  const [preferredCurrency, setPreferredCurrency] =
+    useState<PreferredCurrency>('VND');
   // Danh sách giao dịch được nạp từ API tại MainScreen và chia sẻ cho các tab con.
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
   // Danh mục được dùng chung cho màn chọn danh mục và form thêm giao dịch.
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<TagItem[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [selectedTransactionCategory, setSelectedTransactionCategory] = useState<Category | null>(null);
-  const [selectedBudgetCategory, setSelectedBudgetCategory] = useState<Category | null>(null);
+  const [selectedTransactionCategory, setSelectedTransactionCategory] =
+    useState<Category | null>(null);
+  const [selectedBudgetCategory, setSelectedBudgetCategory] =
+    useState<Category | null>(null);
 
   const value = useMemo(
     () => ({
@@ -53,10 +69,20 @@ export const FinanceProvider = ({ children }: React.PropsWithChildren) => {
       selectedBudgetCategory,
       setSelectedBudgetCategory,
     }),
-    [budgets, categories, preferredCurrency, selectedBudgetCategory, selectedTransactionCategory, tags, transactions],
+    [
+      budgets,
+      categories,
+      preferredCurrency,
+      selectedBudgetCategory,
+      selectedTransactionCategory,
+      tags,
+      transactions,
+    ],
   );
 
-  return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
+  return (
+    <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>
+  );
 };
 
 export const useFinance = () => {

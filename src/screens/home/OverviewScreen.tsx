@@ -32,6 +32,7 @@ import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { Budget } from '../../types/budget';
+import type { SavingsGoal } from '../../types/savings';
 import type { Wallet } from '../../types/wallet';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
@@ -50,6 +51,7 @@ import {
 
 type Props = {
   wallets: Wallet[];
+  savingsGoals: SavingsGoal[];
   refreshing: boolean;
   onRefresh: () => void;
   onAddTransaction: () => void;
@@ -163,7 +165,10 @@ export const buildOverviewBudgetRows = (
       const startDate = new Date(budget.start_date);
       const endDate = new Date(budget.end_date);
 
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(endDate.getTime())
+      ) {
         return true;
       }
 
@@ -222,8 +227,35 @@ export const buildOverviewBudgetRows = (
     })
     .slice(0, 3);
 
+export const buildOverviewSavingsRows = (
+  goals: SavingsGoal[],
+  limit = 3,
+) =>
+  goals
+    .filter(goal => goal.status === 'ACTIVE')
+    .sort((left, right) => {
+      const leftDeadline = left.target_date
+        ? new Date(left.target_date).getTime()
+        : Number.POSITIVE_INFINITY;
+      const rightDeadline = right.target_date
+        ? new Date(right.target_date).getTime()
+        : Number.POSITIVE_INFINITY;
+
+      if (leftDeadline !== rightDeadline) return leftDeadline - rightDeadline;
+      if (right.progress_percent !== left.progress_percent) {
+        return right.progress_percent - left.progress_percent;
+      }
+      return left.id - right.id;
+    })
+    .slice(0, limit)
+    .map(goal => ({
+      ...goal,
+      display_progress: Math.min(100, Math.max(0, goal.progress_percent)),
+    }));
+
 const OverviewScreen = ({
   wallets,
+  savingsGoals,
   refreshing,
   onRefresh,
   onAddTransaction: _onAddTransaction,
@@ -284,10 +316,14 @@ const OverviewScreen = ({
       ),
     [anchorDate, periodBounds.start, transactions],
   );
+  const regularWallets = useMemo(
+    () => wallets.filter(wallet => wallet.wallet_type !== 'SAVINGS'),
+    [wallets],
+  );
   const walletBalances = useMemo(
     () =>
       new Map(
-        wallets.map(wallet => [
+        regularWallets.map(wallet => [
           wallet.id,
           {
             display: estimateWalletBalanceAtDate(
@@ -305,15 +341,15 @@ const OverviewScreen = ({
           },
         ]),
       ),
-    [periodBounds.end, transactions, wallets],
+    [periodBounds.end, regularWallets, transactions],
   );
   const totalBalance = useMemo(
     () =>
-      wallets.reduce(
+      regularWallets.reduce(
         (sum, wallet) => sum + (walletBalances.get(wallet.id)?.display ?? 0),
         0,
       ),
-    [walletBalances, wallets],
+    [regularWallets, walletBalances],
   );
   const income = getTotalByType(monthTransactions, 'income');
   const expense = getTotalByType(monthTransactions, 'expense');
@@ -327,7 +363,7 @@ const OverviewScreen = ({
   const isViewingCurrentPeriod =
     anchorDate >= periodBounds.start && anchorDate <= periodBounds.end;
   const visibleWallets = selectWalletsForPeriodPreview(
-    wallets,
+    regularWallets,
     walletBalances,
     isViewingCurrentPeriod,
   );
@@ -381,6 +417,7 @@ const OverviewScreen = ({
     transactions,
     periodBounds,
   );
+  const savingsRows = buildOverviewSavingsRows(savingsGoals);
 
   const moveMonth = (amount: number) => {
     setSelectedMonth(
@@ -461,8 +498,8 @@ const OverviewScreen = ({
             <View>
               <Text style={styles.walletCardTitle}>Ví của tôi</Text>
               <Text style={styles.walletCount}>
-                {wallets.length > 0
-                  ? `${wallets.length} ví đang sử dụng`
+                {regularWallets.length > 0
+                  ? `${regularWallets.length} ví đang sử dụng`
                   : 'Chưa có ví'}
               </Text>
             </View>
@@ -584,6 +621,11 @@ const OverviewScreen = ({
               icon: ChartColumnBig,
               onPress: () => navigation.navigate('Statistics', { wallets }),
             },
+            {
+              label: 'Kế hoạch',
+              icon: TrendingUp,
+              onPress: () => navigation.navigate('FinancialPlan'),
+            },
           ].map(item => {
             const Icon = item.icon;
             return (
@@ -664,6 +706,96 @@ const OverviewScreen = ({
                   {formatCurrency(row.budgetLimit, row.currency)}
                 </Text>
               </View>
+            ))
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Tiến độ tiết kiệm</Text>
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => navigation.navigate('SavingsGoals')}
+            >
+              <Text style={styles.linkText}>Xem tất cả</Text>
+              <ChevronRight size={16} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {savingsRows.length === 0 ? (
+            <TouchableOpacity
+              style={styles.emptySavings}
+              activeOpacity={0.82}
+              onPress={() => navigation.navigate('SavingsGoals')}
+            >
+              <View style={styles.emptySavingsIcon}>
+                <PiggyBank size={20} color={Colors.primary} />
+              </View>
+              <View style={styles.emptySavingsCopy}>
+                <Text style={styles.emptySavingsTitle}>
+                  Chưa có mục tiêu tiết kiệm
+                </Text>
+                <Text style={styles.emptySavingsText}>
+                  Tạo mục tiêu đầu tiên để theo dõi tiến độ tại đây.
+                </Text>
+              </View>
+              <ChevronRight size={17} color={Colors.primary} />
+            </TouchableOpacity>
+          ) : (
+            savingsRows.map(goal => (
+              <TouchableOpacity
+                key={goal.id}
+                style={styles.savingsRow}
+                activeOpacity={0.84}
+                onPress={() => navigation.navigate('SavingsGoals')}
+              >
+                <View style={styles.savingsTop}>
+                  <View style={styles.savingsIdentity}>
+                    <View style={styles.savingsIcon}>
+                      <PiggyBank size={17} color={Colors.primary} />
+                    </View>
+                    <View style={styles.savingsCopy}>
+                      <Text style={styles.savingsName} numberOfLines={1}>
+                        {goal.name}
+                      </Text>
+                      <Text style={styles.savingsWallet} numberOfLines={1}>
+                        {goal.wallet_name || 'Ví tiết kiệm'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.savingsPercent}>
+                    {Math.round(goal.display_progress)}%
+                  </Text>
+                </View>
+                <View style={styles.savingsProgressTrack}>
+                  <View
+                    style={[
+                      styles.savingsProgressFill,
+                      { width: `${goal.display_progress}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.savingsAmount}>
+                  {formatCurrency(goal.current_amount, goal.wallet_currency)} /{' '}
+                  {formatCurrency(goal.target_amount, goal.wallet_currency)}
+                </Text>
+                <View style={styles.savingsDetails}>
+                  <Text style={styles.savingsDetailText}>
+                    {goal.target_date
+                      ? `Hạn ${formatDisplayDate(goal.target_date)}`
+                      : 'Chưa đặt thời hạn'}
+                  </Text>
+                  {goal.suggested_monthly > 0 ? (
+                    <Text style={styles.savingsDetailText}>
+                      Nên góp{' '}
+                      {formatCurrency(
+                        goal.suggested_monthly,
+                        goal.wallet_currency,
+                      )}
+                      /tháng
+                    </Text>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -1328,6 +1460,112 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 7,
+  },
+  savingsRow: {
+    marginTop: 10,
+    borderRadius: 18,
+    backgroundColor: '#FFF8F1',
+    borderWidth: 1,
+    borderColor: '#F3D4B7',
+    padding: 12,
+  },
+  savingsTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  savingsIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  savingsIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savingsCopy: { flex: 1, minWidth: 0 },
+  savingsName: { color: '#4A2B1A', fontSize: 14, fontWeight: '900' },
+  savingsWallet: {
+    color: '#9A765B',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  savingsPercent: {
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: '#E9F8EF',
+    color: '#188F5A',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  savingsProgressTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: '#DDF3E7',
+    overflow: 'hidden',
+    marginTop: 10,
+  },
+  savingsProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#1C9B61',
+  },
+  savingsAmount: {
+    color: '#5E3C28',
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 7,
+  },
+  savingsDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 6,
+    marginTop: 5,
+  },
+  savingsDetailText: {
+    color: '#8B6548',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptySavings: {
+    minHeight: 76,
+    borderRadius: 18,
+    backgroundColor: '#FFF8F1',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#EBC49F',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  emptySavingsIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptySavingsCopy: { flex: 1 },
+  emptySavingsTitle: { color: '#4A2B1A', fontSize: 13, fontWeight: '900' },
+  emptySavingsText: {
+    color: '#8B6548',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
+    marginTop: 3,
   },
   linkButton: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   linkText: { color: Colors.primary, fontWeight: '900' },

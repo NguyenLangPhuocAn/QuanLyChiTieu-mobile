@@ -1,17 +1,18 @@
 import { API_BASE_URLS } from '../services/api';
 
-export const resolveCategoryIconUrl = (icon?: string | null) => {
-  if (!icon) {
-    return null;
-  }
-
-  if (icon.startsWith('http://') || icon.startsWith('https://')) {
-    return icon;
-  }
-
-  if (icon.startsWith('categories/icons/')) {
-    return `${API_BASE_URLS[0]}/public/${icon}`;
-  }
-
-  return `${API_BASE_URLS[0]}/uploads/categories/${icon}`;
+export const resolveCategoryIconUrls = (icon?: string | null): string[] => {
+  const value = icon?.trim();
+  if (!value) return [];
+  if (/^https?:\/\//i.test(value)) return [value];
+  const path = value.replace(/^\/+/, '');
+  const resource =
+    path.startsWith('public/') || path.startsWith('uploads/')
+      ? path
+      : path.startsWith('categories/icons/')
+      ? `public/${path}`
+      : `uploads/categories/${path}`;
+  return [...new Set(API_BASE_URLS.map(base => `${base}/${resource}`))];
 };
+
+export const resolveCategoryIconUrl = (icon?: string | null) =>
+  resolveCategoryIconUrls(icon)[0] ?? null;

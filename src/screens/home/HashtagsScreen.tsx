@@ -11,7 +11,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Hash, Pencil, Plus, Trash2, X } from 'lucide-react-native';
@@ -24,11 +24,11 @@ import { tagsService } from '../../services/tags';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { TagItem } from '../../types/tag';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
-
-const normalizeTagInput = (value: string) => value.trim().replace(/^#+/, '').toLowerCase();
+import { normalizeTagName as normalizeTagInput } from '../../utils/hashtags';
 
 const HashtagsScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token } = useAuth();
   const { tags, setTags } = useFinance();
   const [query, setQuery] = useState('');
@@ -50,7 +50,10 @@ const HashtagsScreen = () => {
       const response = await tagsService.getAll(token);
       setTags(response);
     } catch (error) {
-      Alert.alert('Không tải được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Không tải được hashtag',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +70,7 @@ const HashtagsScreen = () => {
       return tags;
     }
 
-    return tags.filter(tag => tag.name.includes(keyword));
+    return tags.filter(tag => normalizeTagInput(tag.name).includes(keyword));
   }, [query, tags]);
 
   const openCreateModal = () => {
@@ -117,7 +120,10 @@ const HashtagsScreen = () => {
       setTags(nextTags);
       closeModal();
     } catch (error) {
-      Alert.alert('Chưa lưu được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Chưa lưu được hashtag',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -141,7 +147,10 @@ const HashtagsScreen = () => {
               const nextTags = await tagsService.remove(token, tag.id);
               setTags(nextTags);
             } catch (error) {
-              Alert.alert('Chưa xóa được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+              Alert.alert(
+                'Chưa xóa được hashtag',
+                getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+              );
             }
           },
         },
@@ -164,11 +173,18 @@ const HashtagsScreen = () => {
     setIsSaving(true);
 
     try {
-      const nextTags = await tagsService.merge(token, editingTag.id, normalized);
+      const nextTags = await tagsService.merge(
+        token,
+        editingTag.id,
+        normalized,
+      );
       setTags(nextTags);
       closeModal();
     } catch (error) {
-      Alert.alert('Chưa gộp được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Chưa gộp được hashtag',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -177,7 +193,10 @@ const HashtagsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Hashtag</Text>
@@ -203,7 +222,10 @@ const HashtagsScreen = () => {
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         {isLoading ? (
           <View style={styles.loadingCard}>
             <ActivityIndicator color={Colors.primary} />
@@ -213,11 +235,18 @@ const HashtagsScreen = () => {
             <View style={styles.emptyIcon}>
               <Hash size={28} color={Colors.primary} />
             </View>
-            <Text style={styles.emptyTitle}>Chưa có hashtag</Text>
-            <Text style={styles.emptyText}>
-              Tạo hashtag để dùng nhanh khi thêm giao dịch và lọc lịch sử.
+            <Text style={styles.emptyTitle}>
+              {query.trim() ? 'Không tìm thấy hashtag' : 'Chưa có hashtag'}
             </Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={openCreateModal}>
+            <Text style={styles.emptyText}>
+              {query.trim()
+                ? 'Thử tên khác hoặc xóa nội dung tìm kiếm.'
+                : 'Tạo hashtag để dùng nhanh khi thêm giao dịch và lọc lịch sử.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={openCreateModal}
+            >
               <Text style={styles.primaryButtonText}>Tạo hashtag</Text>
             </TouchableOpacity>
           </View>
@@ -228,13 +257,23 @@ const HashtagsScreen = () => {
                 <Hash size={18} color={Colors.primary} />
               </View>
               <View style={styles.tagInfo}>
-                <Text style={styles.tagName} numberOfLines={1}>#{tag.name}</Text>
-                <Text style={styles.tagMeta}>{tag.usage_count} giao dịch đang dùng</Text>
+                <Text style={styles.tagName} numberOfLines={1}>
+                  #{tag.name}
+                </Text>
+                <Text style={styles.tagMeta}>
+                  {tag.usage_count} giao dịch đang dùng
+                </Text>
               </View>
-              <TouchableOpacity style={styles.iconButton} onPress={() => openEditModal(tag)}>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => openEditModal(tag)}
+              >
                 <Pencil size={17} color="#8A623F" />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.iconButton, styles.deleteIconButton]} onPress={() => confirmDelete(tag)}>
+              <TouchableOpacity
+                style={[styles.iconButton, styles.deleteIconButton]}
+                onPress={() => confirmDelete(tag)}
+              >
                 <Trash2 size={17} color="#B42318" />
               </TouchableOpacity>
             </View>
@@ -245,11 +284,16 @@ const HashtagsScreen = () => {
       <Modal transparent visible={isModalVisible} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
+          style={styles.modalBackdrop}
+        >
           <Pressable style={styles.backdropPressable} onPress={closeModal} />
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{editingTag ? 'Sửa hashtag' : 'Tạo hashtag'}</Text>
-            <Text style={styles.modalHint}>Hashtag dùng để nhóm, lọc và thống kê giao dịch.</Text>
+            <Text style={styles.modalTitle}>
+              {editingTag ? 'Sửa hashtag' : 'Tạo hashtag'}
+            </Text>
+            <Text style={styles.modalHint}>
+              Hashtag dùng để nhóm, lọc và thống kê giao dịch.
+            </Text>
             <Text style={styles.inputLabel}>Tên hashtag</Text>
             <View style={styles.inputBox}>
               <Text style={styles.hashPrefix}>#</Text>
@@ -277,13 +321,20 @@ const HashtagsScreen = () => {
                     autoCapitalize="none"
                   />
                 </View>
-                <TouchableOpacity style={styles.mergeButton} onPress={handleMerge} disabled={isSaving}>
+                <TouchableOpacity
+                  style={styles.mergeButton}
+                  onPress={handleMerge}
+                  disabled={isSaving}
+                >
                   <Text style={styles.mergeButtonText}>Gộp hashtag này</Text>
                 </TouchableOpacity>
               </>
             ) : null}
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.secondaryButton} onPress={closeModal}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={closeModal}
+              >
                 <Text style={styles.secondaryButtonText}>Hủy</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
@@ -321,7 +372,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { flex: 1, textAlign: 'center', color: '#4C2A18', fontSize: 24, fontWeight: '900' },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    color: '#4C2A18',
+    fontSize: 24,
+    fontWeight: '900',
+  },
   searchBox: {
     marginHorizontal: 16,
     minHeight: 52,
@@ -359,8 +416,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyTitle: { color: '#4C2A18', fontSize: 18, fontWeight: '900', marginTop: 12 },
-  emptyText: { color: '#8A623F', textAlign: 'center', lineHeight: 20, marginTop: 6 },
+  emptyTitle: {
+    color: '#4C2A18',
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+  emptyText: {
+    color: '#8A623F',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 6,
+  },
   primaryButton: {
     marginTop: 16,
     borderRadius: 16,
@@ -417,7 +484,12 @@ const styles = StyleSheet.create({
   },
   modalTitle: { color: '#4C2A18', fontSize: 22, fontWeight: '900' },
   modalHint: { color: '#8A623F', marginTop: 8, lineHeight: 20 },
-  inputLabel: { color: '#7B4A25', fontWeight: '900', marginTop: 16, marginBottom: 8 },
+  inputLabel: {
+    color: '#7B4A25',
+    fontWeight: '900',
+    marginTop: 16,
+    marginBottom: 8,
+  },
   inputBox: {
     minHeight: 54,
     borderRadius: 16,
@@ -428,7 +500,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
   },
-  hashPrefix: { color: Colors.primary, fontSize: 18, fontWeight: '900', marginRight: 4 },
+  hashPrefix: {
+    color: Colors.primary,
+    fontSize: 18,
+    fontWeight: '900',
+    marginRight: 4,
+  },
   input: { flex: 1, color: '#4C2A18', fontWeight: '800' },
   mergeButton: {
     marginTop: 10,

@@ -27,8 +27,28 @@ describe('transaction cash-flow classification', () => {
   });
 
   it('keeps ordinary income and expense categories as normal cash flow', () => {
-    expect(getCashFlowType({ name: 'Salary', icon: 'categories/icons/income_salary.png' })).toBe('normal');
-    expect(getCashFlowType({ name: 'Food', icon: 'categories/icons/expense_food.png' })).toBe('normal');
+    expect(
+      getCashFlowType({
+        name: 'Salary',
+        icon: 'categories/icons/income_salary.png',
+      }),
+    ).toBe('normal');
+    expect(
+      getCashFlowType({
+        name: 'Food',
+        icon: 'categories/icons/expense_food.png',
+      }),
+    ).toBe('normal');
+  });
+
+  it('classifies saving allocations separately from spending', () => {
+    expect(
+      getCashFlowType({
+        name: 'Tiết kiệm',
+        icon: 'categories/icons/expense_saving.png',
+        cash_flow_group: 'SAVING_TRANSFER',
+      }),
+    ).toBe('saving_transfer');
   });
 
   it('uses category cash_flow_group before falling back to name or icon guesses', () => {
@@ -52,8 +72,19 @@ describe('transaction cash-flow classification', () => {
     const categories = [
       { id: 1, name: 'An uong', type: 'EXPENSE', cash_flow_group: 'NORMAL' },
       { id: 2, name: 'Tra no', type: 'EXPENSE', cash_flow_group: 'LOAN_DEBT' },
-      { id: 3, name: 'Thu hoi no', type: 'INCOME', cash_flow_group: 'LOAN_DEBT' },
+      {
+        id: 3,
+        name: 'Thu hoi no',
+        type: 'INCOME',
+        cash_flow_group: 'LOAN_DEBT',
+      },
       { id: 4, name: 'Luong', type: 'INCOME', cash_flow_group: 'NORMAL' },
+      {
+        id: 5,
+        name: 'Tiết kiệm',
+        type: 'EXPENSE',
+        cash_flow_group: 'SAVING_TRANSFER',
+      },
     ];
 
     expect(filterNormalCashFlowCategories(categories)).toEqual([

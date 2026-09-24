@@ -23,6 +23,10 @@ describe('mapApiTransactions', () => {
           display_amount: 250000,
           display_currency: 'VND',
           note: 'Coffee',
+          receipt_items: [
+            { name: 'Coffee', amount: 8 },
+            { name: 'Tax', amount: 1 },
+          ],
           transaction_date: '2026-05-24T00:00:00.000Z',
           type: 'EXPENSE',
           category: { id: 3, name: 'Food', type: 'EXPENSE' },
@@ -46,6 +50,10 @@ describe('mapApiTransactions', () => {
     expect(transaction.amount).toBe(10);
     expect(transaction.displayCurrency).toBe('VND');
     expect(transaction.displayAmount).toBe(250000);
+    expect(transaction.receiptItems).toEqual([
+      { name: 'Coffee', amount: 8 },
+      { name: 'Tax', amount: 1 },
+    ]);
   });
 
   it('removes account plan labels from transaction notes', () => {

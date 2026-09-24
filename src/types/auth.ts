@@ -1,5 +1,14 @@
 export type UserRole = 'BASIC' | 'PREMIUM' | 'ADMIN' | null;
 
+export type ProfileUpdatePayload = {
+  full_name?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  birthday?: string | null;
+  currency_default?: string;
+  profile_setup_completed?: boolean;
+};
+
 export type AuthUser = {
   id: number;
   email: string;
