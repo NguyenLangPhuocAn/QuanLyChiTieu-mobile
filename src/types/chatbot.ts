@@ -1,5 +1,19 @@
 export type ChatRole = 'user' | 'assistant';
 
+export type ChatTransactionDraft = {
+  type: 'EXPENSE' | 'INCOME';
+  amount: number | null;
+  currency: string | null;
+  note: string;
+  transaction_date: string | null;
+  category_name: string | null;
+  wallet_name: string | null;
+};
+
+export type ChatAction =
+  | { type: 'SCAN_RECEIPT' }
+  | { type: 'CREATE_TRANSACTION'; draft: ChatTransactionDraft };
+
 export type ChatbotCategorySpending = {
   category_id: number;
   category: string;
@@ -46,6 +60,7 @@ export type ChatbotSuggestionsResponse = {
 };
 
 export type ChatbotResponse = {
+  action?: ChatAction | null;
   message: string;
   response_id?: string | null;
   model: string;

@@ -47,6 +47,8 @@ import CategoryIcon from '../../components/CategoryIcon';
 import OverviewScreen from './OverviewScreen';
 import HistoryScreen from './HistoryScreen';
 import ChatbotScreen from './ChatbotScreen';
+import type { ChatTransactionDraft } from '../../types/chatbot';
+import { resolveChatDraftSelections } from '../../utils/chatTransactionDraft';
 import AccountScreen from './AccountScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
@@ -163,6 +165,11 @@ const MainScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [transactionAmount, setTransactionAmount] = useState('');
+  const [isChatDraft, setIsChatDraft] = useState(false);
+  const [receiptPickerRequested, setReceiptPickerRequested] = useState(false);
+  const [chatDraftCurrency, setChatDraftCurrency] = useState<string | null>(
+    null,
+  );
   const [transactionEntryType, setTransactionEntryType] =
     useState<TransactionEntryType>('EXPENSE');
   const [transactionDate, setTransactionDate] = useState(new Date());
@@ -251,10 +258,14 @@ const MainScreen = () => {
   );
 
   useEffect(() => {
-    if (spendableWallets.length > 0 && selectedWalletId === null) {
+    if (
+      !isChatDraft &&
+      spendableWallets.length > 0 &&
+      selectedWalletId === null
+    ) {
       setSelectedWalletId(spendableWallets[0].id);
     }
-  }, [spendableWallets, selectedWalletId]);
+  }, [spendableWallets, selectedWalletId, isChatDraft]);
 
   const normalTransactionCategories = useMemo(
     () => filterNormalCashFlowCategories(categories),
@@ -263,6 +274,7 @@ const MainScreen = () => {
 
   useEffect(() => {
     if (
+      !isChatDraft &&
       (!selectedTransactionCategory ||
         !normalTransactionCategories.some(
           category => category.id === selectedTransactionCategory.id,
@@ -275,6 +287,7 @@ const MainScreen = () => {
     normalTransactionCategories,
     selectedTransactionCategory,
     setSelectedTransactionCategory,
+    isChatDraft,
   ]);
 
   useFocusEffect(
@@ -325,6 +338,8 @@ const MainScreen = () => {
     [transactionTags],
   );
   const openTransactionModal = () => {
+    setIsChatDraft(false);
+    setChatDraftCurrency(null);
     setIsModalVisible(true);
   };
 
@@ -349,9 +364,7 @@ const MainScreen = () => {
       category => category.type === type,
     );
 
-    if (nextCategory) {
-      setSelectedTransactionCategory(nextCategory);
-    }
+    setSelectedTransactionCategory(nextCategory ?? null);
   };
 
   const setQuickDate = (offset: number) => {
@@ -396,6 +409,8 @@ const MainScreen = () => {
   };
 
   const resetTransactionForm = () => {
+    setIsChatDraft(false);
+    setChatDraftCurrency(null);
     setTransactionAmount('');
     setTransactionDate(new Date());
     setIsTransactionDatePickerVisible(false);
@@ -596,10 +611,46 @@ const MainScreen = () => {
   };
 
   const handleScanReceiptFromChatbot = () => {
+    resetTransactionForm();
+    setIsChatDraft(true);
+    setSelectedTransactionCategory(null);
+    setSelectedWalletId(null);
     setTransactionEntryType('EXPENSE');
     setIsReceiptDetailsExpanded(true);
     setIsModalVisible(true);
-    handlePickReceipt();
+    setReceiptPickerRequested(true);
+  };
+
+  const receiptPickerRef = useRef(handlePickReceipt);
+  receiptPickerRef.current = handlePickReceipt;
+  useEffect(() => {
+    if (!receiptPickerRequested) return;
+    setReceiptPickerRequested(false);
+    // Wait for the cleared draft to render so OCR cannot reuse the previous form values.
+    receiptPickerRef.current();
+  }, [receiptPickerRequested]);
+
+  const handleCreateTransactionFromChatbot = (draft: ChatTransactionDraft) => {
+    resetTransactionForm();
+    setIsChatDraft(true);
+    setChatDraftCurrency(draft.currency);
+    setTransactionEntryType(draft.type);
+    setTransactionAmount(draft.amount === null ? '' : String(draft.amount));
+    setTransactionNote(draft.note);
+    if (draft.transaction_date)
+      setTransactionDate(parseDateKey(draft.transaction_date));
+    const selections = resolveChatDraftSelections(
+      draft,
+      spendableWallets,
+      normalTransactionCategories,
+    );
+    setSelectedWalletId(selections.walletId);
+    setSelectedTransactionCategory(
+      normalTransactionCategories.find(
+        category => category.id === selections.categoryId,
+      ) ?? null,
+    );
+    setIsModalVisible(true);
   };
 
   const showBudgetAlertIfNeeded = (
@@ -673,8 +724,20 @@ const MainScreen = () => {
 
       if (!selectedWallet) {
         Alert.alert(
-          'Chưa có ví',
-          'Hãy tạo ít nhất một ví trước khi thêm giao dịch.',
+          'Chưa chọn ví',
+          'Chọn ví cho giao dịch; nếu chưa có ví, hãy tạo ví trước.',
+        );
+        return;
+      }
+
+      if (
+        isChatDraft &&
+        chatDraftCurrency &&
+        selectedWallet.currency !== chatDraftCurrency
+      ) {
+        Alert.alert(
+          'Khác loại tiền',
+          `Nội dung bạn gửi dùng ${chatDraftCurrency}. Hãy chọn ví cùng loại tiền để giữ đúng số tiền.`,
         );
         return;
       }
@@ -806,7 +869,12 @@ const MainScreen = () => {
           />
         );
       case 'chatbot':
-        return <ChatbotScreen onScanReceipt={handleScanReceiptFromChatbot} />;
+        return (
+          <ChatbotScreen
+            onScanReceipt={handleScanReceiptFromChatbot}
+            onCreateTransaction={handleCreateTransactionFromChatbot}
+          />
+        );
       case 'account':
         return (
           <AccountScreen
@@ -862,7 +930,11 @@ const MainScreen = () => {
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
               </View>
               <Text style={styles.modalDescription}>
-                Ghi lại khoản tiền vừa phát sinh.
+                {isChatDraft
+                  ? `Bản nháp từ chatbot${
+                      chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
+                    }. Kiểm tra thông tin rồi bấm Lưu.`
+                  : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
               <View style={styles.typeSegment}>
                 {(['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const).map(type => {
@@ -1153,7 +1225,11 @@ const MainScreen = () => {
                       contentContainerStyle={styles.tagPreviewRow}
                     >
                       {currentTags.map(tag => (
-                        <HashtagChip key={tag} name={tag} onRemove={() => toggleTag(tag)} />
+                        <HashtagChip
+                          key={tag}
+                          name={tag}
+                          onRemove={() => toggleTag(tag)}
+                        />
                       ))}
                     </ScrollView>
                   ) : null}

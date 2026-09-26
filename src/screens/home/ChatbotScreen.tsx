@@ -36,7 +36,11 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { savingsService } from '../../services/savings';
 import { chatbotService } from '../../services/chatbot';
-import type { ChatbotConversation, ChatMessage } from '../../types/chatbot';
+import type {
+  ChatbotConversation,
+  ChatMessage,
+  ChatTransactionDraft,
+} from '../../types/chatbot';
 import type { SavingsAssistantContext } from '../../types/savings';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
@@ -106,9 +110,13 @@ const formatChatTime = (value?: string) =>
 
 type ChatbotScreenProps = {
   onScanReceipt?: () => void | Promise<void>;
+  onCreateTransaction?: (draft: ChatTransactionDraft) => void;
 };
 
-const ChatbotScreen = ({ onScanReceipt }: ChatbotScreenProps) => {
+const ChatbotScreen = ({
+  onScanReceipt,
+  onCreateTransaction,
+}: ChatbotScreenProps) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token } = useAuth();
@@ -474,6 +482,16 @@ const ChatbotScreen = ({ onScanReceipt }: ChatbotScreenProps) => {
         response.user_message,
         response.assistant_message,
       ]);
+      if (response.action?.type === 'SCAN_RECEIPT') {
+        handleScanReceipt();
+      } else if (response.action?.type === 'CREATE_TRANSACTION') {
+        if (onCreateTransaction) onCreateTransaction(response.action.draft);
+        else
+          Alert.alert(
+            'Thêm giao dịch',
+            'Mở màn hình chính để kiểm tra và lưu giao dịch.',
+          );
+      }
       if (!activeConversationId) {
         setHasMoreMessages(false);
         setOldestMessageCursor(null);
@@ -581,13 +599,22 @@ const ChatbotScreen = ({ onScanReceipt }: ChatbotScreenProps) => {
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           ListHeaderComponent={
             <>
-            <ChatPlanSuggestions token={token} months={planMonths} onSelect={reductionFactor => navigation.navigate('FinancialPlan', { months: planMonths, reductionFactor })} />
-            {isLoadingOlderMessages ? (
-              <View style={styles.olderMessagesLoading}>
-                <ActivityIndicator size="small" color={screenAccent} />
-                <Text style={styles.typingText}>Đang tải tin nhắn cũ…</Text>
-              </View>
-            ) : null}
+              <ChatPlanSuggestions
+                token={token}
+                months={planMonths}
+                onSelect={reductionFactor =>
+                  navigation.navigate('FinancialPlan', {
+                    months: planMonths,
+                    reductionFactor,
+                  })
+                }
+              />
+              {isLoadingOlderMessages ? (
+                <View style={styles.olderMessagesLoading}>
+                  <ActivityIndicator size="small" color={screenAccent} />
+                  <Text style={styles.typingText}>Đang tải tin nhắn cũ…</Text>
+                </View>
+              ) : null}
             </>
           }
           ListEmptyComponent={
@@ -861,7 +888,7 @@ const ChatbotScreen = ({ onScanReceipt }: ChatbotScreenProps) => {
             ? 'Đang nghe… Bấm dừng khi nói xong.'
             : voice.status === 'stopping'
             ? 'Đang hoàn tất nhận dạng…'
-            : 'Bấm micro để nói; kiểm tra câu hỏi rồi gửi. Âm thanh có thể được dịch vụ nhận dạng của thiết bị xử lý.'}
+            : 'Bấm micro để nói, kiểm tra nội dung rồi gửi. Bạn có thể ghi thu chi, nhập hóa đơn hoặc hỏi phân tích. Âm thanh có thể được dịch vụ nhận dạng của thiết bị xử lý.'}
         </Text>
         <View style={styles.composerWrap}>
           <TouchableOpacity
@@ -876,7 +903,7 @@ const ChatbotScreen = ({ onScanReceipt }: ChatbotScreenProps) => {
           <TextInput
             accessibilityLabel="Câu hỏi cho trợ lý tài chính"
             style={styles.composerInput}
-            placeholder="Hỏi về chi tiêu của bạn..."
+            placeholder="Ghi thu chi hoặc hỏi về chi tiêu..."
             placeholderTextColor="#B58A6A"
             value={draft}
             onChangeText={setDraft}
