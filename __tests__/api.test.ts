@@ -5,6 +5,12 @@ import {
   invalidateAuthSession,
 } from '../src/services/api';
 
+// Discovery tests need multiple local candidates regardless of the APK target.
+jest.mock('../src/config/api.config.json', () => ({
+  mode: 'local',
+  remoteBaseUrl: '',
+}));
+
 describe('apiRequest', () => {
   const healthy = () => ({
     ok: true,

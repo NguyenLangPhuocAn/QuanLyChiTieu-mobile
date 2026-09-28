@@ -11,6 +11,11 @@ import {
   type SavedFinancialPlan,
 } from '../utils/savedFinancialPlan';
 import { formatCurrency } from '../utils/format';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+} from '../utils/moneyInput';
 import { ActionButton, FormField } from './FormControls';
 
 type Props = {
@@ -148,17 +153,20 @@ export default function PlanWorkbench({
           key={field.label}
           label={field.label}
           accessibilityLabel={`${field.label} ${plan.currency}`}
-          value={field.value}
-          onChangeText={field.set}
-          keyboardType="decimal-pad"
+          value={formatMoneyInputForCurrency(field.value, plan.currency)}
+          onChangeText={value =>
+            field.set(normalizeMoneyInputForCurrency(value, plan.currency))
+          }
+          keyboardType={
+            isVndCurrency(plan.currency) ? 'number-pad' : 'decimal-pad'
+          }
           placeholder="0"
           editable={loaded && !busy}
         />
       ))}
       {!valid ? (
         <Text style={styles.error}>
-          Nhập số không âm, tối đa hai chữ số thập phân; không dùng dấu phân
-          cách hàng nghìn.
+          Nhập số tiền hợp lệ từ 0 trở lên.
         </Text>
       ) : null}
       {schedule.map(row => (

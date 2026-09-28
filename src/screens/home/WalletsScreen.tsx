@@ -42,7 +42,12 @@ import type { Budget } from '../../types/budget';
 import { useFinance } from '../../context/FinanceContext';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
-import { getWalletBalanceChange } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  getWalletBalanceChange,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+} from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Wallets'>;
@@ -179,7 +184,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       if (balance === null) {
         Alert.alert(
           'Số dư chưa hợp lệ',
-          'Nhập số không âm, tối đa 2 số thập phân (ví dụ 12,50). Không nhập dấu phân cách hàng nghìn.',
+          'Nhập số dư hợp lệ từ 0 trở lên.',
         );
         return;
       }
@@ -493,9 +498,20 @@ const WalletsScreen = ({ navigation, route }: Props) => {
                   <TextInput
                     style={styles.input}
                     placeholder="0"
-                    keyboardType="decimal-pad"
-                    value={walletBalance}
-                    onChangeText={setWalletBalance}
+                    keyboardType={
+                      isVndCurrency(walletCurrency)
+                        ? 'number-pad'
+                        : 'decimal-pad'
+                    }
+                    value={formatMoneyInputForCurrency(
+                      walletBalance,
+                      walletCurrency,
+                    )}
+                    onChangeText={value =>
+                      setWalletBalance(
+                        normalizeMoneyInputForCurrency(value, walletCurrency),
+                      )
+                    }
                   />
                 </>
               ) : (
@@ -504,9 +520,20 @@ const WalletsScreen = ({ navigation, route }: Props) => {
                   <TextInput
                     style={styles.input}
                     placeholder="0"
-                    keyboardType="decimal-pad"
-                    value={walletBalance}
-                    onChangeText={setWalletBalance}
+                    keyboardType={
+                      isVndCurrency(walletCurrency)
+                        ? 'number-pad'
+                        : 'decimal-pad'
+                    }
+                    value={formatMoneyInputForCurrency(
+                      walletBalance,
+                      walletCurrency,
+                    )}
+                    onChangeText={value =>
+                      setWalletBalance(
+                        normalizeMoneyInputForCurrency(value, walletCurrency),
+                      )
+                    }
                   />
                 </>
               )}

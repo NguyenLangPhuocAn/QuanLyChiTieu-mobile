@@ -29,6 +29,7 @@ import CategoryIcon from '../../components/CategoryIcon';
 import { Colors } from '../../constants/Colors';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
 import { useFinance } from '../../context/FinanceContext';
+import { useAuth } from '../../context/AuthContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { Budget } from '../../types/budget';
@@ -264,6 +265,8 @@ const OverviewScreen = ({
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { budgets, transactions, preferredCurrency } = useFinance();
+  const { user } = useAuth();
+  const greetingName = user?.full_name?.trim().split(/\s+/).pop() || 'bạn';
   const anchorDate = useMemo(() => new Date(), []);
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1),
@@ -442,7 +445,7 @@ const OverviewScreen = ({
       >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
-            <Text style={styles.greeting}>Xin chào</Text>
+            <Text style={styles.greeting}>Xin chào {greetingName}</Text>
           </View>
           <TouchableOpacity
             style={styles.iconButton}

@@ -32,7 +32,12 @@ import type { Wallet } from '../../types/wallet';
 import type { WalletTransfer } from '../../types/walletTransfer';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency, formatShortDate } from '../../utils/format';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WalletTransfers'>;
 
@@ -162,7 +167,7 @@ const WalletTransfersScreen = ({ navigation }: Props) => {
       if (!token || !sourceWallet || !destinationWallet || !plainAmount) {
         Alert.alert(
           'Thiếu thông tin',
-          'Chọn đủ ví nguồn, ví nhận và nhập số tiền lớn hơn 0, tối đa 2 số thập phân (ví dụ 12,50). Không nhập dấu phân cách hàng nghìn.',
+          'Chọn đủ ví nguồn, ví nhận và nhập số tiền hợp lệ lớn hơn 0.',
         );
         return;
       }
@@ -357,9 +362,23 @@ const WalletTransfersScreen = ({ navigation }: Props) => {
                     accessibilityLabel="Số tiền chuyển ví"
                     editable={!submitting}
                     style={styles.input}
-                    value={amount}
-                    onChangeText={setAmount}
-                    keyboardType="decimal-pad"
+                    value={formatMoneyInputForCurrency(
+                      amount,
+                      sourceWallet?.currency ?? 'VND',
+                    )}
+                    onChangeText={value =>
+                      setAmount(
+                        normalizeMoneyInputForCurrency(
+                          value,
+                          sourceWallet?.currency ?? 'VND',
+                        ),
+                      )
+                    }
+                    keyboardType={
+                      isVndCurrency(sourceWallet?.currency ?? 'VND')
+                        ? 'number-pad'
+                        : 'decimal-pad'
+                    }
                     placeholder="0"
                   />
 

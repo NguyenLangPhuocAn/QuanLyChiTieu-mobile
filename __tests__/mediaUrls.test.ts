@@ -6,6 +6,12 @@ import {
 import { resolveReceiptUrl } from '../src/utils/mediaUrls';
 import { resolveAvatarUrl } from '../src/utils/avatar';
 
+// Keep LAN fallback tests independent of the deployment configuration.
+jest.mock('../src/config/api.config.json', () => ({
+  mode: 'local',
+  remoteBaseUrl: '',
+}));
+
 afterEach(() => {
   configureAuthSession(null);
   jest.restoreAllMocks();

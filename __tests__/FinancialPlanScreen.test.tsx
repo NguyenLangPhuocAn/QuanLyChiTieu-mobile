@@ -133,7 +133,7 @@ it('recalculates the category limit and total reduction for the chosen rate and 
   });
   expect(
     renderer.root.findByProps({
-      children: `Thử giảm 10% → giới hạn ${formatCurrency(900000)}/tháng`,
+      children: formatCurrency(900000),
     }),
   ).toBeTruthy();
   expect(
@@ -161,6 +161,81 @@ it('recalculates the category limit and total reduction for the chosen rate and 
     },
   });
   expect(mockedService.getOverview).toHaveBeenCalledTimes(1);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});
+
+it('explains why adjustable categories appear and hides essential categories', async () => {
+  mockedService.getOverview.mockResolvedValue({
+    ...overview,
+    cashflow_plans: [
+      {
+        ...overview.cashflow_plans[0],
+        spending_actions: [
+          {
+            category_id: 7,
+            category: 'Ăn uống',
+            monthly_baseline: 400000,
+            monthly_target: 360000,
+            monthly_reduction: 40000,
+            reduction_percent: 10,
+            steps: ['Lên danh sách mua trước khi đi chợ.'],
+          },
+          {
+            category_id: 8,
+            category: 'Y tế',
+            monthly_baseline: 1000000,
+            monthly_target: 1000000,
+            monthly_reduction: 0,
+            reduction_percent: 0,
+            steps: ['Giữ khoản thiết yếu này.'],
+          },
+        ],
+      },
+    ],
+  });
+
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <FinancialPlanScreen
+        navigation={navigation as never}
+        route={{} as never}
+      />,
+    );
+  });
+
+  expect(
+    renderer.root.findAllByProps({
+      children: 'Các danh mục này xuất hiện vì',
+    }),
+  ).toHaveLength(0);
+  const criteriaButton = renderer.root.findByProps({
+    accessibilityLabel: 'Giải thích cách chọn danh mục cắt giảm',
+  });
+  expect(criteriaButton.props.accessibilityState.expanded).toBe(false);
+  await ReactTestRenderer.act(async () => criteriaButton.props.onPress());
+  expect(
+    renderer.root.findByProps({
+      accessibilityLabel: 'Giải thích cách chọn danh mục cắt giảm',
+    }).props.accessibilityState.expanded,
+  ).toBe(true);
+  expect(
+    renderer.root.findByProps({ children: 'Các danh mục này xuất hiện vì' }),
+  ).toBeTruthy();
+  expect(renderer.root.findByProps({ children: 'Ăn uống' })).toBeTruthy();
+  expect(renderer.root.findAllByProps({ children: 'Y tế' })).toHaveLength(0);
+  await ReactTestRenderer.act(async () =>
+    renderer.root
+      .findByProps({
+        accessibilityLabel: 'Giải thích cách chọn danh mục cắt giảm',
+      })
+      .props.onPress(),
+  );
+  expect(
+    renderer.root.findAllByProps({
+      children: 'Các danh mục này xuất hiện vì',
+    }),
+  ).toHaveLength(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
@@ -199,16 +274,26 @@ it('keeps the latest refresh when an older request finishes afterwards', async (
   await ReactTestRenderer.act(async () => {
     resolveLatest({
       ...overview,
-      savings_plans: [{ ...overview.savings_plans[0], name: 'Mục tiêu mới' }],
+      cashflow_plans: [{ ...overview.cashflow_plans[0], currency: 'USD' }],
     });
   });
   await ReactTestRenderer.act(async () => {
     resolveOlder(overview);
   });
   expect(
-    renderer.root.findAllByProps({ children: 'Mục tiêu mới' }).length,
+    renderer.root.findAll(
+      node =>
+        Array.isArray(node.props.children) &&
+        node.props.children.includes('USD'),
+    ).length,
   ).toBeGreaterThan(0);
-  expect(renderer.root.findAllByProps({ children: 'Laptop' })).toHaveLength(0);
+  expect(
+    renderer.root.findAll(
+      node =>
+        Array.isArray(node.props.children) &&
+        node.props.children.includes('VND'),
+    ),
+  ).toHaveLength(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
@@ -255,7 +340,7 @@ it('changes forecast rows and totals when choosing a shorter horizon', async () 
   await ReactTestRenderer.act(async () => renderer!.unmount());
 });
 
-it('renders readable forecast columns and clamps savings progress', async () => {
+it('renders forecast columns and opens savings management on a separate screen', async () => {
   mockedService.getOverview.mockResolvedValue(overview);
   let renderer: ReactTestRenderer.ReactTestRenderer;
 
@@ -270,15 +355,21 @@ it('renders readable forecast columns and clamps savings progress', async () => 
 
   expect(renderer!.root.findByProps({ children: 'Thu dự kiến' })).toBeTruthy();
   expect(renderer!.root.findByProps({ children: 'Chi dự kiến' })).toBeTruthy();
+  expect(renderer!.root.findAllByProps({ children: 'Laptop' })).toHaveLength(0);
   expect(
     renderer!.root.findAll(
       node =>
-        Array.isArray(node.props.style) &&
-        node.props.style.some(
-          (style: { width?: string } | undefined) => style?.width === '100%',
-        ),
+        typeof node.props.children === 'string' &&
+        node.props.children.includes('Khả năng góp'),
     ),
-  ).not.toHaveLength(0);
+  ).toHaveLength(0);
+  await ReactTestRenderer.act(async () =>
+    renderer!.root
+      .findByProps({ accessibilityLabel: 'Quản lý mục tiêu tiết kiệm' })
+      .props.onPress(),
+  );
+  expect(navigation.navigate).toHaveBeenCalledWith('SavingsGoals');
+  await ReactTestRenderer.act(async () => renderer!.unmount());
 });
 
 it('shows a retry state and recovers after a loading failure', async () => {
@@ -310,6 +401,6 @@ it('shows a retry state and recovers after a loading failure', async () => {
     renderer!.root.findByProps({ children: 'Chưa có dữ liệu để dự báo' }),
   ).toBeTruthy();
   expect(
-    renderer!.root.findByProps({ children: 'Chưa có kế hoạch tiết kiệm' }),
+    renderer!.root.findByProps({ children: 'Mục tiêu tiết kiệm' }),
   ).toBeTruthy();
 });

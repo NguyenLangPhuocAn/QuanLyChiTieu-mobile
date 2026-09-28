@@ -95,22 +95,17 @@ it('renders the static chatbot assistant UI', async () => {
   expect(
     renderer!.root.findByProps({ children: 'Trợ lý tài chính' }),
   ).toBeTruthy();
-  expect(renderer!.root.findByProps({ children: 'Hỏi nhanh' })).toBeTruthy();
-  await ReactTestRenderer.act(() => {
-    renderer!.root
-      .findByProps({ accessibilityLabel: 'Kế hoạch 4 tháng' })
-      .props.onPress();
-  });
+  expect(renderer!.root.findByProps({ children: 'Gợi ý' })).toBeTruthy();
   expect(
-    renderer!.root.findByProps({ accessibilityLabel: 'Kế hoạch 4 tháng' }).props
-      .accessibilityState.selected,
-  ).toBe(true);
+    renderer!.root.findAllByProps({ accessibilityLabel: 'Kế hoạch 4 tháng' }),
+  ).toHaveLength(0);
   expect(
-    renderer!.root.findByProps({ accessibilityLabel: 'Kế hoạch 3 tháng' }).props
-      .accessibilityState.selected,
-  ).toBe(false);
+    renderer!.root.findByProps({ children: 'Kế hoạch của bạn' }),
+  ).toBeTruthy();
   expect(
-    renderer!.root.findByProps({ placeholder: 'Hỏi về chi tiêu của bạn...' }),
+    renderer!.root.findByProps({
+      placeholder: 'Hỏi hoặc ghi thu chi…',
+    }),
   ).toBeTruthy();
 });
 

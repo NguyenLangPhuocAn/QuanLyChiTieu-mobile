@@ -48,7 +48,12 @@ import type { Category } from '../../types/category';
 import type { Wallet } from '../../types/wallet';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import {
   getBudgetDateEditPolicy,
@@ -549,7 +554,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       if (!normalizedAmount) {
         Alert.alert(
           'Hạn mức chưa hợp lệ',
-          'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân, ví dụ 1250 hoặc 12,50. Không nhập dấu phân cách hàng nghìn.',
+          'Nhập số tiền hợp lệ lớn hơn 0.',
         );
         return;
       }
@@ -1205,11 +1210,25 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
               <Text style={styles.inputLabel}>Hạn mức</Text>
               <TextInput
                 style={styles.input}
-                keyboardType="decimal-pad"
+                keyboardType={
+                  isVndCurrency(selectedWallet?.currency ?? draftCurrency)
+                    ? 'number-pad'
+                    : 'decimal-pad'
+                }
                 accessibilityLabel="Hạn mức ngân sách"
                 placeholder="0"
-                value={amount}
-                onChangeText={setAmount}
+                value={formatMoneyInputForCurrency(
+                  amount,
+                  selectedWallet?.currency ?? draftCurrency ?? 'VND',
+                )}
+                onChangeText={value =>
+                  setAmount(
+                    normalizeMoneyInputForCurrency(
+                      value,
+                      selectedWallet?.currency ?? draftCurrency ?? 'VND',
+                    ),
+                  )
+                }
               />
 
               <Text style={styles.inputLabel}>Kỳ ngân sách</Text>

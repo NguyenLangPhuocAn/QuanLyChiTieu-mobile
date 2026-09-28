@@ -5,6 +5,12 @@ import CategoryIcon from '../src/components/CategoryIcon';
 import { resolveCategoryIconUrls } from '../src/utils/categoryIcons';
 import { API_BASE_URLS } from '../src/services/api';
 
+// This suite exercises local fallback, independently of the installed APK target.
+jest.mock('../src/config/api.config.json', () => ({
+  mode: 'local',
+  remoteBaseUrl: '',
+}));
+
 it('tries the next server for the transport icon and resets when the icon changes', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer;
   await act(() => {

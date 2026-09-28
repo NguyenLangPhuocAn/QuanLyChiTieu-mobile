@@ -1,4 +1,8 @@
 import {
+  formatMoneyInputForCurrency,
+  formatVndMoneyInput,
+  normalizeMoneyInputForCurrency,
+  normalizeVndMoneyInput,
   parsePositiveMoneyInput,
   getWalletBalanceChange,
 } from '../src/utils/moneyInput';
@@ -32,4 +36,19 @@ it.each([
   '12abc',
 ])('rejects invalid or ambiguous money %s', input => {
   expect(parsePositiveMoneyInput(input)).toBeNull();
+});
+
+it('formats a VND goal amount while keeping raw digits for saving', () => {
+  expect(normalizeVndMoneyInput('140.000')).toBe('140000');
+  expect(formatVndMoneyInput('140000')).toBe('140.000');
+  expect(formatVndMoneyInput('30000000')).toBe('30.000.000');
+  expect(formatVndMoneyInput('184000.00')).toBe('184.000');
+  expect(formatVndMoneyInput('')).toBe('');
+});
+
+it('formats only VND inputs and keeps foreign-currency decimals', () => {
+  expect(formatMoneyInputForCurrency('184000', 'vnd')).toBe('184.000');
+  expect(normalizeMoneyInputForCurrency('184.000', 'VND')).toBe('184000');
+  expect(formatMoneyInputForCurrency('1250.50', 'USD')).toBe('1250.50');
+  expect(normalizeMoneyInputForCurrency('12,50', 'EUR')).toBe('12,50');
 });

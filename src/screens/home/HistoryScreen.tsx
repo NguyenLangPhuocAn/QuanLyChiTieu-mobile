@@ -37,7 +37,12 @@ import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
 import HashtagChip from '../../components/HashtagChip';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
 import { resolveReceiptUrl } from '../../utils/mediaUrls';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type HistoryScreenProps = {
@@ -528,7 +533,7 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     }
 
     if (!plainAmount) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân; không dùng dấu phân cách hàng nghìn.');
+      Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền hợp lệ lớn hơn 0.');
       return;
     }
 
@@ -743,12 +748,29 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
 
             <Text style={styles.fieldLabel}>Số tiền</Text>
             <TextInput
-              value={editAmount}
+              value={formatMoneyInputForCurrency(
+                editAmount,
+                selectedEditWallet?.currency ?? selectedTransaction?.currency,
+              )}
               accessibilityLabel="Số tiền giao dịch đang sửa"
               editable={!isSaving}
-              onChangeText={setEditAmount}
-              placeholder="50,000"
-              keyboardType="decimal-pad"
+              onChangeText={value =>
+                setEditAmount(
+                  normalizeMoneyInputForCurrency(
+                    value,
+                    selectedEditWallet?.currency ??
+                      selectedTransaction?.currency,
+                  ),
+                )
+              }
+              placeholder="50.000"
+              keyboardType={
+                isVndCurrency(
+                  selectedEditWallet?.currency ?? selectedTransaction?.currency,
+                )
+                  ? 'number-pad'
+                  : 'decimal-pad'
+              }
               style={styles.input}
             />
 

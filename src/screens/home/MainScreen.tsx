@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -65,7 +66,12 @@ import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
 import { toDateKey } from '../../utils/budgetPeriod';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency, formatShortDate } from '../../utils/format';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
 import HashtagChip from '../../components/HashtagChip';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
@@ -190,6 +196,29 @@ const MainScreen = () => {
   const [isReceiptDetailsExpanded, setIsReceiptDetailsExpanded] =
     useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const receiptRequestVersion = useRef(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () =>
+      setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener('keyboardDidHide', () =>
+      setKeyboardVisible(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (!isModalVisible) {
+      receiptRequestVersion.current += 1;
+      setIsOcrLoading(false);
+    }
+    return () => {
+      receiptRequestVersion.current += 1;
+    };
+  }, [isModalVisible]);
   const [receiptOcrWarnings, setReceiptOcrWarnings] = useState<string[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -338,8 +367,7 @@ const MainScreen = () => {
     [transactionTags],
   );
   const openTransactionModal = () => {
-    setIsChatDraft(false);
-    setChatDraftCurrency(null);
+    resetTransactionForm();
     setIsModalVisible(true);
   };
 
@@ -409,6 +437,7 @@ const MainScreen = () => {
   };
 
   const resetTransactionForm = () => {
+    receiptRequestVersion.current += 1;
     setIsChatDraft(false);
     setChatDraftCurrency(null);
     setTransactionAmount('');
@@ -421,6 +450,7 @@ const MainScreen = () => {
     setIsOcrLoading(false);
     setReceiptOcrWarnings([]);
     setTransactionEntryType('EXPENSE');
+    setSelectedTransactionCategory(null);
     setLoanDebtType('BORROWED');
     setLoanDebtPersonName('');
     setLoanDebtDueDate('');
@@ -459,6 +489,7 @@ const MainScreen = () => {
   const applyReceiptOcrResult = (result: ReceiptOcrResult) => {
     const nextWarnings = [...result.warnings];
     const ocrCurrency = result.currency?.trim().toUpperCase() ?? null;
+    setChatDraftCurrency(ocrCurrency);
     const matchingWallets = ocrCurrency
       ? spendableWallets.filter(
           wallet => wallet.currency.trim().toUpperCase() === ocrCurrency,
@@ -511,28 +542,75 @@ const MainScreen = () => {
     setIsReceiptDetailsExpanded(true);
   };
 
-  const analyzeReceiptFile = async (file: ReceiptUploadFile) => {
-    if (!token) return;
+  const analyzeReceiptFile = async (
+    file: ReceiptUploadFile,
+    mode: 'form' | 'chatbot' = 'form',
+  ) => {
+    if (!token) return false;
+    const requestVersion = ++receiptRequestVersion.current;
     setIsOcrLoading(true);
     setReceiptOcrWarnings([]);
     try {
       const result = await transactionsService.analyzeReceipt(token, file);
+      if (requestVersion !== receiptRequestVersion.current) return false;
+      const hasValidAmount =
+        typeof result.amount === 'number' &&
+        Number.isFinite(result.amount) &&
+        result.amount > 0;
+
+      if (mode === 'chatbot' && !hasValidAmount) {
+        setReceiptFile(null);
+        setReceiptOcrWarnings([]);
+        Alert.alert(
+          'Chưa tạo bản nháp',
+          `${
+            result.warnings.find(warning => warning.trim()) ??
+            'Ảnh không có tổng thanh toán hợp lệ.'
+          }\nHãy chọn ảnh hóa đơn rõ, có tổng tiền cần thanh toán.`,
+        );
+        return false;
+      }
+
+      if (mode === 'chatbot') {
+        setReceiptFile(file);
+        setIsReceiptDetailsExpanded(true);
+      }
       applyReceiptOcrResult(result);
+      if (mode === 'chatbot') setIsModalVisible(true);
+      return true;
     } catch (error) {
-      setIsReceiptDetailsExpanded(true);
+      if (requestVersion !== receiptRequestVersion.current) return false;
+      if (mode === 'chatbot') {
+        setReceiptFile(null);
+        setReceiptOcrWarnings([]);
+      } else {
+        setIsReceiptDetailsExpanded(true);
+      }
       Alert.alert(
         'Chưa đọc được hóa đơn',
-        `${getUserFriendlyErrorMessage(
-          error,
-          'Vui lòng thử ảnh rõ hơn.',
-        )}\nẢnh vẫn được giữ và bạn có thể nhập món thủ công.`,
+        mode === 'chatbot'
+          ? `${getUserFriendlyErrorMessage(
+              error,
+              'Vui lòng thử ảnh rõ hơn.',
+            )}\nKhông có bản nháp nào được tạo.`
+          : `${getUserFriendlyErrorMessage(
+              error,
+              'Vui lòng thử ảnh rõ hơn.',
+            )}\nẢnh vẫn được giữ và bạn có thể nhập thông tin giao dịch thủ công.`,
       );
+      return false;
     } finally {
-      setIsOcrLoading(false);
+      if (requestVersion === receiptRequestVersion.current) {
+        setIsOcrLoading(false);
+      }
     }
   };
 
-  const pickAndAnalyzeReceipt = async (source: 'camera' | 'library') => {
+  const pickAndAnalyzeReceipt = async (
+    source: 'camera' | 'library',
+    mode: 'form' | 'chatbot' = 'form',
+  ) => {
+    const pickerVersion = ++receiptRequestVersion.current;
     let result;
 
     try {
@@ -546,6 +624,7 @@ const MainScreen = () => {
           ? await launchCamera(options)
           : await launchImageLibrary(options);
     } catch {
+      if (pickerVersion !== receiptRequestVersion.current) return;
       Alert.alert(
         source === 'camera'
           ? 'Chưa mở được máy ảnh'
@@ -555,7 +634,7 @@ const MainScreen = () => {
       return;
     }
 
-    if (result.didCancel) {
+    if (pickerVersion !== receiptRequestVersion.current || result.didCancel) {
       return;
     }
 
@@ -591,24 +670,30 @@ const MainScreen = () => {
       name: asset.fileName ?? fallbackName,
       type: type || 'image/jpeg',
     };
-    setReceiptFile(nextFile);
-    setIsReceiptDetailsExpanded(true);
-    await analyzeReceiptFile(nextFile);
+    if (mode === 'form') {
+      setReceiptFile(nextFile);
+      setIsReceiptDetailsExpanded(true);
+    }
+    await analyzeReceiptFile(nextFile, mode);
   };
 
-  const handlePickReceipt = () => {
+  const openReceiptPicker = (mode: 'form' | 'chatbot') => {
     Alert.alert('Quét hóa đơn', 'Bạn muốn lấy ảnh từ đâu?', [
       { text: 'Hủy', style: 'cancel' },
       {
         text: 'Thư viện ảnh',
-        onPress: () => pickAndAnalyzeReceipt('library').catch(() => undefined),
+        onPress: () =>
+          pickAndAnalyzeReceipt('library', mode).catch(() => undefined),
       },
       {
         text: 'Chụp ảnh',
-        onPress: () => pickAndAnalyzeReceipt('camera').catch(() => undefined),
+        onPress: () =>
+          pickAndAnalyzeReceipt('camera', mode).catch(() => undefined),
       },
     ]);
   };
+
+  const handlePickReceipt = () => openReceiptPicker('form');
 
   const handleScanReceiptFromChatbot = () => {
     resetTransactionForm();
@@ -616,13 +701,12 @@ const MainScreen = () => {
     setSelectedTransactionCategory(null);
     setSelectedWalletId(null);
     setTransactionEntryType('EXPENSE');
-    setIsReceiptDetailsExpanded(true);
-    setIsModalVisible(true);
+    setIsModalVisible(false);
     setReceiptPickerRequested(true);
   };
 
-  const receiptPickerRef = useRef(handlePickReceipt);
-  receiptPickerRef.current = handlePickReceipt;
+  const receiptPickerRef = useRef(() => openReceiptPicker('chatbot'));
+  receiptPickerRef.current = () => openReceiptPicker('chatbot');
   useEffect(() => {
     if (!receiptPickerRequested) return;
     setReceiptPickerRequested(false);
@@ -717,7 +801,7 @@ const MainScreen = () => {
       if (!normalizedAmount) {
         Alert.alert(
           'Số tiền chưa hợp lệ',
-          'Nhập số tiền lớn hơn 0, tối đa 2 số thập phân (ví dụ 12,50), không dùng dấu phân cách hàng nghìn.',
+          'Nhập số tiền hợp lệ lớn hơn 0.',
         );
         return;
       }
@@ -730,11 +814,7 @@ const MainScreen = () => {
         return;
       }
 
-      if (
-        isChatDraft &&
-        chatDraftCurrency &&
-        selectedWallet.currency !== chatDraftCurrency
-      ) {
+      if (chatDraftCurrency && selectedWallet.currency !== chatDraftCurrency) {
         Alert.alert(
           'Khác loại tiền',
           `Nội dung bạn gửi dùng ${chatDraftCurrency}. Hãy chọn ví cùng loại tiền để giữ đúng số tiền.`,
@@ -871,6 +951,7 @@ const MainScreen = () => {
       case 'chatbot':
         return (
           <ChatbotScreen
+            keyboardVisible={keyboardVisible}
             onScanReceipt={handleScanReceiptFromChatbot}
             onCreateTransaction={handleCreateTransactionFromChatbot}
           />
@@ -900,6 +981,34 @@ const MainScreen = () => {
         ) : null}
       </View>
 
+      {isOcrLoading && !isModalVisible ? (
+        <View
+          style={[styles.receiptScanBackdrop, styles.inlineModalLayer]}
+          accessibilityLabel="Đang kiểm tra ảnh hóa đơn"
+        >
+          <View style={styles.receiptScanCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.receiptScanTitle}>Đang kiểm tra hóa đơn</Text>
+            <Text style={styles.receiptScanDescription}>
+              Bản nháp chỉ mở khi ảnh có tổng thanh toán hợp lệ.
+            </Text>
+            <TouchableOpacity
+              style={styles.receiptScanCancelButton}
+              accessibilityRole="button"
+              accessibilityLabel="Hủy quét hóa đơn"
+              onPress={() => {
+                receiptRequestVersion.current += 1;
+                setIsOcrLoading(false);
+                setReceiptFile(null);
+                setReceiptOcrWarnings([]);
+              }}
+            >
+              <Text style={styles.receiptScanCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       {isModalVisible ? (
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -922,6 +1031,7 @@ const MainScreen = () => {
               <View style={styles.modalTitleRow}>
                 <TouchableOpacity
                   style={styles.backFormButton}
+                  accessibilityLabel="Đóng bản nháp giao dịch"
                   disabled={savingTransaction}
                   onPress={() => setIsModalVisible(false)}
                 >
@@ -972,9 +1082,23 @@ const MainScreen = () => {
                 style={styles.amountInput}
                 placeholder="0"
                 placeholderTextColor="#C99A72"
-                keyboardType="decimal-pad"
-                value={transactionAmount}
-                onChangeText={setTransactionAmount}
+                keyboardType={
+                  isVndCurrency(selectedWallet?.currency)
+                    ? 'number-pad'
+                    : 'decimal-pad'
+                }
+                value={formatMoneyInputForCurrency(
+                  transactionAmount,
+                  selectedWallet?.currency ?? 'VND',
+                )}
+                onChangeText={value =>
+                  setTransactionAmount(
+                    normalizeMoneyInputForCurrency(
+                      value,
+                      selectedWallet?.currency ?? 'VND',
+                    ),
+                  )
+                }
                 onFocus={() =>
                   transactionFormScrollRef.current?.scrollTo({
                     y: 120,
@@ -1329,7 +1453,11 @@ const MainScreen = () => {
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.clearReceiptButton}
-                                onPress={() => setReceiptFile(null)}
+                                onPress={() => {
+                                  receiptRequestVersion.current += 1;
+                                  setIsOcrLoading(false);
+                                  setReceiptFile(null);
+                                }}
                               >
                                 <X size={14} color="#A94F18" />
                                 <Text style={styles.clearReceiptText}>
@@ -1443,53 +1571,55 @@ const MainScreen = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      <View style={styles.bottomBar}>
-        <View style={styles.navContent}>
-          {tabs.slice(0, 2).map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.key;
+      {!(activeTab === 'chatbot' && keyboardVisible) && (
+        <View style={styles.bottomBar}>
+          <View style={styles.navContent}>
+            {tabs.slice(0, 2).map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.key;
 
-            return (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.tabButton}
-                onPress={() => handleChangeTab(item.key)}
-              >
-                <Icon size={20} color={isActive ? '#F28C28' : '#B58A67'} />
-                <Text
-                  style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.tabButton}
+                  onPress={() => handleChangeTab(item.key)}
                 >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <Icon size={20} color={isActive ? '#F28C28' : '#B58A67'} />
+                  <Text
+                    style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
 
-          <TouchableOpacity style={styles.fab} onPress={openTransactionModal}>
-            <Plus size={28} color={Colors.white} />
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.fab} onPress={openTransactionModal}>
+              <Plus size={28} color={Colors.white} />
+            </TouchableOpacity>
 
-          {tabs.slice(2).map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.key;
+            {tabs.slice(2).map(item => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.key;
 
-            return (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.tabButton}
-                onPress={() => handleChangeTab(item.key)}
-              >
-                <Icon size={20} color={isActive ? '#F28C28' : '#B58A67'} />
-                <Text
-                  style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.tabButton}
+                  onPress={() => handleChangeTab(item.key)}
                 >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                  <Icon size={20} color={isActive ? '#F28C28' : '#B58A67'} />
+                  <Text
+                    style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1575,6 +1705,50 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 60,
     elevation: 60,
+  },
+  receiptScanBackdrop: {
+    backgroundColor: 'rgba(42, 24, 12, 0.38)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  receiptScanCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    backgroundColor: '#FFFDFB',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    shadowColor: '#7A3E12',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  receiptScanTitle: {
+    marginTop: 14,
+    color: '#4C2A18',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  receiptScanDescription: {
+    marginTop: 7,
+    color: '#7A5438',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  receiptScanCancelButton: {
+    marginTop: 18,
+    borderRadius: 999,
+    backgroundColor: '#FFF0DF',
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+  },
+  receiptScanCancelText: {
+    color: '#A94F18',
+    fontWeight: '900',
   },
   backdropPressable: {
     ...StyleSheet.absoluteFill,

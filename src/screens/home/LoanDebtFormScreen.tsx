@@ -27,7 +27,12 @@ import {
   getLoanDebtErrorMessage,
 } from '../../utils/loanDebt';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LoanDebtForm'>;
@@ -61,6 +66,8 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
   const [isSaving, setIsSaving] = useState(false);
   const [openingLocked, setOpeningLocked] = useState(false);
   const [showDueDatePicker, setShowDueDatePicker] = useState(false);
+  const selectedWallet =
+    wallets.find(wallet => wallet.id === walletId) ?? null;
 
   const load = useCallback(async () => {
     const revision = ++loadRevision.current;
@@ -267,10 +274,24 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
         <TextInput
           accessibilityLabel="Tiền gốc vay nợ"
           style={[styles.input, openingLocked && styles.locked]}
-          value={amount}
-          onChangeText={setAmount}
+          value={formatMoneyInputForCurrency(
+            amount,
+            selectedWallet?.currency ?? 'VND',
+          )}
+          onChangeText={value =>
+            setAmount(
+              normalizeMoneyInputForCurrency(
+                value,
+                selectedWallet?.currency ?? 'VND',
+              ),
+            )
+          }
           editable={!openingLocked && !isSaving}
-          keyboardType="decimal-pad"
+          keyboardType={
+            isVndCurrency(selectedWallet?.currency ?? 'VND')
+              ? 'number-pad'
+              : 'decimal-pad'
+          }
           placeholder="0"
         />
         <Text style={styles.label}>Ví</Text>

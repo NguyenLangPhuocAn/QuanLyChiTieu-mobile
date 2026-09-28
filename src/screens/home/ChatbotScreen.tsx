@@ -25,7 +25,6 @@ import {
   PiggyBank,
   Plus,
   Send,
-  ShieldCheck,
   X,
 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -45,16 +44,16 @@ import type { SavingsAssistantContext } from '../../types/savings';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
-import ChatPlanSuggestions from '../../components/ChatPlanSuggestions';
 
-const screenAccent = '#A95514';
+const screenAccent = Colors.primary;
 
-const baseSuggestedQuestions = [
-  'Gợi ý 3 kế hoạch tài chính',
-  'Tóm tắt chi tiêu tháng này',
-  'Tôi chi nhiều nhất vào đâu?',
-  'Kiểm tra ngân sách của tôi',
-  'Dự báo thu chi 4 tháng tới',
+const quickQuestions = [
+  'Tháng này chi bao nhiêu?',
+  'Khoản nào tốn nhất?',
+  'Giảm khoản chi nào?',
+  'Ngân sách còn bao nhiêu?',
+  'Nên tiết kiệm bao nhiêu?',
+  'Gợi ý kế hoạch tài chính',
 ];
 
 const guidedPlans = [
@@ -109,11 +108,13 @@ const formatChatTime = (value?: string) =>
   });
 
 type ChatbotScreenProps = {
+  keyboardVisible?: boolean;
   onScanReceipt?: () => void | Promise<void>;
   onCreateTransaction?: (draft: ChatTransactionDraft) => void;
 };
 
 const ChatbotScreen = ({
+  keyboardVisible = false,
   onScanReceipt,
   onCreateTransaction,
 }: ChatbotScreenProps) => {
@@ -121,7 +122,7 @@ const ChatbotScreen = ({
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token } = useAuth();
   const [draft, setDraft] = useState('');
-  const [planMonths, setPlanMonths] = useState(3);
+
   const voice = useVoiceInput(setDraft);
 
   useEffect(
@@ -152,10 +153,6 @@ const ChatbotScreen = ({
     null,
   );
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [suggestedQuestions, setSuggestedQuestions] = useState(
-    baseSuggestedQuestions,
-  );
-  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const chatScrollRef = useRef<FlatList<ChatMessage>>(null);
   const shouldScrollToEndRef = useRef(true);
   const activeConversationIdRef = useRef<number | null>(null);
@@ -202,7 +199,6 @@ const ChatbotScreen = ({
       setOldestMessageCursor(null);
       setHasMoreConversations(false);
       setConversationCursor(null);
-      setSuggestedQuestions(baseSuggestedQuestions);
       return () => {
         active = false;
       };
@@ -210,7 +206,6 @@ const ChatbotScreen = ({
 
     historyLoadingRef.current = true;
     setIsHistoryLoading(true);
-    setIsSuggestionsLoading(true);
     chatbotService
       .conversations(token, CONVERSATION_PAGE_SIZE)
       .then(async result => {
@@ -259,17 +254,6 @@ const ChatbotScreen = ({
           historyLoadingRef.current = false;
           setIsHistoryLoading(false);
         }
-      });
-    chatbotService
-      .suggestions(token)
-      .then(result => {
-        if (active && result.suggestions.length) {
-          setSuggestedQuestions(result.suggestions);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setIsSuggestionsLoading(false);
       });
 
     return () => {
@@ -539,17 +523,14 @@ const ChatbotScreen = ({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+      style={[styles.container, keyboardVisible && styles.keyboardOpen]}
     >
       <View style={styles.header}>
         <View style={styles.assistantMark}>
-          <MessageCircleMore size={24} color="#A95514" />
+          <MessageCircleMore size={24} color={Colors.white} />
         </View>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Trợ lý tài chính</Text>
-          <Text style={styles.subtitle}>
-            Hỏi về chi tiêu · Câu trả lời có hỗ trợ AI
-          </Text>
         </View>
         <TouchableOpacity
           style={styles.statusBadge}
@@ -562,24 +543,26 @@ const ChatbotScreen = ({
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        style={styles.contextBar}
-        activeOpacity={0.84}
-        onPress={() => navigation.navigate('FinancialPlan')}
-      >
-        <View style={styles.contextIcon}>
-          <PiggyBank size={19} color={screenAccent} />
-        </View>
-        <View style={styles.contextHeaderCopy}>
-          <Text style={styles.contextTitle}>Kế hoạch của bạn</Text>
-          <Text style={styles.contextSubtitle} numberOfLines={1}>
-            {savingsContext?.active_goal_count
-              ? `${savingsContext.active_goal_count} mục tiêu tiết kiệm đang hoạt động`
-              : 'Xem dự báo thu chi và lịch góp tiết kiệm'}
-          </Text>
-        </View>
-        <ChevronRight size={18} color={screenAccent} />
-      </TouchableOpacity>
+      {!keyboardVisible && (
+        <TouchableOpacity
+          style={styles.contextBar}
+          activeOpacity={0.84}
+          onPress={() => navigation.navigate('FinancialPlan')}
+        >
+          <View style={styles.contextIcon}>
+            <PiggyBank size={19} color={screenAccent} />
+          </View>
+          <View style={styles.contextHeaderCopy}>
+            <Text style={styles.contextTitle}>Kế hoạch của bạn</Text>
+            <Text style={styles.contextSubtitle} numberOfLines={1}>
+              {savingsContext?.active_goal_count
+                ? `${savingsContext.active_goal_count} mục tiêu tiết kiệm đang hoạt động`
+                : 'Xem dự báo thu chi và lịch góp tiết kiệm'}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={screenAccent} />
+        </TouchableOpacity>
+      )}
 
       <View style={styles.chatPanel}>
         <FlatList
@@ -599,16 +582,6 @@ const ChatbotScreen = ({
           maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           ListHeaderComponent={
             <>
-              <ChatPlanSuggestions
-                token={token}
-                months={planMonths}
-                onSelect={reductionFactor =>
-                  navigation.navigate('FinancialPlan', {
-                    months: planMonths,
-                    reductionFactor,
-                  })
-                }
-              />
               {isLoadingOlderMessages ? (
                 <View style={styles.olderMessagesLoading}>
                   <ActivityIndicator size="small" color={screenAccent} />
@@ -657,9 +630,7 @@ const ChatbotScreen = ({
                       accessibilityLabel={`Lập kế hoạch: ${plan.title}`}
                       disabled={isSending || voice.isBusy || isHistoryLoading}
                       style={styles.guidedRow}
-                      onPress={() =>
-                        handleSend(`${plan.question} trong ${planMonths} tháng`)
-                      }
+                      onPress={() => handleSend(plan.question)}
                     >
                       <View style={styles.guidedCopy}>
                         <Text style={styles.guidedTitle}>{plan.title}</Text>
@@ -770,13 +741,6 @@ const ChatbotScreen = ({
                     </View>
                   </View>
                 ) : null}
-                <View style={styles.safetyNote}>
-                  <ShieldCheck size={17} color="#6E7D43" />
-                  <Text style={styles.safetyText}>
-                    AI chỉ phân tích và đề xuất; mọi thay đổi vẫn cần bạn xác
-                    nhận.
-                  </Text>
-                </View>
               </View>
             )
           }
@@ -822,74 +786,44 @@ const ChatbotScreen = ({
       </View>
 
       <View style={styles.controlsPanel}>
-        <View style={styles.durationRow}>
-          <Text style={styles.durationLabel}>Kế hoạch</Text>
-          {[1, 2, 3, 4].map(months => (
-            <TouchableOpacity
-              key={months}
-              accessibilityRole="button"
-              accessibilityLabel={`Kế hoạch ${months} tháng`}
-              accessibilityState={{ selected: planMonths === months }}
-              disabled={isSending || voice.isBusy}
-              onPress={() => setPlanMonths(months)}
-              style={[
-                styles.durationButton,
-                planMonths === months && styles.durationSelected,
-              ]}
-            >
-              <Text style={styles.durationLabel}>{months} tháng</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
         <View style={styles.promptSection}>
           <View style={styles.promptHeader}>
             <View style={styles.promptHeading}>
-              <Text style={styles.sectionTitle}>Hỏi nhanh</Text>
+              <Text style={styles.sectionTitle}>Gợi ý</Text>
             </View>
-            {isSuggestionsLoading ? (
-              <ActivityIndicator size="small" color={screenAccent} />
-            ) : null}
           </View>
           <ScrollView
             horizontal
-            nestedScrollEnabled
+            accessibilityLabel="Gợi ý"
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.promptRow}
           >
-            {[
-              ...new Set(['Gợi ý 3 kế hoạch tài chính', ...suggestedQuestions]),
-            ].map(question => (
+            {quickQuestions.map(question => (
               <TouchableOpacity
                 key={question}
                 style={styles.promptChip}
                 activeOpacity={0.82}
                 disabled={isSending || voice.isBusy}
-                onPress={() =>
-                  handleSend(
-                    question === 'Gợi ý 3 kế hoạch tài chính'
-                      ? `${question} trong ${planMonths} tháng`
-                      : question,
-                  )
-                }
+                onPress={() => handleSend(question)}
               >
-                <Text style={styles.promptText} numberOfLines={2}>
+                <Text style={styles.promptText} numberOfLines={1}>
                   {question}
                 </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
+        {voice.isBusy && (
+          <Text style={styles.voiceHint} accessibilityLiveRegion="polite">
+            {voice.status === 'starting'
+              ? 'Đang bật micro…'
+              : voice.status === 'listening'
+              ? 'Đang nghe… Bấm dừng khi nói xong.'
+              : 'Đang hoàn tất nhận dạng…'}
+          </Text>
+        )}
 
-        <Text style={styles.voiceHint} accessibilityLiveRegion="polite">
-          {voice.status === 'starting'
-            ? 'Đang bật micro…'
-            : voice.status === 'listening'
-            ? 'Đang nghe… Bấm dừng khi nói xong.'
-            : voice.status === 'stopping'
-            ? 'Đang hoàn tất nhận dạng…'
-            : 'Bấm micro để nói, kiểm tra nội dung rồi gửi. Bạn có thể ghi thu chi, nhập hóa đơn hoặc hỏi phân tích. Âm thanh có thể được dịch vụ nhận dạng của thiết bị xử lý.'}
-        </Text>
         <View style={styles.composerWrap}>
           <TouchableOpacity
             accessibilityLabel="Chọn ảnh hóa đơn"
@@ -903,7 +837,7 @@ const ChatbotScreen = ({
           <TextInput
             accessibilityLabel="Câu hỏi cho trợ lý tài chính"
             style={styles.composerInput}
-            placeholder="Ghi thu chi hoặc hỏi về chi tiêu..."
+            placeholder="Hỏi hoặc ghi thu chi…"
             placeholderTextColor="#B58A6A"
             value={draft}
             onChangeText={setDraft}
@@ -1088,65 +1022,49 @@ const ChatbotScreen = ({
 };
 
 const styles = StyleSheet.create({
-  durationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingBottom: 6,
-    flexWrap: 'wrap',
-  },
-  durationLabel: { color: '#20262D', fontSize: 12 },
-  durationButton: {
-    minHeight: 44,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  durationSelected: { backgroundColor: '#FAEEE3', borderColor: screenAccent },
   guidedList: { alignSelf: 'stretch', marginTop: 20 },
   guidedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     borderTopWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     paddingVertical: 16,
   },
   guidedCopy: { flex: 1 },
-  guidedTitle: { color: '#20262D', fontSize: 15, fontWeight: '600' },
+  guidedTitle: { color: '#4C2A18', fontSize: 15, fontWeight: '600' },
   guidedDescription: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
   },
   voiceHint: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     lineHeight: 16,
     paddingHorizontal: 8,
     marginBottom: 6,
   },
+  keyboardOpen: { paddingBottom: 8 },
   container: {
     flex: 1,
-    backgroundColor: '#F5F6F8',
-    paddingTop: 18,
+    backgroundColor: '#FFF3E8',
+    paddingTop: 10,
     paddingBottom: 82,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 14,
-    gap: 12,
+    paddingBottom: 12,
+    gap: 10,
   },
   assistantMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 18,
-    backgroundColor: '#F1EEE9',
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1155,24 +1073,24 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    color: '#20262D',
-    fontSize: 24,
+    color: '#4C2A18',
+    fontSize: 20,
     fontWeight: '700',
   },
   subtitle: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 13,
     fontWeight: '700',
     marginTop: 4,
   },
   statusBadge: {
     minWidth: 72,
-    height: 38,
+    height: 44,
     paddingHorizontal: 11,
     borderRadius: 15,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    backgroundColor: '#FFE7D0',
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1185,12 +1103,12 @@ const styles = StyleSheet.create({
   },
   contextBar: {
     marginHorizontal: 16,
-    marginBottom: 12,
-    minHeight: 62,
-    borderRadius: 12,
+    marginBottom: 4,
+    minHeight: 56,
+    borderRadius: 18,
     backgroundColor: '#FFFDFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
     paddingHorizontal: 13,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1207,7 +1125,7 @@ const styles = StyleSheet.create({
     paddingVertical: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     shadowColor: '#A94F18',
     shadowOpacity: 0.08,
     shadowRadius: 14,
@@ -1223,12 +1141,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 22,
     fontWeight: '700',
   },
   heroDescription: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 21,
@@ -1245,7 +1163,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#FFFDFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     padding: 15,
   },
   contextHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1258,9 +1176,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   contextHeaderCopy: { flex: 1 },
-  contextTitle: { color: '#20262D', fontSize: 15, fontWeight: '700' },
+  contextTitle: { color: '#4C2A18', fontSize: 15, fontWeight: '700' },
   contextSubtitle: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 2,
@@ -1273,9 +1191,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF4E9',
     padding: 11,
   },
-  contextMetricLabel: { color: '#667085', fontSize: 10, fontWeight: '600' },
+  contextMetricLabel: { color: '#8A623F', fontSize: 10, fontWeight: '600' },
   contextMetricValue: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 13,
     fontWeight: '700',
     marginTop: 5,
@@ -1318,7 +1236,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   contextEmptyText: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '600',
@@ -1339,7 +1257,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
   },
   actionIcon: {
     width: 42,
@@ -1351,13 +1269,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   actionTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 15,
     fontWeight: '700',
   },
   actionDescription: {
     flex: 1,
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 18,
@@ -1377,46 +1295,43 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
   sectionTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 15,
     fontWeight: '700',
   },
   controlsPanel: {
+    flexShrink: 0,
     marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
+    marginTop: 4,
+    borderRadius: 0,
+    backgroundColor: '#FFF3E8',
+    borderWidth: 0,
     borderColor: '#EBC9AC',
-    paddingTop: 11,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
     overflow: 'hidden',
   },
   promptSection: {
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    paddingHorizontal: 2,
+    marginBottom: 10,
   },
   promptHeader: {
-    minHeight: 24,
-    marginBottom: 8,
+    minHeight: 20,
+    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   promptHeading: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   promptRow: { gap: 9, paddingRight: 4 },
-  promptGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  suggestionsHint: { color: '#8A623F', fontSize: 10 },
   promptChip: {
-    width: 190,
-    minHeight: 54,
-    borderRadius: 17,
-    backgroundColor: '#FFFDFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    maxWidth: 300,
+    minHeight: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFEAD7',
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
     paddingHorizontal: 14,
     paddingVertical: 9,
     justifyContent: 'center',
@@ -1428,15 +1343,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   chatPanel: {
+    minHeight: 0,
     flex: 1,
-    marginHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 1,
+    marginHorizontal: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     borderColor: '#EBC9AC',
     overflow: 'hidden',
   },
   chatFrame: {
+    minHeight: 0,
     flex: 1,
   },
   scrollToBottomButton: {
@@ -1458,8 +1375,8 @@ const styles = StyleSheet.create({
   },
   chatContent: {
     flexGrow: 1,
-    paddingHorizontal: 13,
-    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 14,
   },
   historyLoading: {
@@ -1496,13 +1413,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emptyTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 14,
     fontWeight: '700',
     marginTop: 10,
   },
   emptyDescription: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
     fontWeight: '600',
     lineHeight: 18,
@@ -1521,21 +1438,21 @@ const styles = StyleSheet.create({
   dateLine: { flex: 1, height: 1, backgroundColor: '#EFD8C5' },
   dateText: { color: '#9A7355', fontSize: 11, fontWeight: '600' },
   messageBubble: {
-    maxWidth: '88%',
-    borderRadius: 12,
+    maxWidth: '92%',
+    borderRadius: 20,
     paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   userBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: screenAccent,
+    backgroundColor: '#C95612',
     borderBottomRightRadius: 6,
   },
   assistantBubble: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
     borderBottomLeftRadius: 6,
   },
   messageRole: {
@@ -1551,27 +1468,27 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   messageTime: { color: '#A17B5D', fontSize: 10, fontWeight: '700' },
-  userMessageTime: { color: 'rgba(255,255,255,0.72)' },
+  userMessageTime: { color: 'rgba(255,255,255,0.52)' },
   messageText: {
-    color: '#20262D',
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 21,
+    color: '#4C2A18',
+    fontSize: 15,
+    fontWeight: '400',
+    lineHeight: 23,
   },
   userMessageText: { color: Colors.white },
   typingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  typingText: { color: '#667085', fontSize: 12, fontWeight: '700' },
+  typingText: { color: '#8A623F', fontSize: 12, fontWeight: '700' },
   categorySpendingCard: {
     width: '100%',
     borderRadius: 12,
     padding: 14,
     backgroundColor: '#FFFDFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     gap: 9,
   },
   categorySpendingTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 2,
@@ -1605,55 +1522,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  safetyNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginTop: 14,
-    paddingHorizontal: 4,
-  },
-  safetyText: {
-    flex: 1,
-    color: '#66703E',
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
   composerWrap: {
-    marginHorizontal: 12,
-    minHeight: 62,
-    borderRadius: 12,
+    marginHorizontal: 0,
+    minHeight: 58,
+    borderRadius: 24,
     backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    gap: 8,
+    paddingHorizontal: 6,
+    gap: 4,
     shadowColor: '#7A3E12',
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    elevation: 10,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   composerIconButton: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 16,
-    backgroundColor: '#FFF0DF',
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
   composerInput: {
     flex: 1,
     minHeight: 44,
-    color: '#20262D',
-    fontSize: 15,
-    fontWeight: '700',
+    color: '#4C2A18',
+    fontSize: 14,
+    fontWeight: '400',
   },
   sendButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#D8A06A',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1681,7 +1584,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 42 : 56,
     paddingHorizontal: 16,
     paddingBottom: 24,
-    shadowColor: '#20262D',
+    shadowColor: '#4C2A18',
     shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 18,
@@ -1693,7 +1596,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   historyDrawerTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 20,
     fontWeight: '700',
   },
@@ -1748,7 +1651,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     backgroundColor: '#FFFDFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
     paddingHorizontal: 13,
     paddingVertical: 11,
   },
@@ -1763,7 +1666,7 @@ const styles = StyleSheet.create({
   },
   conversationItemTitle: {
     flex: 1,
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1773,7 +1676,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   conversationItemPreview: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     fontWeight: '600',
     lineHeight: 16,
@@ -1786,7 +1689,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   emptyHistoryTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 15,
     fontWeight: '700',
     marginTop: 12,

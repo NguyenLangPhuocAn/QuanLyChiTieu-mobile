@@ -27,7 +27,12 @@ import { walletsService } from '../../services/wallets';
 import type { LoanDebt } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
 import { formatCurrency } from '../../utils/format';
-import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import {
+  formatMoneyInputForCurrency,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import {
   calculateLoanDebtProgress,
@@ -410,9 +415,17 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
                 accessibilityLabel="Số tiền thanh toán vay nợ"
                 editable={!saving}
                 style={[styles.input, styles.amountInput]}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
+                value={formatMoneyInputForCurrency(amount, record.currency)}
+                onChangeText={value =>
+                  setAmount(
+                    normalizeMoneyInputForCurrency(value, record.currency),
+                  )
+                }
+                keyboardType={
+                  isVndCurrency(record.currency)
+                    ? 'number-pad'
+                    : 'decimal-pad'
+                }
                 placeholder="0"
               />
               <View style={styles.previewCard}>

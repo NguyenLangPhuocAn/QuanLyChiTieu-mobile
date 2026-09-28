@@ -47,11 +47,16 @@ import type { Wallet } from '../../types/wallet';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency, formatShortDate } from '../../utils/format';
 import {
+  formatMoneyInputForCurrency,
+  formatVndMoneyInput,
+  isVndCurrency,
+  normalizeMoneyInputForCurrency,
+  normalizeVndMoneyInput,
   parsePositiveMoneyInput,
   parseNonNegativeMoneyInput,
 } from '../../utils/moneyInput';
 
-const screenAccent = '#A95514';
+const screenAccent = Colors.primary;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SavingsGoals'>;
 type EntryMode = 'CONTRIBUTION' | 'WITHDRAWAL';
@@ -219,7 +224,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
       if (!token || !goalName.trim() || !normalizedTarget) {
         Alert.alert(
           'Thiếu thông tin',
-          'Nhập tên và số tiền mục tiêu lớn hơn 0, tối đa 2 số thập phân; không dùng dấu phân cách hàng nghìn.',
+          'Nhập tên và số tiền mục tiêu lớn hơn 0.',
         );
         return;
       }
@@ -592,9 +597,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
               onPress={() => navigation.navigate('FinancialPlan')}
               style={styles.affordabilityLink}
             >
-              <Text style={styles.affordabilityText}>
-                So lịch góp với thu chi dự kiến
-              </Text>
+              <Text style={styles.affordabilityText}>Xem dự báo thu chi</Text>
               <ArrowRight size={18} color="#A95514" />
             </TouchableOpacity>
           ) : null}
@@ -940,9 +943,11 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
               <Text style={styles.label}>Số tiền cần đạt (VND)</Text>
               <TextInput
                 style={styles.input}
-                value={targetAmount}
-                onChangeText={setTargetAmount}
-                keyboardType="decimal-pad"
+                value={formatVndMoneyInput(targetAmount)}
+                onChangeText={value =>
+                  setTargetAmount(normalizeVndMoneyInput(value))
+                }
+                keyboardType="number-pad"
                 placeholder="30.000.000"
               />
               {!editingGoal ? (
@@ -952,9 +957,11 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                   </Text>
                   <TextInput
                     style={styles.input}
-                    value={initialAmount}
-                    onChangeText={setInitialAmount}
-                    keyboardType="decimal-pad"
+                    value={formatVndMoneyInput(initialAmount)}
+                    onChangeText={value =>
+                      setInitialAmount(normalizeVndMoneyInput(value))
+                    }
+                    keyboardType="number-pad"
                     placeholder="0"
                   />
                   {initialContributionValue > 0 ? (
@@ -1103,9 +1110,26 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
             <Text style={styles.label}>Số tiền</Text>
             <TextInput
               style={styles.input}
-              value={entryAmount}
-              onChangeText={setEntryAmount}
-              keyboardType="decimal-pad"
+              value={formatMoneyInputForCurrency(
+                entryAmount,
+                entryGoal?.wallet_currency ?? selectedEntryWallet?.currency,
+              )}
+              onChangeText={value =>
+                setEntryAmount(
+                  normalizeMoneyInputForCurrency(
+                    value,
+                    entryGoal?.wallet_currency ??
+                      selectedEntryWallet?.currency,
+                  ),
+                )
+              }
+              keyboardType={
+                isVndCurrency(
+                  entryGoal?.wallet_currency ?? selectedEntryWallet?.currency,
+                )
+                  ? 'number-pad'
+                  : 'decimal-pad'
+              }
               placeholder="500.000"
             />
             <Text style={styles.label}>Ghi chú</Text>
@@ -1149,14 +1173,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   affordabilityText: { color: '#A95514', fontWeight: '600', fontSize: 13 },
-  container: { flex: 1, backgroundColor: '#F5F6F8' },
+  container: { flex: 1, backgroundColor: '#FFF3E8' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    padding: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    padding: 16,
+    borderBottomWidth: 0,
+    borderBottomColor: '#F0D5BE',
   },
   headerButton: {
     width: 42,
@@ -1175,10 +1199,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCopy: { flex: 1 },
-  title: { color: '#20262D', fontSize: 22, fontWeight: '700' },
-  subtitle: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 3 },
+  title: { color: '#4C2A18', fontSize: 22, fontWeight: '700' },
+  subtitle: { color: '#8A623F', fontSize: 12, fontWeight: '700', marginTop: 3 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: '#667085', fontWeight: '700' },
+  loadingText: { color: '#8A623F', fontWeight: '700' },
   errorState: {
     flex: 1,
     alignItems: 'center',
@@ -1186,13 +1210,13 @@ const styles = StyleSheet.create({
     padding: 28,
   },
   errorTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 18,
     fontWeight: '700',
     marginTop: 14,
   },
   errorText: {
-    color: '#667085',
+    color: '#8A623F',
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 7,
@@ -1223,8 +1247,8 @@ const styles = StyleSheet.create({
   },
   inlineErrorText: { flex: 1, color: '#8D2B23', fontWeight: '600' },
   summaryCard: {
-    minHeight: 132,
-    borderRadius: 12,
+    minHeight: 104,
+    borderRadius: 22,
     padding: 18,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
@@ -1240,17 +1264,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   summaryCopy: { flex: 1 },
-  summaryLabel: { color: '#667085', fontWeight: '700', fontSize: 12 },
+  summaryLabel: { color: '#8A623F', fontWeight: '700', fontSize: 12 },
   summaryValue: {
-    color: '#20262D',
-    fontSize: 22,
+    color: '#4C2A18',
+    fontSize: 20,
     fontWeight: '700',
     marginTop: 5,
   },
   summaryMeta: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     marginTop: 5,
   },
   summaryBadge: {
@@ -1277,7 +1301,7 @@ const styles = StyleSheet.create({
   },
   goalTabActive: { backgroundColor: Colors.white },
   goalTabText: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     fontWeight: '600',
     textAlign: 'center',
@@ -1289,17 +1313,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 28,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
   },
   emptyTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 13,
   },
   emptyText: {
-    color: '#667085',
+    color: '#8A623F',
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 8,
@@ -1314,14 +1338,14 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   filteredEmptyTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 10,
   },
   filteredEmptyText: {
-    color: '#667085',
+    color: '#8A623F',
     lineHeight: 19,
     textAlign: 'center',
     marginTop: 6,
@@ -1339,10 +1363,10 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#FFF', fontWeight: '700' },
   goalCard: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 22,
     padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
   },
   goalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   goalIcon: {
@@ -1355,7 +1379,7 @@ const styles = StyleSheet.create({
   },
   goalIconDone: { backgroundColor: '#E8F6EF' },
   goalCopy: { flex: 1 },
-  goalName: { color: '#20262D', fontSize: 17, fontWeight: '700' },
+  goalName: { color: '#4C2A18', fontSize: 17, fontWeight: '700' },
   goalMeta: { color: '#9A765B', fontSize: 12, marginTop: 3 },
   iconButton: {
     width: 34,
@@ -1430,7 +1454,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderRadius: 15,
-    backgroundColor: '#F5F6F8',
+    backgroundColor: '#FFF3E8',
     borderWidth: 1,
     borderColor: '#E9B98F',
     paddingVertical: 12,
@@ -1454,7 +1478,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
   },
-  entryLabel: { color: '#667085', fontSize: 12, fontWeight: '700' },
+  entryLabel: { color: '#8A623F', fontSize: 12, fontWeight: '700' },
   entryAmount: { color: '#218358', fontSize: 12, fontWeight: '700' },
   entryAmountOut: { color: '#B84A3A' },
   completionBackdrop: {
@@ -1481,7 +1505,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   completionTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 23,
     fontWeight: '700',
     textAlign: 'center',
@@ -1501,7 +1525,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   completionText: {
-    color: '#667085',
+    color: '#8A623F',
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 10,
@@ -1524,7 +1548,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E9B98F',
-    backgroundColor: '#F5F6F8',
+    backgroundColor: '#FFF3E8',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1548,8 +1572,8 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 30,
   },
-  modalTitle: { color: '#20262D', fontSize: 21, fontWeight: '700' },
-  modalSubtitle: { color: '#667085', fontWeight: '700', marginTop: 5 },
+  modalTitle: { color: '#4C2A18', fontSize: 21, fontWeight: '700' },
+  modalSubtitle: { color: '#8A623F', fontWeight: '700', marginTop: 5 },
   label: {
     color: '#74472E',
     fontSize: 13,
@@ -1564,12 +1588,12 @@ const styles = StyleSheet.create({
     borderColor: '#E5BD9B',
     backgroundColor: '#FFF',
     paddingHorizontal: 13,
-    color: '#20262D',
+    color: '#4C2A18',
     fontWeight: '600',
   },
   noteInput: { minHeight: 78, paddingTop: 13, textAlignVertical: 'top' },
   sourceHint: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     fontWeight: '700',
     lineHeight: 16,
@@ -1613,9 +1637,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   walletPickerIconActive: { backgroundColor: screenAccent },
-  walletPickerName: { color: '#20262D', fontWeight: '700' },
+  walletPickerName: { color: '#4C2A18', fontWeight: '700' },
   walletPickerBalance: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 12,
     fontWeight: '600',
     marginTop: 5,
@@ -1632,7 +1656,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 9,
   },
-  dateText: { color: '#20262D', fontWeight: '600' },
+  dateText: { color: '#4C2A18', fontWeight: '600' },
   datePlaceholder: { color: '#9A765B', fontWeight: '700' },
   clearDateButton: { alignSelf: 'flex-start', paddingVertical: 4 },
   clearDateText: { color: '#B84A3A', fontSize: 12, fontWeight: '600' },

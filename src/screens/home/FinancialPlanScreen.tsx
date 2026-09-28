@@ -19,10 +19,7 @@ import {
   RefreshCcw,
   ShieldCheck,
   TrendingUp,
-  WalletCards,
 } from 'lucide-react-native';
-import SavingsRoadmapDetails from '../../components/SavingsRoadmapDetails';
-import PlanWorkbench from '../../components/PlanWorkbench';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -30,12 +27,11 @@ import { financialPlansService } from '../../services/financialPlans';
 import type {
   CashflowPlanStatus,
   FinancialPlanOverview,
-  SavingsPlanStatus,
 } from '../../types/financialPlan';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 
-const screenAccent = '#A95514';
+const screenAccent = Colors.primary;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FinancialPlan'>;
 
@@ -43,8 +39,6 @@ const monthLabel = (month: string) => {
   const [year, value] = month.split('-');
   return `T${Number(value)}/${year}`;
 };
-
-const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
 const confidenceLabel = {
   HIGH: 'Cao',
@@ -66,36 +60,32 @@ const cashflowStatus: Record<
   },
 };
 
-const savingsStatus: Record<
-  SavingsPlanStatus,
-  { label: string; color: string; background: string }
-> = {
-  ON_TRACK: { label: 'Đúng tiến độ', color: '#217A55', background: '#E6F6EE' },
-  BEHIND: { label: 'Đang chậm', color: '#A15C00', background: '#FFF3D8' },
-  OVERDUE: { label: 'Quá hạn', color: '#B3261E', background: '#FFE4DF' },
-  NO_DEADLINE: {
-    label: 'Chưa có hạn',
-    color: '#6F5A4A',
-    background: '#F4ECE5',
-  },
-};
-
 const FinancialPlanScreen = ({ navigation, route }: Props) => {
   const { token } = useAuth();
   const [overview, setOverview] = useState<FinancialPlanOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [forecastMonths, setForecastMonths] = useState([1, 2, 3, 4].includes(route?.params?.months ?? 0) ? route.params!.months! : 4);
-  const factor = [0, 0.5, 1].includes(route?.params?.reductionFactor ?? -1) ? route.params!.reductionFactor! : 1;
+  const [forecastMonths, setForecastMonths] = useState(
+    [1, 2, 3, 4].includes(route?.params?.months ?? 0)
+      ? route.params!.months!
+      : 4,
+  );
+  const factor = [0, 0.5, 1].includes(route?.params?.reductionFactor ?? -1)
+    ? route.params!.reductionFactor!
+    : 1;
   const [spendingRates, setSpendingRates] = useState<Record<string, number>>(
     {},
   );
+  const [showSpendingCriteria, setShowSpendingCriteria] = useState(false);
   const loadRevision = useRef(0);
   useEffect(() => {
     if (!route?.params) return;
     const requestedMonths = route.params.months;
-    if (requestedMonths !== undefined && [1, 2, 3, 4].includes(requestedMonths)) {
+    if (
+      requestedMonths !== undefined &&
+      [1, 2, 3, 4].includes(requestedMonths)
+    ) {
       setForecastMonths(requestedMonths);
     }
     setSpendingRates({});
@@ -206,29 +196,36 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
             </TouchableOpacity>
           ) : null}
 
-          <View style={styles.monthOptions}>
-            {[1, 2, 3, 4].map(months => (
-              <TouchableOpacity
-                key={months}
-                accessibilityRole="button"
-                accessibilityLabel={`Dự báo ${months} tháng`}
-                accessibilityState={{ selected: forecastMonths === months }}
-                onPress={() => setForecastMonths(months)}
-                style={[
-                  styles.monthOption,
-                  forecastMonths === months && styles.monthOptionSelected,
-                ]}
-              >
-                <Text
+          <View style={styles.comparisonCard}>
+            <Text style={styles.sectionTitle}>So sánh phương án</Text>
+            <Text style={styles.actionBody}>
+              Chọn thời gian để xem tổng thu, chi và phần dư dự kiến.
+            </Text>
+            <View style={styles.monthOptions}>
+              {[1, 2, 3, 4].map(months => (
+                <TouchableOpacity
+                  key={months}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dự báo ${months} tháng`}
+                  accessibilityState={{ selected: forecastMonths === months }}
+                  onPress={() => setForecastMonths(months)}
                   style={[
-                    styles.monthOptionText,
-                    forecastMonths === months && styles.monthOptionTextSelected,
+                    styles.monthOption,
+                    forecastMonths === months && styles.monthOptionSelected,
                   ]}
                 >
-                  {months} tháng
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.monthOptionText,
+                      forecastMonths === months &&
+                        styles.monthOptionTextSelected,
+                    ]}
+                  >
+                    {months} tháng
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
           <View style={styles.explainCard}>
             <ShieldCheck size={21} color="#5C7441" />
@@ -271,30 +268,32 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                   ? 'WARNING'
                   : 'STABLE';
               const meta = cashflowStatus[status];
-              const actions = (plan.spending_actions ?? []).map(action => {
-                const requestedPercent =
-                  spendingRates[`${plan.currency}:${action.category_id}`] ??
-                  action.reduction_percent * factor;
-                const allowedRates = [
-                  0,
-                  action.reduction_percent / 2,
-                  action.reduction_percent,
-                ];
-                const percent = allowedRates.includes(requestedPercent)
-                  ? requestedPercent
-                  : action.reduction_percent;
-                const reduction =
-                  Math.floor(action.monthly_baseline * percent) / 100;
-                return {
-                  ...action,
-                  suggested_percent: action.reduction_percent,
-                  reduction_percent: percent,
-                  monthly_reduction: reduction,
-                  monthly_target:
-                    Math.round((action.monthly_baseline - reduction) * 100) /
-                    100,
-                };
-              });
+              const actions = (plan.spending_actions ?? [])
+                .filter(action => action.reduction_percent > 0)
+                .map(action => {
+                  const requestedPercent =
+                    spendingRates[`${plan.currency}:${action.category_id}`] ??
+                    action.reduction_percent * factor;
+                  const allowedRates = [
+                    0,
+                    action.reduction_percent / 2,
+                    action.reduction_percent,
+                  ];
+                  const percent = allowedRates.includes(requestedPercent)
+                    ? requestedPercent
+                    : action.reduction_percent;
+                  const reduction =
+                    Math.floor(action.monthly_baseline * percent) / 100;
+                  return {
+                    ...action,
+                    suggested_percent: action.reduction_percent,
+                    reduction_percent: percent,
+                    monthly_reduction: reduction,
+                    monthly_target:
+                      Math.round((action.monthly_baseline - reduction) * 100) /
+                      100,
+                  };
+                });
               const monthlyReduction = actions.reduce(
                 (sum, action) => sum + action.monthly_reduction,
                 0,
@@ -409,42 +408,117 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                     {formatCurrency(totalNet, plan.currency)}. Chưa trừ đóng góp
                     tiết kiệm và trả nợ.
                   </Text>
-                  <Text style={styles.periodTitle}>
-                    Cắt giảm chi tiêu như thế nào?
-                  </Text>
-                  <Text style={styles.actionBody}>
-                    Mức thử nghiệm so với trung bình 4 tháng đã hoàn tất; tháng
-                    không có giao dịch tính bằng 0. Hãy kiểm tra dữ liệu đã ghi
-                    đủ trước khi áp dụng.
-                  </Text>
+                  <View style={styles.cutSectionHeader}>
+                    <Text style={styles.cutSectionTitle}>Gợi ý cắt giảm</Text>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Giải thích cách chọn danh mục cắt giảm"
+                      accessibilityState={{ expanded: showSpendingCriteria }}
+                      onPress={() =>
+                        setShowSpendingCriteria(current => !current)
+                      }
+                      style={[
+                        styles.criteriaButton,
+                        showSpendingCriteria && styles.criteriaButtonActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.criteriaButtonText,
+                          showSpendingCriteria &&
+                            styles.criteriaButtonTextActive,
+                        ]}
+                      >
+                        ?
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {showSpendingCriteria ? (
+                    <View style={styles.criteriaCard}>
+                      <Text style={styles.criteriaTitle}>
+                        Các danh mục này xuất hiện vì
+                      </Text>
+                      <Text style={styles.criteriaText}>
+                        1. Có chi tiêu thường trong{' '}
+                        {overview?.methodology.history_months ?? 4} tháng đã hoàn
+                        tất; tháng không phát sinh vẫn tính là 0.
+                      </Text>
+                      <Text style={styles.criteriaText}>
+                        2. Thuộc nhóm có thể điều chỉnh như ăn uống, mua sắm,
+                        giải trí, di chuyển hoặc dịch vụ.
+                      </Text>
+                      <Text style={styles.criteriaText}>
+                        3. Xếp theo số tiền có thể giảm mỗi tháng và chỉ lấy tối
+                        đa 3 danh mục.
+                      </Text>
+                      <Text style={styles.criteriaNote}>
+                        Không tính chuyển ví, góp tiết kiệm, vay/nợ và các khoản
+                        thiết yếu như y tế, học phí, tiền nhà hoặc bảo hiểm.
+                      </Text>
+                    </View>
+                  ) : null}
                   {actions.length ? (
-                    actions.map(action => (
+                    actions.map((action, actionIndex) => (
                       <View key={action.category_id} style={styles.actionCard}>
-                        <Text style={styles.planName}>{action.category}</Text>
-                        <Text style={styles.actionBody}>
-                          Trung bình:{' '}
-                          {formatCurrency(
-                            action.monthly_baseline,
-                            plan.currency,
-                          )}
-                          /tháng
-                        </Text>
-                        <Text style={styles.actionTarget}>
-                          {action.monthly_reduction > 0
-                            ? `Thử giảm ${
-                                action.reduction_percent
-                              }% → giới hạn ${formatCurrency(
+                        <View style={styles.actionCardHeader}>
+                          <View style={styles.actionRank}>
+                            <Text style={styles.actionRankText}>
+                              {actionIndex + 1}
+                            </Text>
+                          </View>
+                          <View style={styles.actionHeadingCopy}>
+                            <Text style={styles.actionName}>
+                              {action.category}
+                            </Text>
+                            <Text style={styles.actionReason}>
+                              Xuất hiện vì mức chi có thể điều chỉnh khoảng{' '}
+                              {action.suggested_percent}% mỗi tháng.
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.actionMetrics}>
+                          <View style={styles.actionMetric}>
+                            <Text style={styles.actionMetricLabel}>
+                              Trung bình cũ
+                            </Text>
+                            <Text style={styles.actionMetricValue}>
+                              {formatCurrency(
+                                action.monthly_baseline,
+                                plan.currency,
+                              )}
+                            </Text>
+                          </View>
+                          <View style={styles.actionMetricDivider} />
+                          <View style={styles.actionMetric}>
+                            <Text style={styles.actionMetricLabel}>
+                              Giới hạn thử
+                            </Text>
+                            <Text style={styles.actionMetricValueStrong}>
+                              {formatCurrency(
                                 action.monthly_target,
                                 plan.currency,
-                              )}/tháng`
-                            : action.suggested_percent > 0
-                            ? 'Giữ mức chi trung bình hiện tại'
-                            : 'Rà soát trước khi đặt mức giảm'}
-                        </Text>
+                              )}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.reductionSummary}>
+                          <Text style={styles.reductionSummaryLabel}>
+                            Có thể giảm
+                          </Text>
+                          <Text style={styles.reductionSummaryValue}>
+                            {formatCurrency(
+                              action.monthly_reduction,
+                              plan.currency,
+                            )}
+                            /tháng
+                          </Text>
+                        </View>
                         {action.suggested_percent > 0 ? (
                           <View>
-                            <Text style={styles.actionBody}>
-                              Chọn mức giảm để thử:
+                            <Text style={styles.optionLabel}>
+                              Chọn mức muốn thử
                             </Text>
                             <View style={styles.reductionOptions}>
                               {[
@@ -470,10 +544,16 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                                   style={[
                                     styles.reductionOption,
                                     action.reduction_percent === percent &&
-                                      styles.monthOptionSelected,
+                                      styles.reductionOptionSelected,
                                   ]}
                                 >
-                                  <Text style={styles.actionTarget}>
+                                  <Text
+                                    style={[
+                                      styles.reductionOptionText,
+                                      action.reduction_percent === percent &&
+                                        styles.reductionOptionTextSelected,
+                                    ]}
+                                  >
                                     {percent}%
                                   </Text>
                                 </TouchableOpacity>
@@ -481,26 +561,24 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                             </View>
                           </View>
                         ) : null}
+                        <Text style={styles.stepsTitle}>
+                          Việc có thể làm tuần này
+                        </Text>
                         {action.steps.map((step, index) => (
-                          <Text key={step} style={styles.actionBody}>
-                            {index + 1}. {step}
-                          </Text>
+                          <View key={step} style={styles.stepRow}>
+                            <View style={styles.stepBullet}>
+                              <Text style={styles.stepBulletText}>
+                                {index + 1}
+                              </Text>
+                            </View>
+                            <Text style={styles.stepText}>{step}</Text>
+                          </View>
                         ))}
-                        {action.monthly_reduction > 0 ? (
-                          <Text style={styles.actionTarget}>
-                            Nếu đạt mức này: giảm{' '}
-                            {formatCurrency(
-                              action.monthly_reduction,
-                              plan.currency,
-                            )}
-                            /tháng.
-                          </Text>
-                        ) : null}
                         {action.monthly_target > 0 ? (
                           <TouchableOpacity
                             accessibilityRole="button"
                             accessibilityLabel={`Lập ngân sách cho ${action.category}`}
-                            style={styles.reductionOption}
+                            style={styles.budgetActionButton}
                             onPress={() =>
                               navigation.navigate('Budgets', {
                                 draft: {
@@ -512,7 +590,7 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                               })
                             }
                           >
-                            <Text style={styles.sectionLink}>
+                            <Text style={styles.budgetActionText}>
                               Lập ngân sách với mức này
                             </Text>
                           </TouchableOpacity>
@@ -537,7 +615,7 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                       tiền đã tiết kiệm.
                     </Text>
                   ) : null}
-                  {actions.some(action => action.suggested_percent > 0) ? (
+                  {actions.length ? (
                     <Text style={styles.actionBody}>
                       Lựa chọn trên chỉ cập nhật bản tính thử. Khi phù hợp, bạn
                       có thể đặt ngân sách theo giới hạn đã chọn.
@@ -555,7 +633,6 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
                     Cuối mỗi tuần, mở ngân sách để so sánh thực chi với giới
                     hạn; điều chỉnh nếu nhu cầu thiết yếu thay đổi.
                   </Text>
-                  <PlanWorkbench plan={plan} goals={overview.savings_plans} months={forecastMonths} reduction={monthlyReduction} />
                   <TouchableOpacity
                     onPress={() => navigation.navigate('Budgets')}
                     accessibilityRole="button"
@@ -581,166 +658,19 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
             </View>
           )}
 
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <PiggyBank size={21} color={screenAccent} />
-              <Text style={styles.sectionTitle}>Kế hoạch tiết kiệm</Text>
+          <TouchableOpacity
+            style={styles.emptySavings}
+            accessibilityRole="button"
+            accessibilityLabel="Quản lý mục tiêu tiết kiệm"
+            onPress={() => navigation.navigate('SavingsGoals')}
+          >
+            <PiggyBank size={24} color={screenAccent} />
+            <View style={styles.savingsCopy}>
+              <Text style={styles.savingsName}>Mục tiêu tiết kiệm</Text>
+              <Text style={styles.savingsMeta}>Xem mục tiêu và lịch góp</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => navigation.navigate('SavingsGoals')}
-              accessibilityRole="button"
-              accessibilityLabel="Quản lý mục tiêu tiết kiệm"
-            >
-              <Text style={styles.sectionLink}>Quản lý</Text>
-            </TouchableOpacity>
-          </View>
-
-          {overview?.cashflow_plans.map(cashflow => {
-            const goals = overview.savings_plans.filter(
-              goal => goal.currency === cashflow.currency,
-            );
-            if (!goals.length) return null;
-            const planned = goals.reduce(
-              (sum, goal) => sum + (goal.roadmap?.next_contribution ?? 0),
-              0,
-            );
-            const firstNet = cashflow.forecast[0]?.projected_net ?? 0;
-            const difference = firstNet - planned;
-            const unknown = cashflow.summary.status === 'INSUFFICIENT_DATA';
-            return (
-              <View
-                key={`capacity-${cashflow.currency}`}
-                style={styles.capacityCard}
-              >
-                <Text style={styles.planName}>
-                  Khả năng góp kỳ này · {cashflow.currency}
-                </Text>
-                <Text style={styles.actionBody}>
-                  Các mục tiêu có lịch cần góp thêm{' '}
-                  {formatCurrency(planned, cashflow.currency)} trong kỳ đầu.
-                </Text>
-                <Text style={styles.actionBody}>
-                  {unknown
-                    ? 'Chưa đủ dữ liệu thu chi để đánh giá khả năng góp.'
-                    : `Phần dư dự báo tháng hiện tại: ${formatCurrency(
-                        firstNet,
-                        cashflow.currency,
-                      )}.`}
-                </Text>
-                {!unknown ? (
-                  <Text
-                    style={
-                      difference < 0 ? styles.savingsWarning : styles.actionBody
-                    }
-                  >
-                    {difference < 0
-                      ? `Thiếu khoảng ${formatCurrency(
-                          -difference,
-                          cashflow.currency,
-                        )} so với lịch góp. Ưu tiên một mục tiêu hoặc lùi ngày hoàn thành.`
-                      : `Sau các kỳ góp còn khoảng ${formatCurrency(
-                          difference,
-                          cashflow.currency,
-                        )} theo dự báo; vẫn cần dành tiền trả nợ và chi phát sinh.`}
-                  </Text>
-                ) : null}
-                {goals.some(goal => goal.roadmap?.next_contribution == null) ? (
-                  <Text style={styles.actionBody}>
-                    Mục tiêu chưa có lịch hoặc đã quá hạn chưa được cộng vào số
-                    cần góp.
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })}
-          {overview?.savings_plans.length ? (
-            overview.savings_plans.map(plan => {
-              const meta = savingsStatus[plan.status];
-              return (
-                <View key={plan.id} style={styles.savingsCard}>
-                  <TouchableOpacity
-                    style={styles.savingsTopRow}
-                    onPress={() => navigation.navigate('SavingsGoals')}
-                  >
-                    <View style={styles.savingsIcon}>
-                      <PiggyBank size={21} color={screenAccent} />
-                    </View>
-                    <View style={styles.savingsCopy}>
-                      <View style={styles.savingsTitleRow}>
-                        <Text style={styles.savingsName} numberOfLines={1}>
-                          {plan.name}
-                        </Text>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            { backgroundColor: meta.background },
-                          ]}
-                        >
-                          <Text
-                            style={[styles.statusText, { color: meta.color }]}
-                          >
-                            {meta.label}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.progressTrack}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            {
-                              width: `${clampPercent(plan.progress_percent)}%`,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.savingsMeta}>
-                        Đã đạt {Math.round(clampPercent(plan.progress_percent))}
-                        % · {formatCurrency(plan.current_amount, plan.currency)}
-                      </Text>
-                      <Text style={styles.savingsMetaSecondary}>
-                        {plan.roadmap?.status === 'OVERDUE'
-                          ? 'Cần cập nhật ngày hạn'
-                          : plan.target_date
-                          ? `Kỳ tới: ${formatCurrency(
-                              plan.roadmap?.next_contribution ??
-                                plan.suggested_monthly,
-                              plan.currency,
-                            )}`
-                          : 'Thêm ngày hoàn thành để lập lịch góp'}
-                      </Text>
-                      {!plan.roadmap && plan.monthly_gap > 0 ? (
-                        <Text style={styles.savingsWarning}>
-                          Tháng này còn cần góp{' '}
-                          {formatCurrency(plan.monthly_gap, plan.currency)}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <ChevronRight size={20} color="#9A765B" />
-                  </TouchableOpacity>
-                  <SavingsRoadmapDetails
-                    roadmap={plan.roadmap}
-                    currency={plan.currency}
-                  />
-                </View>
-              );
-            })
-          ) : (
-            <TouchableOpacity
-              style={styles.emptySavings}
-              onPress={() => navigation.navigate('SavingsGoals')}
-            >
-              <WalletCards size={24} color={screenAccent} />
-              <View style={styles.savingsCopy}>
-                <Text style={styles.savingsName}>
-                  Chưa có kế hoạch tiết kiệm
-                </Text>
-                <Text style={styles.savingsMeta}>
-                  Tạo mục tiêu, số tiền và ngày cần đạt.
-                </Text>
-              </View>
-              <ChevronRight size={20} color="#9A765B" />
-            </TouchableOpacity>
-          )}
+            <ChevronRight size={20} color="#9A765B" />
+          </TouchableOpacity>
 
           <View style={styles.warningCard}>
             <CircleAlert size={19} color="#A15C00" />
@@ -758,51 +688,68 @@ const FinancialPlanScreen = ({ navigation, route }: Props) => {
 const styles = StyleSheet.create({
   reductionOptions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginTop: 8,
   },
   reductionOption: {
-    minWidth: 60,
+    flex: 1,
     minHeight: 44,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#DAD6D0',
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    borderColor: '#E8CDB5',
+    borderRadius: 12,
+    backgroundColor: '#FFFDFB',
   },
+  reductionOptionSelected: {
+    backgroundColor: screenAccent,
+    borderColor: screenAccent,
+  },
+  reductionOptionText: {
+    color: '#6F4B32',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  reductionOptionTextSelected: { color: Colors.white },
   capacityCard: {
     paddingVertical: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
+  },
+  comparisonCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 22,
+    padding: 16,
+    gap: 8,
   },
   monthOptions: { flexDirection: 'row', gap: 8 },
   monthOption: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: '#FFFDFB',
-    borderWidth: 1,
+    backgroundColor: '#FFF3E8',
+    borderWidth: 0,
     borderColor: '#E4BD99',
   },
   monthOptionSelected: {
     backgroundColor: screenAccent,
     borderColor: screenAccent,
   },
-  monthOptionText: { color: '#667085', fontWeight: '600' },
+  monthOptionText: { color: '#8A623F', fontWeight: '600' },
   monthOptionTextSelected: { color: Colors.white },
   actionCard: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#FFF8F1',
-    gap: 4,
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#F0D5BE',
+    gap: 12,
   },
-  actionBody: { color: '#667085', fontSize: 12, lineHeight: 19, marginTop: 6 },
+  actionBody: { color: '#8A623F', fontSize: 12, lineHeight: 19, marginTop: 6 },
   actionTarget: {
     color: '#217A55',
     fontSize: 12,
@@ -810,14 +757,145 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 6,
   },
-  container: { flex: 1, backgroundColor: '#F5F6F8' },
+  cutSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 22,
+  },
+  cutSectionTitle: {
+    color: '#4C2A18',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  criteriaButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: '#E4BD99',
+    backgroundColor: '#FFF8F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  criteriaButtonActive: {
+    backgroundColor: screenAccent,
+    borderColor: screenAccent,
+  },
+  criteriaButtonText: {
+    color: screenAccent,
+    fontSize: 17,
+    lineHeight: 20,
+    fontWeight: '800',
+  },
+  criteriaButtonTextActive: { color: Colors.white },
+  criteriaCard: {
+    marginTop: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#FFF4E8',
+    borderLeftWidth: 4,
+    borderLeftColor: screenAccent,
+    gap: 7,
+  },
+  criteriaTitle: { color: '#4C2A18', fontSize: 14, fontWeight: '700' },
+  criteriaText: { color: '#6F4B32', fontSize: 12, lineHeight: 18 },
+  criteriaNote: {
+    color: '#8A623F',
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  actionCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  actionRank: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionRankText: { color: screenAccent, fontSize: 14, fontWeight: '800' },
+  actionHeadingCopy: { flex: 1, minWidth: 0 },
+  actionName: { color: '#4C2A18', fontSize: 17, fontWeight: '700' },
+  actionReason: {
+    color: '#8A623F',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+  actionMetrics: {
+    minHeight: 78,
+    borderRadius: 15,
+    backgroundColor: '#FFF8F2',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 12,
+  },
+  actionMetric: { flex: 1, justifyContent: 'center', paddingHorizontal: 12 },
+  actionMetricDivider: { width: 1, backgroundColor: '#EFD8C5' },
+  actionMetricLabel: { color: '#9A7355', fontSize: 10, fontWeight: '600' },
+  actionMetricValue: {
+    color: '#6F4B32',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  actionMetricValueStrong: {
+    color: screenAccent,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  reductionSummary: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: '#EAF7F0',
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  reductionSummaryLabel: { color: '#41745B', fontSize: 12, fontWeight: '600' },
+  reductionSummaryValue: { color: '#217A55', fontSize: 13, fontWeight: '800' },
+  optionLabel: { color: '#6F4B32', fontSize: 12, fontWeight: '700' },
+  stepsTitle: {
+    color: '#4C2A18',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  stepBullet: {
+    width: 22,
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepBulletText: { color: screenAccent, fontSize: 10, fontWeight: '800' },
+  stepText: { flex: 1, color: '#6F4B32', fontSize: 12, lineHeight: 19 },
+  budgetActionButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  budgetActionText: { color: screenAccent, fontSize: 13, fontWeight: '700' },
+  container: { flex: 1, backgroundColor: '#FFF3E8' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    padding: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    padding: 16,
+    borderBottomWidth: 0,
+    borderBottomColor: '#F0D5BE',
   },
   headerButton: {
     width: 42,
@@ -829,10 +907,10 @@ const styles = StyleSheet.create({
   },
   headerCopy: { flex: 1 },
   headerPlaceholder: { width: 42 },
-  title: { color: '#20262D', fontSize: 22, fontWeight: '700' },
-  subtitle: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 3 },
+  title: { color: '#4C2A18', fontSize: 22, fontWeight: '700' },
+  subtitle: { color: '#8A623F', fontSize: 12, fontWeight: '700', marginTop: 3 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: '#667085', fontWeight: '700' },
+  loadingText: { color: '#8A623F', fontWeight: '700' },
   errorState: {
     flex: 1,
     alignItems: 'center',
@@ -848,13 +926,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   errorTitle: {
-    color: '#20262D',
+    color: '#4C2A18',
     fontSize: 18,
     fontWeight: '700',
     marginTop: 15,
   },
   errorText: {
-    color: '#667085',
+    color: '#8A623F',
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 7,
@@ -887,18 +965,18 @@ const styles = StyleSheet.create({
   explainCard: {
     flexDirection: 'row',
     gap: 10,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: '#EEF7E9',
-    borderWidth: 1,
+    padding: 2,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     borderColor: '#C9DDBD',
   },
   explainText: {
     flex: 1,
     color: '#586D42',
-    fontSize: 12,
-    lineHeight: 19,
-    fontWeight: '700',
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '400',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -907,14 +985,14 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { color: '#20262D', fontSize: 18, fontWeight: '700' },
+  sectionTitle: { color: '#4C2A18', fontSize: 18, fontWeight: '700' },
   sectionLink: { color: screenAccent, fontSize: 12, fontWeight: '700' },
   planCard: {
     backgroundColor: '#FFFDFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 15,
+    borderRadius: 22,
+    borderWidth: 0,
+    borderColor: '#F0D5BE',
+    padding: 16,
   },
   planHeader: {
     flexDirection: 'row',
@@ -923,8 +1001,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   planHeadingCopy: { flex: 1, minWidth: 0 },
-  planName: { color: '#20262D', fontSize: 16, fontWeight: '700' },
-  planMeta: { color: '#667085', fontSize: 11, fontWeight: '700', marginTop: 4 },
+  planName: { color: '#4C2A18', fontSize: 16, fontWeight: '700' },
+  planMeta: { color: '#8A623F', fontSize: 11, fontWeight: '700', marginTop: 4 },
   statusBadge: {
     flexShrink: 0,
     borderRadius: 999,
@@ -992,7 +1070,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  netLabel: { flex: 1, color: '#667085', fontSize: 11, fontWeight: '600' },
+  netLabel: { flex: 1, color: '#8A623F', fontSize: 11, fontWeight: '600' },
   netPositive: { color: '#217A55', fontSize: 12, fontWeight: '700' },
   netNegative: { color: '#B3261E', fontSize: 12, fontWeight: '700' },
   emptyCashflow: {
@@ -1008,8 +1086,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF9F3',
   },
   emptyCopy: { flex: 1 },
-  emptyTitle: { color: '#20262D', fontSize: 15, fontWeight: '700' },
-  emptyText: { color: '#667085', lineHeight: 19, marginTop: 5 },
+  emptyTitle: { color: '#4C2A18', fontSize: 15, fontWeight: '700' },
+  emptyText: { color: '#8A623F', lineHeight: 19, marginTop: 5 },
   savingsTopRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   savingsCard: {
     gap: 11,
@@ -1017,7 +1095,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#FFFDFB',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0D5BE',
   },
   savingsIcon: {
     width: 42,
@@ -1029,7 +1107,7 @@ const styles = StyleSheet.create({
   },
   savingsCopy: { flex: 1, minWidth: 0 },
   savingsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  savingsName: { flex: 1, color: '#20262D', fontSize: 14, fontWeight: '700' },
+  savingsName: { flex: 1, color: '#4C2A18', fontSize: 14, fontWeight: '700' },
   progressTrack: {
     height: 7,
     borderRadius: 999,
@@ -1043,14 +1121,14 @@ const styles = StyleSheet.create({
     backgroundColor: screenAccent,
   },
   savingsMeta: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     lineHeight: 17,
     fontWeight: '700',
     marginTop: 7,
   },
   savingsMetaSecondary: {
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     lineHeight: 17,
     fontWeight: '600',
@@ -1083,7 +1161,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     flex: 1,
-    color: '#667085',
+    color: '#8A623F',
     fontSize: 11,
     lineHeight: 17,
     fontWeight: '700',

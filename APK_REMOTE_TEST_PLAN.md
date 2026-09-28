@@ -1,5 +1,7 @@
 # Thử APK kết nối server laptop từ xa
 
+> Cập nhật 28/09/2026 trên laptop: APK release đã nhúng domain cố định `https://api.quanlychitieucanhan.lol`, có JS bundle và chữ ký v2 hợp lệ. Health, đăng nhập và đọc ví qua domain đã đạt. Xem `../releases/CUSTOM_DOMAIN_SETUP_2026-09-28.md`, `../releases/remote-apk.json` và `../releases/SERVER-URL.txt`. Chưa xác nhận micro, hóa đơn thật hoặc 4G trên điện thoại thật.
+
 Cập nhật 21/09/2026. Ưu tiên hiện tại: thử nội bộ vào thứ Sáu 25/09/2026, dự kiến 19:00 giờ Việt Nam. Chưa upload CH Play. Không mở Android Studio hoặc giả lập trong đợt chuẩn bị; kiểm tra trực quan và kết nối thật sẽ dùng điện thoại khi bắt đầu buổi thử.
 
 ## Kết quả cần đạt

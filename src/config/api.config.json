@@ -1,4 +1,4 @@
 {
-  "mode": "local",
-  "remoteBaseUrl": ""
+  "mode": "remote",
+  "remoteBaseUrl": "https://api.quanlychitieucanhan.lol"
 }

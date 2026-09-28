@@ -54,6 +54,15 @@ react {
     autolinkLibrariesWithApp()
 }
 
+// The React Native bundle task does not track JSON config by default.
+// Rebundle when the API endpoint changes so release APKs cannot retain an old tunnel.
+tasks.configureEach { task ->
+    if (task.name.startsWith("createBundle") && task.name.endsWith("JsAndAssets")) {
+        task.inputs.file(file("../../src/config/api.config.json"))
+            .withPropertyName("apiConfiguration")
+    }
+}
+
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
