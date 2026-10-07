@@ -1813,12 +1813,12 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
           </>
         ) : null}
 
-        {hasFullStats && activeTab === 'overview' ? (
+        {hasFullStats ? (
         <View style={styles.reportCard}>
           <View style={styles.reportCopy}>
             <Text style={styles.reportTitle}>Báo cáo</Text>
             <Text style={styles.reportText}>
-              {hasFullStats ? 'Xem số liệu trước khi tải PDF, Excel hoặc gửi email.' : 'Premium được xuất PDF và Excel.'}
+              {`Kỳ ${periodLabels[period].toLowerCase()} đang chọn · Xem trước khi tải hoặc gửi email.`}
             </Text>
           </View>
           <View style={styles.reportActions}>
@@ -1877,6 +1877,23 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
                     </Text>
                   </View>
                 </View>
+                {reportPreview.topExpenseCategories.length ? (
+                  <>
+                    <Text style={styles.previewSectionTitle}>Danh mục chi nhiều nhất</Text>
+                    <View style={styles.previewCategoryList}>
+                      {reportPreview.topExpenseCategories.slice(0, 3).map((item, index) => (
+                        <View key={`${item.category}-${index}`} style={styles.previewCategoryRow}>
+                          <Text style={styles.previewCategoryName} numberOfLines={1}>
+                            {index + 1}. {item.category}
+                          </Text>
+                          <Text style={styles.previewCategoryAmount}>
+                            {formatCurrency(item.amount, reportPreview.displayCurrency)} · {item.percent.toFixed(1)}%
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
                 <Text style={styles.previewSectionTitle}>Nội dung file Excel</Text>
                 <Text style={styles.emailModalText}>{reportPreview.sections.join(' · ')}</Text>
                 <Text style={styles.previewMethod}>{reportPreview.methodology}</Text>
@@ -2314,6 +2331,10 @@ const styles = StyleSheet.create({
   previewIncome: { color: '#188F5A' },
   previewExpense: { color: '#D4621D' },
   previewSectionTitle: { color: '#4A2B1A', fontSize: 15, fontWeight: '900', marginTop: 18 },
+  previewCategoryList: { marginTop: 8, borderRadius: 14, backgroundColor: '#FFF0DF', paddingHorizontal: 12 },
+  previewCategoryRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E8B680' },
+  previewCategoryName: { flex: 1, color: '#4A2B1A', fontWeight: '800' },
+  previewCategoryAmount: { color: '#7A4A28', fontSize: 12, fontWeight: '900', textAlign: 'right' },
   previewMethod: { color: '#7A4A28', backgroundColor: '#FFF0DF', borderRadius: 14, padding: 12, lineHeight: 20, marginTop: 12 },
   emailLabel: { color: '#7A4A28', fontWeight: '900', marginTop: 18, marginBottom: 8 },
   emailInput: {

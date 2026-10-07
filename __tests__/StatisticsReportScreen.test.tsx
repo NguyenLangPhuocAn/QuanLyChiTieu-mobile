@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Modal } from 'react-native';
+import { Alert, Modal, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import StatisticsScreen from '../src/screens/home/StatisticsScreen';
 import { statisticsService } from '../src/services/statistics';
@@ -31,7 +31,9 @@ jest.mock('../src/services/statistics', () => ({
         receiptCount: 1,
         receiptItemCount: 2,
       },
-      topExpenseCategories: [],
+      topExpenseCategories: [
+        { category: 'Ăn uống', amount: 200000, count: 2, percent: 100 },
+      ],
       sections: ['Tổng quan', 'Giao dịch', 'Hóa đơn'],
       methodology: 'Chỉ tính thu chi thông thường.',
     }),
@@ -74,6 +76,20 @@ it('rejects an invalid email without submitting', async () => {
     'Email chưa hợp lệ',
     expect.any(String),
   );
+});
+it('shows the report totals and top expense category before exporting', () => {
+  const textNodes = renderer.root.findAllByType(Text);
+  const visibleText = textNodes
+    .map(node => JSON.stringify(node.props.children))
+    .join(' ');
+  const dataSummary = textNodes.find(node =>
+    Array.isArray(node.props.children)
+      ? node.props.children.join('') === '2 giao dịch · 1 hóa đơn'
+      : false,
+  );
+
+  expect(dataSummary).toBeDefined();
+  expect(visibleText).toContain('Ăn uống');
 });
 it('sends once and keeps the modal open while the report is pending', async () => {
   let resolve!: (

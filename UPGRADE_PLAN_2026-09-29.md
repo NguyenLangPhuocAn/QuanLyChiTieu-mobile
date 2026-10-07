@@ -263,6 +263,14 @@ Không ấn định mỗi đợt phải xong trong một ngày. Nếu còn lỗi
 - Bằng chứng: backend build đạt; 7 test báo cáo/controller đạt, gồm kiểm tra 8 sheet và chống công thức; mobile TypeScript đạt. Chưa gửi email thật và chưa đối chiếu file bằng tài khoản/DB thật trong lượt này.
 - Việc tiếp: tạo file mẫu từ tài khoản thử, render PDF từng trang, kiểm tra dữ liệu lớn/đa tiền tệ/biên ngày; sau đó bổ sung nguồn giao dịch ngân hàng và tùy chọn phụ lục ảnh.
 
+### 07/10/2026 — P5 kiểm tra hóa đơn và PDF nhiều trang
+
+- Đạt: PDF liệt kê từng dòng chi tiết hóa đơn, tổng đã đọc và cảnh báo chênh lệch với tổng giao dịch; không cộng dòng món thêm lần nữa vào tổng chi.
+- Đạt: preview hiện tối đa ba danh mục chi lớn nhất; thẻ báo cáo dùng được trong tab Chi tiết để giữ đúng kỳ tháng/quý/năm/tùy chọn người dùng vừa chọn.
+- Bằng chứng dữ liệu thật trên tài khoản thử: 3 giao dịch, tổng thu 10.000.000 VND, tổng chi 350.000 VND, 2 hóa đơn, 4 dòng chi tiết; PDF render A4 một trang, có cảnh báo chênh -20.000 VND và chân trang 1/1.
+- Kiểm thử tự động: thêm ca PDF 60 hóa đơn để kiểm tra phân trang có giới hạn và không phát sinh chuỗi trang trắng do chân trang.
+- Chưa làm: nhúng ảnh hóa đơn, trường cửa hàng/VAT/giảm giá/số lượng/đơn giá vì hợp đồng OCR và database hiện chưa lưu đầy đủ; chưa kiểm thử đa tiền tệ và biên ngày bằng dữ liệu thật.
+
 Mẫu cập nhật mỗi buổi:
 
 | Ngày/đợt | File/commit/APK | Đã làm | Test/bằng chứng | Đạt/lỗi/chưa thử | Việc tiếp |
