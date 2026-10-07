@@ -75,6 +75,30 @@ export type StatisticsReportResponse = {
   base64: string;
 };
 
+export type ReportPreviewResponse = {
+  period: ReportPeriod;
+  periodLabel: string;
+  range: { dateFrom: string; dateTo: string };
+  displayCurrency: string;
+  walletScope: string;
+  summary: {
+    income: number;
+    expense: number;
+    net: number;
+    transactionCount: number;
+    receiptCount: number;
+    receiptItemCount: number;
+  };
+  topExpenseCategories: Array<{
+    category: string;
+    amount: number;
+    count: number;
+    percent: number;
+  }>;
+  sections: string[];
+  methodology: string;
+};
+
 export type SendReportResponse = {
   message: string;
   filename: string;
@@ -87,6 +111,22 @@ export const statisticsService = {
       method: 'GET',
       token,
     });
+  },
+  previewReport(
+    token: string,
+    period: ReportPeriod,
+    range: ReportDateRange = {},
+  ) {
+    const params = new URLSearchParams({ period });
+    if (range.dateFrom) params.set('dateFrom', range.dateFrom);
+    if (range.dateTo) params.set('dateTo', range.dateTo);
+    if (range.walletId !== undefined) {
+      params.set('walletId', String(range.walletId));
+    }
+    return apiRequest<ReportPreviewResponse>(
+      `/statistics/report/preview?${params.toString()}`,
+      { method: 'GET', token },
+    );
   },
   exportReport(
     token: string,

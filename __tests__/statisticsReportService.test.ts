@@ -23,4 +23,13 @@ it('keeps wallet and date filters when emailing or downloading a report', async 
     expect.stringContaining('&walletId=7'),
     expect.objectContaining({ method: 'GET' }),
   );
+  await statisticsService.previewReport('test', 'custom', range);
+  expect(apiRequest).toHaveBeenCalledWith(
+    expect.stringContaining('/statistics/report/preview?period=custom'),
+    expect.objectContaining({ method: 'GET', token: 'test' }),
+  );
+  expect(apiRequest).toHaveBeenLastCalledWith(
+    expect.stringContaining('walletId=7'),
+    expect.any(Object),
+  );
 });

@@ -254,6 +254,15 @@ Không ấn định mỗi đợt phải xong trong một ngày. Nếu còn lỗi
 - Chưa thử: cấp quyền Notification Access và notification ngân hàng thật trên điện thoại; emulator sau khi cài phản hồi rất chậm và ADB offline trong lúc kiểm tra UI. Chưa có parser riêng từng ngân hàng/tài khoản che, trạng thái hàng chờ đầy đủ, hoàn tác, lần nhận gần nhất và báo cáo lọc nguồn.
 - Việc tiếp: thử điện thoại thật với chế độ Duyệt trước, một thông báo tiền vào và một thông báo tiền ra đã che; đối chiếu bản nháp rồi mới bật Tự động.
 
+### 07/10/2026 — Ưu tiên P5 báo cáo
+
+- Đạt: preview, Excel, PDF và email dùng chung bộ lọc/backend tổng hợp; preview hiện kỳ, ví, thu, chi, chênh lệch, số giao dịch và số hóa đơn trước khi tải hoặc gửi.
+- Đạt: Excel có 8 sheet `Tổng quan`, `Giao dịch`, `Hóa đơn`, `Chi tiết hóa đơn`, `Danh mục`, `Thu chi theo kỳ`, `Ví`, `Giải thích`; tiền giữ kiểu số, ngày giữ kiểu ngày, có filter/freeze/vùng in và chặn chuỗi OCR mở đầu như công thức.
+- Đạt: báo cáo giữ tiền gốc, tiền tệ gốc, tỷ giá đã lưu và tiền quy đổi; chi tiết hóa đơn được đối chiếu với tổng giao dịch, dữ liệu nguồn thiếu được ghi rõ và không bị suy đoán.
+- Đạt một phần: PDF có tổng quan, cách tính, danh mục, hóa đơn, giao dịch và số trang. Chưa nhúng font có quyền phân phối, chưa có biểu đồ hoặc ảnh hóa đơn.
+- Bằng chứng: backend build đạt; 7 test báo cáo/controller đạt, gồm kiểm tra 8 sheet và chống công thức; mobile TypeScript đạt. Chưa gửi email thật và chưa đối chiếu file bằng tài khoản/DB thật trong lượt này.
+- Việc tiếp: tạo file mẫu từ tài khoản thử, render PDF từng trang, kiểm tra dữ liệu lớn/đa tiền tệ/biên ngày; sau đó bổ sung nguồn giao dịch ngân hàng và tùy chọn phụ lục ảnh.
+
 Mẫu cập nhật mỗi buổi:
 
 | Ngày/đợt | File/commit/APK | Đã làm | Test/bằng chứng | Đạt/lỗi/chưa thử | Việc tiếp |

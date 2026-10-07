@@ -39,6 +39,7 @@ import {
   statisticsService,
   type ReportDateRange,
   type ReportPeriod,
+  type ReportPreviewResponse,
   type StatisticsPeriod,
   type StatisticsResponse,
 } from '../../services/statistics';
@@ -743,6 +744,7 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
   const [exportingFormat, setExportingFormat] = useState<'excel' | 'pdf' | null>(null);
   const [isEmailModalVisible, setIsEmailModalVisible] = useState(false);
   const [reportEmail, setReportEmail] = useState(user?.email ?? '');
+  const [reportPreview, setReportPreview] = useState<ReportPreviewResponse | null>(null);
   const { run: runReportAction, busy: reportBusy } = useSingleFlight();
   const hasFullStats = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
   const visibleTabs: StatisticsTab[] = hasFullStats ? ['overview', 'trend'] : ['overview'];
@@ -999,14 +1001,19 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
       return;
     }
 
-    if (format === 'excel' && !download) {
-      setReportEmail(user?.email ?? reportEmail);
-      setIsEmailModalVisible(true);
-      return;
-    }
-
     try {
       setExportingFormat(format);
+      if (!download) {
+        const preview = await statisticsService.previewReport(
+          token,
+          reportRequest.period,
+          reportRequest.range,
+        );
+        setReportPreview(preview);
+        setReportEmail(user?.email ?? reportEmail);
+        setIsEmailModalVisible(true);
+        return;
+      }
       const report = await statisticsService.exportReport(
         token,
         reportRequest.period,
@@ -1811,14 +1818,14 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
           <View style={styles.reportCopy}>
             <Text style={styles.reportTitle}>Báo cáo</Text>
             <Text style={styles.reportText}>
-              {hasFullStats ? 'Xuất PDF hoặc gửi Excel qua email.' : 'Premium được xuất PDF và Excel.'}
+              {hasFullStats ? 'Xem số liệu trước khi tải PDF, Excel hoặc gửi email.' : 'Premium được xuất PDF và Excel.'}
             </Text>
           </View>
           <View style={styles.reportActions}>
-            <TouchableOpacity accessibilityLabel="Mở gửi báo cáo Excel" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('excel')}>
+            <TouchableOpacity accessibilityLabel="Xem trước báo cáo Excel" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('excel')}>
               <FileSpreadsheet size={16} color={hasFullStats ? Colors.primary : '#9A7255'} />
             </TouchableOpacity>
-            <TouchableOpacity accessibilityLabel="Tải báo cáo PDF" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('pdf')}>
+            <TouchableOpacity accessibilityLabel="Xem trước báo cáo PDF" disabled={reportBusy} style={styles.reportButton} onPress={() => handleExport('pdf')}>
               {exportingFormat === 'pdf' ? (
                 <ActivityIndicator color={Colors.primary} />
               ) : (
@@ -1838,9 +1845,51 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
           <View style={styles.emailModalCard}>
             <View style={styles.modalHandle} />
             <ScrollView keyboardShouldPersistTaps="handled">
-            <Text style={styles.emailModalTitle}>Gửi báo cáo Excel</Text>
-            <Text style={styles.emailModalText}>Kỳ: {reportRequest.range.dateFrom ?? 'Từ đầu'} → {reportRequest.range.dateTo ?? 'Hôm nay'}. {walletId === null ? 'Tất cả ví' : 'Chỉ ví đang chọn'}.</Text>
-            <Text style={styles.emailModalText}>Excel gồm tổng quan, giao dịch, chi theo danh mục, thu chi theo tháng và số dư ví hiện tại. Kiểm tra địa chỉ nhận trước khi gửi dữ liệu chi tiêu.</Text>
+            <Text style={styles.emailModalTitle}>Xem trước và xuất báo cáo</Text>
+            {reportPreview ? (
+              <>
+                <Text style={styles.emailModalText}>
+                  {reportPreview.range.dateFrom} → {reportPreview.range.dateTo} · {reportPreview.walletScope}
+                </Text>
+                <View style={styles.previewSummaryGrid}>
+                  <View style={styles.previewSummaryItem}>
+                    <Text style={styles.previewSummaryLabel}>Tổng thu</Text>
+                    <Text style={[styles.previewSummaryValue, styles.previewIncome]}>
+                      {formatCurrency(reportPreview.summary.income, reportPreview.displayCurrency)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewSummaryItem}>
+                    <Text style={styles.previewSummaryLabel}>Tổng chi</Text>
+                    <Text style={[styles.previewSummaryValue, styles.previewExpense]}>
+                      {formatCurrency(reportPreview.summary.expense, reportPreview.displayCurrency)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewSummaryItem}>
+                    <Text style={styles.previewSummaryLabel}>Thu − chi</Text>
+                    <Text style={styles.previewSummaryValue}>
+                      {formatCurrency(reportPreview.summary.net, reportPreview.displayCurrency)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewSummaryItem}>
+                    <Text style={styles.previewSummaryLabel}>Dữ liệu</Text>
+                    <Text style={styles.previewSummaryValue}>
+                      {reportPreview.summary.transactionCount} giao dịch · {reportPreview.summary.receiptCount} hóa đơn
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.previewSectionTitle}>Nội dung file Excel</Text>
+                <Text style={styles.emailModalText}>{reportPreview.sections.join(' · ')}</Text>
+                <Text style={styles.previewMethod}>{reportPreview.methodology}</Text>
+                <View style={styles.emailActions}>
+                  <View style={styles.emailAction}>
+                    <ActionButton label="Tải PDF" secondary onPress={() => handleExport('pdf', true)} loading={reportBusy && exportingFormat === 'pdf'} disabled={reportBusy} />
+                  </View>
+                  <View style={styles.emailAction}>
+                    <ActionButton label="Tải Excel" secondary onPress={() => handleExport('excel', true)} loading={reportBusy && exportingFormat === 'excel'} disabled={reportBusy} />
+                  </View>
+                </View>
+              </>
+            ) : null}
             <FormField label="Email nhận báo cáo"
               accessibilityLabel="Email nhận báo cáo"
               editable={!reportBusy}
@@ -1855,9 +1904,6 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
               <View style={styles.emailAction}><ActionButton label="Hủy" secondary onPress={closeEmailModal} disabled={reportBusy} /></View>
               <View style={styles.emailAction}><ActionButton label="Gửi Excel" accessibilityLabel="Gửi báo cáo Excel" onPress={handleSendExcelReport} loading={reportBusy} disabled={reportBusy} /></View>
             </View>
-            <TouchableOpacity accessibilityLabel="Tải báo cáo Excel về máy" disabled={reportBusy} onPress={() => handleExport('excel', true)}>
-              <Text style={styles.emailModalText}>Tải Excel về máy</Text>
-            </TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -2261,6 +2307,14 @@ const styles = StyleSheet.create({
   modalHandle: { width: 44, height: 5, borderRadius: 999, backgroundColor: '#E5B98E', alignSelf: 'center', marginBottom: 14 },
   emailModalTitle: { color: '#4A2B1A', fontSize: 22, fontWeight: '900' },
   emailModalText: { color: '#8B6548', lineHeight: 21, marginTop: 8 },
+  previewSummaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 },
+  previewSummaryItem: { width: '48%', minHeight: 76, borderRadius: 16, backgroundColor: '#FFF0DF', padding: 12 },
+  previewSummaryLabel: { color: '#8B6548', fontSize: 12, fontWeight: '800' },
+  previewSummaryValue: { color: '#4A2B1A', fontSize: 14, fontWeight: '900', marginTop: 6, lineHeight: 19 },
+  previewIncome: { color: '#188F5A' },
+  previewExpense: { color: '#D4621D' },
+  previewSectionTitle: { color: '#4A2B1A', fontSize: 15, fontWeight: '900', marginTop: 18 },
+  previewMethod: { color: '#7A4A28', backgroundColor: '#FFF0DF', borderRadius: 14, padding: 12, lineHeight: 20, marginTop: 12 },
   emailLabel: { color: '#7A4A28', fontWeight: '900', marginTop: 18, marginBottom: 8 },
   emailInput: {
     minHeight: 52,

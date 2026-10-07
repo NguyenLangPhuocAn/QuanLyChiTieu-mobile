@@ -17,6 +17,24 @@ jest.mock('../src/context/FinanceContext', () => {
 jest.mock('../src/services/statistics', () => ({
   statisticsService: {
     get: jest.fn().mockRejectedValue(new Error('offline')),
+    previewReport: jest.fn().mockResolvedValue({
+      period: 'month',
+      periodLabel: 'tháng',
+      range: { dateFrom: '01/10/2026', dateTo: '07/10/2026' },
+      displayCurrency: 'VND',
+      walletScope: 'Tất cả ví (1)',
+      summary: {
+        income: 1000000,
+        expense: 200000,
+        net: 800000,
+        transactionCount: 2,
+        receiptCount: 1,
+        receiptItemCount: 2,
+      },
+      topExpenseCategories: [],
+      sections: ['Tổng quan', 'Giao dịch', 'Hóa đơn'],
+      methodology: 'Chỉ tính thu chi thông thường.',
+    }),
     sendExcelReport: jest.fn(),
     exportReport: jest.fn(),
   },
@@ -37,7 +55,7 @@ beforeEach(async () => {
     );
   });
   await act(async () => {
-    await field('Mở gửi báo cáo Excel').props.onPress();
+    await field('Xem trước báo cáo Excel').props.onPress();
   });
 });
 afterEach(async () => {
