@@ -38,6 +38,7 @@ export type ApiTransaction = {
   transaction_date: string;
   created_at?: string | null;
   type: ApiTransactionType;
+  source?: 'BANK_NOTIFICATION' | null;
   category?: {
     id: number;
     name: string;

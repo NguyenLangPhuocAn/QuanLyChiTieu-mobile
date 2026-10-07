@@ -1,5 +1,7 @@
 # Kế hoạch tối ưu ứng dụng quản lý chi tiêu
 
+> **Ưu tiên hiện hành, cập nhật 07/10/2026:** xem [UPGRADE_PLAN_2026-09-29.md](UPGRADE_PLAN_2026-09-29.md). Kế hoạch theo dõi 7 hạng mục: khác biệt spinner giữa hai máy, OCR từng món, hiệu năng/độ tin cậy, đọc thông báo ngân hàng để tạo thu/chi, cập nhật Firebase, báo cáo chi tiết theo kỳ và UI. Yêu cầu hóa đơn tổng quát trong nội dung cũ được thay bằng OCR từng món có xác nhận; phần dưới được giữ làm lịch sử.
+
 Cập nhật: 22/09/2026. Ưu tiên đồ án, dùng laptop làm server, thử nghiệm chi phí thấp. Không bật Android/giả lập trong đợt này. Đây là kế hoạch triển khai; các mục chưa hoàn tất không được xem là đã có trong app.
 
 Rà soát chức năng toàn hệ thống, đối chiếu Sổ Thu Chi MISA/Money Lover và backlog nâng cấp theo từng phần: [SYSTEM_UPGRADE_ROADMAP.md](SYSTEM_UPGRADE_ROADMAP.md). Tài liệu mới phân biệt chức năng đã có, phát hiện từ mã nguồn, việc đề xuất và điều kiện nghiệm thu; chưa áp dụng migration hay bật dịch vụ.

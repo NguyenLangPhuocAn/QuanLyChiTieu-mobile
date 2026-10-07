@@ -6,6 +6,10 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -36,5 +40,14 @@
             <data android:scheme="quanlychitieu" android:host="payment-result" />
         </intent-filter>
       </activity>
+      <service
+        android:name=".banknotifications.BankNotificationListenerService"
+        android:label="Giao dịch từ ngân hàng"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+        android:exported="true">
+        <intent-filter>
+          <action android:name="android.service.notification.NotificationListenerService" />
+        </intent-filter>
+      </service>
     </application>
 </manifest>

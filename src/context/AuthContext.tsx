@@ -18,6 +18,7 @@ import {
 import { authService } from '../services/auth';
 import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
 import { GOOGLE_WEB_CLIENT_ID } from '../config/google';
+import { bankNotificationReader } from '../native/bankNotificationReader';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
@@ -146,6 +147,11 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     setIsLoading(false);
     setIsCurrencySetupRequired(false);
     persistSession(null);
+    if (bankNotificationReader.isSupported) {
+      bankNotificationReader
+        .setConfiguration(null, [])
+        .catch(() => undefined);
+    }
   };
 
   useEffect(() => {

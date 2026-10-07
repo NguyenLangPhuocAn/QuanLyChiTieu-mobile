@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -61,6 +62,7 @@ import { tagsService } from '../../services/tags';
 import { budgetsService } from '../../services/budgets';
 import { savingsService } from '../../services/savings';
 import { notificationsService } from '../../services/notifications';
+import { syncBankNotifications } from '../../services/bankNotificationSync';
 import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
 import { toDateKey } from '../../utils/budgetPeriod';
@@ -323,12 +325,44 @@ const MainScreen = () => {
     useCallback(() => {
       fetchDashboardData();
 
+      if (token && user?.id) {
+        syncBankNotifications(token, user.id)
+          .then(result => {
+            if (result.created > 0) {
+              fetchDashboardData();
+              Alert.alert(
+                'Đã cập nhật giao dịch',
+                `${result.created} biến động ngân hàng đã được thêm.`,
+              );
+            }
+          })
+          .catch(() => undefined);
+      }
+
       if (shouldReopenTransactionForm.current) {
         shouldReopenTransactionForm.current = false;
         setIsModalVisible(true);
       }
-    }, [fetchDashboardData]),
+    }, [fetchDashboardData, token, user?.id]),
   );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState !== 'active' || !token || !user?.id) return;
+      syncBankNotifications(token, user.id)
+        .then(result => {
+          if (result.created > 0) {
+            fetchDashboardData();
+            Alert.alert(
+              'Đã cập nhật giao dịch',
+              `${result.created} biến động ngân hàng đã được thêm.`,
+            );
+          }
+        })
+        .catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, [fetchDashboardData, token, user?.id]);
 
   const selectedWallet = useMemo(
     () =>

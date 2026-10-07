@@ -80,6 +80,8 @@ export const transactionsService = {
       receipt_items?: ReceiptItem[] | null;
       transaction_date?: string;
       tags?: string[];
+      source?: 'BANK_NOTIFICATION';
+      source_ref?: string;
     },
   ) {
     return apiRequest<ApiTransaction>('/transactions', {

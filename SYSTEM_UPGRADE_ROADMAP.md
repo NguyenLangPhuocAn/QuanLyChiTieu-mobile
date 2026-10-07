@@ -1,5 +1,7 @@
 # Rà soát hệ thống và kế hoạch nâng cấp theo từng phần
 
+> **Kế hoạch tiếp tục hiện hành, cập nhật 07/10/2026:** [UPGRADE_PLAN_2026-09-29.md](UPGRADE_PLAN_2026-09-29.md). Ưu tiên 7 hạng mục; OCR cần nhận dạng từng món và P7 thêm đọc thông báo ngân hàng để tạo thu/chi có chống trùng. Nội dung ngày 22/09 bên dưới là lịch sử và không ghi đè yêu cầu mới.
+
 Ngày rà soát: 22/09/2026. Đối tượng: đồ án quản lý chi tiêu cá nhân của sinh viên năm 4; backend chạy trên laptop, thử APK từ xa trước khi tính đến CH Play.
 
 ## 1. Phạm vi và kết luận
