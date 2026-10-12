@@ -72,7 +72,7 @@ jobs:
 
       - name: Build signed APK
         working-directory: android
-        run: ./gradlew assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME="$VERSION_NAME"
+        run: bash ./gradlew assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME="$VERSION_NAME"
 
       - name: Create release files
         shell: bash
