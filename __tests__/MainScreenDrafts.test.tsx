@@ -5,6 +5,7 @@ import MainScreen from '../src/screens/home/MainScreen';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
+import { formatCurrency } from '../src/utils/format';
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
@@ -205,6 +206,79 @@ it('ignores a late OCR result after cancelling and opening another draft', async
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
+it('shows the centered OCR loading notice above an open transaction form', async () => {
+  (launchImageLibrary as jest.Mock).mockResolvedValue({
+    assets: [{ uri: 'file:///receipt.jpg', type: 'image/jpeg' }],
+  });
+  (transactionsService.analyzeReceipt as jest.Mock).mockImplementation(
+    () => new Promise(() => undefined),
+  );
+
+  await act(async () => {
+    chat().onCreateTransaction!(draft as any);
+  });
+  await act(async () => {
+    tree.root
+      .findByProps({ accessibilityLabel: 'Ảnh hóa đơn không bắt buộc' })
+      .props.onPress();
+  });
+  await act(async () => {
+    button('Quét ảnh bằng AI').props.onPress();
+  });
+  const choices = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Quét hóa đơn',
+  )[2];
+  await act(async () => {
+    choices.find((item: any) => item.text === 'Thư viện ảnh').onPress();
+  });
+
+  expect(
+    tree.root.findByProps({ accessibilityLabel: 'Đang kiểm tra ảnh hóa đơn' }),
+  ).toBeTruthy();
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(text =>
+        String(text.props.children).includes(
+          'AI đang đọc tổng tiền, ngày, danh mục và từng món',
+        ),
+      ),
+  ).toBe(true);
+});
+
+it('attaches a receipt image without running AI', async () => {
+  (launchImageLibrary as jest.Mock).mockResolvedValue({
+    assets: [
+      {
+        uri: 'file:///receipt-only.jpg',
+        type: 'image/jpeg',
+        fileName: 'receipt-only.jpg',
+      },
+    ],
+  });
+  await act(async () => {
+    chat().onCreateTransaction!(draft as any);
+  });
+  await act(async () => {
+    tree.root
+      .findByProps({ accessibilityLabel: 'Ảnh hóa đơn không bắt buộc' })
+      .props.onPress();
+  });
+  await act(async () => {
+    button('Thêm ảnh hóa đơn').props.onPress();
+  });
+  const choices = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Thêm ảnh hóa đơn',
+  )[2];
+  await act(async () => {
+    await choices.find((item: any) => item.text === 'Thư viện ảnh').onPress();
+  });
+
+  expect(button('Đổi ảnh')).toBeTruthy();
+  expect(button('Đọc bằng AI')).toBeTruthy();
+  expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
+});
+
 it('cancelling the image picker does not create a transaction', async () => {
   (launchImageLibrary as jest.Mock).mockResolvedValue({ didCancel: true });
   await act(async () => {
@@ -372,4 +446,128 @@ it('ignores OCR completion after cancelling the pending scan', async () => {
   });
   expect(draftVisible()).toBe(false);
   expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('shows OCR line items and saves them with the transaction', async () => {
+  (launchImageLibrary as jest.Mock).mockResolvedValue({
+    assets: [{ uri: 'file:///detailed-receipt.jpg', type: 'image/jpeg' }],
+  });
+  (transactionsService.analyzeReceipt as jest.Mock).mockResolvedValue({
+    amount: 80000,
+    currency: 'VND',
+    note: 'Hóa đơn chi tiết',
+    warnings: [],
+    receipt_items: [
+      { name: 'Cua 0,5 kg', amount: 50000 },
+      { name: 'Rau', amount: 30000 },
+    ],
+    suggested_category: { id: 4 },
+  });
+  (transactionsService.create as jest.Mock).mockResolvedValue({ id: 11 });
+
+  await act(async () => {
+    chat().onScanReceipt!();
+  });
+  const choices = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Quét hóa đơn',
+  )[2];
+  await act(async () => {
+    await choices.find((item: any) => item.text === 'Thư viện ảnh').onPress();
+  });
+
+  expect(
+    tree.root.findByProps({
+      accessibilityLabel: 'Ảnh hóa đơn không bắt buộc',
+    }),
+  ).toBeTruthy();
+  expect(
+    tree.root.findByProps({
+      accessibilityLabel: 'Chi tiết hóa đơn',
+    }),
+  ).toBeTruthy();
+  expect(
+    tree.root.findByProps({ accessibilityLabel: 'Tên món 1' }).props.value,
+  ).toBe('Cua 0,5 kg');
+  expect(
+    tree.root.findByProps({ accessibilityLabel: 'Tên món 2' }).props.value,
+  ).toBe('Rau');
+
+  await act(async () => {
+    await button('Lưu giao dịch').props.onPress();
+  });
+
+  expect(transactionsService.create).toHaveBeenCalledWith(
+    'test-token',
+    expect.objectContaining({
+      amount: '80000',
+      receipt_items: [
+        { name: 'Cua 0,5 kg', amount: 50000 },
+        { name: 'Rau', amount: 30000 },
+      ],
+    }),
+  );
+});
+
+it('allows manually entering receipt items and updates their total', async () => {
+  await act(async () => {
+    chat().onCreateTransaction!(draft as any);
+  });
+  await act(async () => {
+    tree.root
+      .findByProps({ accessibilityLabel: 'Chi tiết hóa đơn' })
+      .props.onPress();
+  });
+
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === formatCurrency(0, 'VND')),
+  ).toBe(true);
+
+  await act(async () => {
+    tree.root
+      .findByProps({ accessibilityLabel: 'Thêm món hóa đơn' })
+      .props.onPress();
+  });
+  await act(async () => {
+    tree.root
+      .findByProps({ accessibilityLabel: 'Tên món 1' })
+      .props.onChangeText('Bánh mì');
+    tree.root
+      .findByProps({ accessibilityLabel: 'Thành tiền món 1' })
+      .props.onChangeText('12000');
+  });
+
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === formatCurrency(12000, 'VND')),
+  ).toBe(true);
+});
+
+it('shows selectable hashtags even without recent tag history', async () => {
+  await act(async () => {
+    chat().onCreateTransaction!(draft as any);
+  });
+
+  const hashtagChoice = tree.root
+    .findAllByType(TouchableOpacity)
+    .find(node =>
+      node
+        .findAllByType(Text)
+        .some(text =>
+          Array.isArray(text.props.children)
+            ? text.props.children.join('') === '#ăn uống'
+            : text.props.children === '#ăn uống',
+        ),
+    );
+  expect(hashtagChoice).toBeTruthy();
+  await act(async () => {
+    hashtagChoice!.props.onPress();
+  });
+
+  expect(
+    tree.root.findByProps({ placeholder: 'Ví dụ: #antrua #congviec' }).props
+      .value,
+  ).toBe('#ăn uống');
 });

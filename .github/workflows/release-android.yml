@@ -1,0 +1,108 @@
+name: Release Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Android versionCode (must increase)
+        required: true
+        type: string
+      version_name:
+        description: Version name, for example 1.2.0
+        required: true
+        type: string
+      release_notes:
+        description: Nội dung thay đổi hiển thị trong ứng dụng
+        required: true
+        type: string
+      required_update:
+        description: Bắt buộc cập nhật
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      VERSION_CODE: ${{ inputs.version_code }}
+      VERSION_NAME: ${{ inputs.version_name }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Validate release secrets
+        shell: bash
+        run: |
+          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+
+      - name: Install dependencies and test
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm test -- --runInBand
+
+      - name: Restore release key
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+          echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/app/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build signed APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME="$VERSION_NAME"
+
+      - name: Create release files
+        shell: bash
+        run: |
+          APK_NAME="QuanLyChiTieu-$VERSION_NAME.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$APK_NAME"
+          printf '%s' "$RELEASE_NOTES" > release-notes.txt
+          REQUIRED_FLAG=""
+          if [ "${{ inputs.required_update }}" = "true" ]; then REQUIRED_FLAG="--required"; fi
+          node scripts/create-update-manifest.mjs \
+            --apk "$APK_NAME" \
+            --version-code "$VERSION_CODE" \
+            --version-name "$VERSION_NAME" \
+            --repository "$GITHUB_REPOSITORY" \
+            --notes-file release-notes.txt \
+            --output update.json \
+            $REQUIRED_FLAG
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          BUILD_TOOLS_VERSION="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --verbose "QuanLyChiTieu-$VERSION_NAME.apk"
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          gh release create "v$VERSION_NAME" \
+            "QuanLyChiTieu-$VERSION_NAME.apk" \
+            update.json \
+            --title "Quản Lý Chi Tiêu $VERSION_NAME" \
+            --notes-file release-notes.txt \
+            --latest

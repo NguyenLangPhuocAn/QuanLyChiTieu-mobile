@@ -57,7 +57,7 @@ beforeEach(async () => {
     );
   });
   await act(async () => {
-    await field('Xem trước báo cáo Excel').props.onPress();
+    await field('Tải báo cáo').props.onPress();
   });
 });
 afterEach(async () => {
@@ -65,6 +65,9 @@ afterEach(async () => {
   jest.restoreAllMocks();
 });
 it('rejects an invalid email without submitting', async () => {
+  await act(async () => {
+    field('Chọn gửi qua email').props.onPress();
+  });
   await act(async () => {
     field('Email nhận báo cáo').props.onChangeText('bad');
   });
@@ -90,8 +93,31 @@ it('shows the report totals and top expense category before exporting', () => {
 
   expect(dataSummary).toBeDefined();
   expect(visibleText).toContain('Ăn uống');
+  expect(visibleText).not.toContain('Nội dung file Excel');
+  expect(visibleText).not.toContain('Tổng quan · Giao dịch · Hóa đơn');
+  expect(field('Chọn tải báo cáo').props.accessibilityState.selected).toBe(
+    true,
+  );
+  expect(() => field('Email nhận báo cáo')).toThrow();
+  expect(field('Tải PDF')).toBeDefined();
+  expect(field('Tải Excel')).toBeDefined();
+});
+it('shows only email controls after choosing email delivery', async () => {
+  await act(async () => {
+    field('Chọn gửi qua email').props.onPress();
+  });
+  expect(field('Chọn gửi qua email').props.accessibilityState.selected).toBe(
+    true,
+  );
+  expect(field('Email nhận báo cáo')).toBeDefined();
+  expect(field('Gửi báo cáo Excel')).toBeDefined();
+  expect(() => field('Tải PDF')).toThrow();
+  expect(() => field('Tải Excel')).toThrow();
 });
 it('sends once and keeps the modal open while the report is pending', async () => {
+  await act(async () => {
+    field('Chọn gửi qua email').props.onPress();
+  });
   let resolve!: (
     value: Awaited<ReturnType<typeof statisticsService.sendExcelReport>>,
   ) => void;
@@ -124,6 +150,9 @@ it('sends once and keeps the modal open while the report is pending', async () =
   expect(renderer.root.findByType(Modal).props.visible).toBe(false);
 });
 it('does not claim email was sent when an older backend returns dev-only', async () => {
+  await act(async () => {
+    field('Chọn gửi qua email').props.onPress();
+  });
   service.sendExcelReport.mockResolvedValue({
     message: 'dev',
     filename: 'report.xlsx',

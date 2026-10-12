@@ -20,7 +20,6 @@ import {
   Hash,
   HandCoins,
   ListTree,
-  LockKeyhole,
   LogOut,
   Palette,
   PiggyBank,
@@ -430,11 +429,16 @@ const AccountScreen = ({
             action: () => navigation.navigate('BankNotifications'),
           },
           {
-            title: 'Xuất báo cáo',
-            subtitle: 'Excel/PDF dành cho Premium',
+            title: 'Quy tắc thông minh',
+            subtitle: 'Từ khóa tự chọn danh mục, ví dụ Grab → Di chuyển',
+            Icon: Sparkles,
+            action: () => navigation.navigate('SmartRules'),
+          },
+          {
+            title: 'Dữ liệu và xuất nhập',
+            subtitle: 'Bản sao trên máy, xuất và nhập Excel',
             Icon: Download,
-            locked: !isPremium,
-            action: () => navigation.navigate('Statistics', { wallets }),
+            action: () => navigation.navigate('DataManagement', { wallets }),
           },
           {
             title: 'Hỗ trợ',
@@ -449,9 +453,7 @@ const AccountScreen = ({
             <TouchableOpacity
               key={item.title}
               style={styles.menuRow}
-              onPress={() =>
-                item.locked ? setIsPlanModalVisible(true) : item.action?.()
-              }
+              onPress={item.action}
             >
               <View style={styles.menuLeft}>
                 <View style={styles.menuIcon}>
@@ -462,11 +464,7 @@ const AccountScreen = ({
                   <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
                 </View>
               </View>
-              {item.locked ? (
-                <LockKeyhole size={18} color="#B57745" />
-              ) : (
-                <ChevronRight size={20} color="#B57745" />
-              )}
+              <ChevronRight size={20} color="#B57745" />
             </TouchableOpacity>
           );
         })}
@@ -625,7 +623,9 @@ const AccountScreen = ({
             </TouchableOpacity>
             <View style={styles.paymentHeaderCopy}>
               <Text style={styles.paymentHeaderTitle}>Thanh toán Premium</Text>
-              <Text style={styles.paymentHeaderSubtitle}>Bảo mật bởi VNPay</Text>
+              <Text style={styles.paymentHeaderSubtitle}>
+                Bảo mật bởi VNPay
+              </Text>
             </View>
             <ShieldCheck size={23} color="#2D7A55" />
           </View>

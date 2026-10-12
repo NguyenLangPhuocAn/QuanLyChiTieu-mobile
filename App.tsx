@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { FinanceProvider } from './src/context/FinanceContext';
+import AppUpdateManager from './src/components/AppUpdateManager';
 
 const AccountWorkspace = () => {
   const { user } = useAuth();
@@ -18,7 +19,9 @@ const App = () => {
   return (
     <SafeAreaProvider style={styles.provider}>
       <AuthProvider>
-        <AccountWorkspace />
+        <AppUpdateManager>
+          <AccountWorkspace />
+        </AppUpdateManager>
       </AuthProvider>
     </SafeAreaProvider>
   );

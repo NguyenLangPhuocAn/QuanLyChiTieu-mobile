@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   Hash,
@@ -27,6 +28,14 @@ type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
 const TransactionDetailScreen = ({ navigation, route }: Props) => {
   const { transaction } = route.params;
   const receiptUrl = resolveReceiptUrl(transaction.receiptImage);
+  const receiptItems = transaction.receiptItems ?? [];
+  const receiptItemTotal = receiptItems.reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
+  const receiptDifference = Math.abs(
+    Math.abs(transaction.amount) - receiptItemTotal,
+  );
   const typeLabel =
     transaction.cashFlowType === 'loan_debt'
       ? 'Dòng tiền vay/nợ'
@@ -93,9 +102,13 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
             <View style={styles.tagRow}>
               {(transaction.tags ?? []).map(tag => (
                 <View key={tag} style={styles.tagBadge}>
-                <Text style={styles.tagText} numberOfLines={1} ellipsizeMode="tail">
-                  #{tag}
-                </Text>
+                  <Text
+                    style={styles.tagText}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    #{tag}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -113,6 +126,56 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
               <ImageIcon size={22} color="#A06B42" />
               <Text style={styles.emptyText}>Chưa có ảnh hóa đơn.</Text>
             </View>
+          )}
+        </View>
+
+        <View style={styles.infoCard}>
+          <View style={styles.receiptItemsHeader}>
+            <View style={styles.receiptItemsTitleRow}>
+              <ImageIcon size={19} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>Chi tiết hóa đơn</Text>
+            </View>
+            <Text style={styles.receiptItemCount}>
+              {receiptItems.length} món
+            </Text>
+          </View>
+          {receiptItems.length > 0 ? (
+            <>
+              {receiptItems.map((item, index) => (
+                <View
+                  style={styles.receiptItemRow}
+                  key={`${item.name}-${index}`}
+                >
+                  <Text style={styles.receiptItemName}>
+                    {index + 1}. {item.name}
+                  </Text>
+                  <Text style={styles.receiptItemAmount}>
+                    {formatCurrency(item.amount, transaction.currency)}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.receiptTotalRow}>
+                <Text style={styles.receiptTotalLabel}>Tổng các món</Text>
+                <Text style={styles.receiptTotalValue}>
+                  {formatCurrency(receiptItemTotal, transaction.currency)}
+                </Text>
+              </View>
+              {receiptDifference > 0.01 ? (
+                <View style={styles.receiptDifferenceRow}>
+                  <AlertTriangle size={15} color="#A15C00" />
+                  <Text style={styles.receiptDifferenceText}>
+                    Chênh lệch{' '}
+                    {formatCurrency(receiptDifference, transaction.currency)} so
+                    với tổng giao dịch; có thể do thuế, phí, giảm giá hoặc món
+                    chưa đọc rõ.
+                  </Text>
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.emptyText}>
+              Hóa đơn chưa có chi tiết từng món.
+            </Text>
           )}
         </View>
       </ScrollView>
@@ -273,7 +336,12 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '700',
   },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
   tagBadge: {
     maxWidth: '100%',
     flexShrink: 0,

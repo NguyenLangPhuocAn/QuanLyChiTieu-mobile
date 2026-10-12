@@ -16,6 +16,9 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Eye,
+  EyeOff,
+  HeartPulse,
   Lightbulb,
   PiggyBank,
   ShieldAlert,
@@ -63,6 +66,62 @@ type TopCategory = {
   name: string;
   total: number;
   icon?: string | null;
+};
+
+type FinancialHealthInput = {
+  income: number;
+  expense: number;
+  totalBalance: number;
+  budgetPercents: number[];
+};
+
+export const calculateFinancialHealthBreakdown = ({
+  income,
+  expense,
+  totalBalance,
+  budgetPercents,
+}: FinancialHealthInput) => {
+  const clamp = (value: number, minimum = 0, maximum = 1) =>
+    Math.min(maximum, Math.max(minimum, value));
+  const savingRate = income > 0 ? (income - expense) / income : 0;
+  const cashFlowPoints = clamp(savingRate / 0.2) * 40;
+  const reserveMonths = expense > 0 ? totalBalance / expense : 0;
+  const reservePoints = clamp(reserveMonths / 3) * 30;
+  const budgetPoints = budgetPercents.length
+    ? (budgetPercents.reduce(
+        (sum, percent) => sum + clamp((1.2 - percent) / 0.4),
+        0,
+      ) /
+        budgetPercents.length) *
+      30
+    : 15;
+  const score = Math.round(cashFlowPoints + reservePoints + budgetPoints);
+
+  return {
+    score,
+    label:
+      score >= 80
+        ? 'Tốt'
+        : score >= 60
+        ? 'Khá'
+        : score >= 40
+        ? 'Cần cải thiện'
+        : 'Cần chú ý',
+    savingRate,
+    reserveMonths,
+    averageBudgetPercent: budgetPercents.length
+      ? budgetPercents.reduce((sum, percent) => sum + percent, 0) /
+        budgetPercents.length
+      : null,
+    cashFlowPoints,
+    reservePoints,
+    budgetPoints,
+  };
+};
+
+export const calculateFinancialHealthScore = (input: FinancialHealthInput) => {
+  const { score, label } = calculateFinancialHealthBreakdown(input);
+  return { score, label };
 };
 
 const MONTHS = Array.from({ length: 12 }, (_, index) => index);
@@ -228,10 +287,7 @@ export const buildOverviewBudgetRows = (
     })
     .slice(0, 3);
 
-export const buildOverviewSavingsRows = (
-  goals: SavingsGoal[],
-  limit = 3,
-) =>
+export const buildOverviewSavingsRows = (goals: SavingsGoal[], limit = 3) =>
   goals
     .filter(goal => goal.status === 'ACTIVE')
     .sort((left, right) => {
@@ -273,6 +329,8 @@ const OverviewScreen = ({
   );
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const [pickerYear, setPickerYear] = useState(anchorDate.getFullYear());
+  const [isBalanceVisible, setIsBalanceVisible] = useState(false);
+  const [healthDetailsVisible, setHealthDetailsVisible] = useState(false);
 
   const monthTransactions = useMemo(
     () =>
@@ -421,6 +479,12 @@ const OverviewScreen = ({
     periodBounds,
   );
   const savingsRows = buildOverviewSavingsRows(savingsGoals);
+  const financialHealth = calculateFinancialHealthBreakdown({
+    income,
+    expense,
+    totalBalance,
+    budgetPercents: budgetRows.map(row => row.percent),
+  });
 
   const moveMonth = (amount: number) => {
     setSelectedMonth(
@@ -516,9 +580,27 @@ const OverviewScreen = ({
           <Text style={styles.balanceLabel}>
             {isViewingCurrentPeriod ? 'Tổng số dư' : 'Số dư cuối kỳ'}
           </Text>
-          <Text style={styles.balanceValue}>
-            {formatCurrency(totalBalance, preferredCurrency)}
-          </Text>
+          <View style={styles.balanceRow}>
+            <Text style={styles.balanceValue} numberOfLines={1}>
+              {isBalanceVisible
+                ? formatCurrency(totalBalance, preferredCurrency)
+                : '********'}
+            </Text>
+            <TouchableOpacity
+              style={styles.balanceVisibilityButton}
+              onPress={() => setIsBalanceVisible(current => !current)}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isBalanceVisible ? 'Ẩn tổng số dư' : 'Hiện tổng số dư'
+              }
+            >
+              {isBalanceVisible ? (
+                <EyeOff size={21} color={Colors.white} />
+              ) : (
+                <Eye size={21} color={Colors.white} />
+              )}
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.walletPreview}>
             {visibleWallets.length === 0 ? (
@@ -551,7 +633,9 @@ const OverviewScreen = ({
                       {wallet.name}
                     </Text>
                     <Text style={styles.walletPreviewAmount} numberOfLines={1}>
-                      {formatCurrency(amount, wallet.currency)}
+                      {isBalanceVisible
+                        ? formatCurrency(amount, wallet.currency)
+                        : '******'}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -606,6 +690,46 @@ const OverviewScreen = ({
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.healthCard}
+          onPress={() => setHealthDetailsVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Xem cách tính điểm sức khỏe tài chính"
+        >
+          <View style={styles.healthHeader}>
+            <View style={styles.healthTitleRow}>
+              <View style={styles.healthIcon}>
+                <HeartPulse size={20} color="#B64E28" />
+              </View>
+              <View>
+                <Text style={styles.healthTitle}>Điểm sức khỏe tài chính</Text>
+                <Text style={styles.healthSubtitle}>
+                  Dựa trên dòng tiền, dự phòng và ngân sách
+                </Text>
+              </View>
+            </View>
+            <View style={styles.healthScoreBadge}>
+              <Text style={styles.healthScore}>{financialHealth.score}</Text>
+              <Text style={styles.healthScoreMax}>/100</Text>
+            </View>
+          </View>
+          <View style={styles.healthTrack}>
+            <View
+              style={[
+                styles.healthProgress,
+                { width: `${financialHealth.score}%` },
+              ]}
+            />
+          </View>
+          <View style={styles.healthFooter}>
+            <Text style={styles.healthStatus}>{financialHealth.label}</Text>
+            <View style={styles.healthDetailsLink}>
+              <Text style={styles.healthDetailsLinkText}>Xem cách tính</Text>
+              <ChevronRight size={14} color="#B64E28" />
+            </View>
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.quickGrid}>
           {[
@@ -1125,6 +1249,107 @@ const OverviewScreen = ({
           </View>
         </View>
       </Modal>
+      <Modal
+        transparent
+        visible={healthDetailsVisible}
+        animationType="fade"
+        onRequestClose={() => setHealthDetailsVisible(false)}
+      >
+        <View style={styles.healthModalOverlay}>
+          <View style={styles.healthModalCard}>
+            <View style={styles.healthModalHeader}>
+              <View style={styles.healthTitleRow}>
+                <View style={styles.healthIcon}>
+                  <HeartPulse size={20} color="#B64E28" />
+                </View>
+                <View style={styles.healthModalHeadingCopy}>
+                  <Text style={styles.healthModalTitle}>
+                    Sức khỏe tài chính
+                  </Text>
+                  <Text style={styles.healthModalPeriod}>{monthLabel}</Text>
+                </View>
+              </View>
+              <View style={styles.healthScoreBadge}>
+                <Text style={styles.healthScore}>{financialHealth.score}</Text>
+                <Text style={styles.healthScoreMax}>/100</Text>
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.healthModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.healthMetricCard}>
+                <View style={styles.healthMetricHeader}>
+                  <Text style={styles.healthMetricTitle}>Dòng tiền</Text>
+                  <Text style={styles.healthMetricPoints}>
+                    {financialHealth.cashFlowPoints.toFixed(1)}/40 điểm
+                  </Text>
+                </View>
+                <Text style={styles.healthMetricValue}>
+                  Tỷ lệ tiết kiệm{' '}
+                  {(financialHealth.savingRate * 100).toFixed(1)}%
+                </Text>
+                <Text style={styles.healthMetricFormula}>
+                  (Thu - Chi) / Thu. Đạt tối đa 40 điểm khi tỷ lệ từ 20% trở
+                  lên.
+                </Text>
+              </View>
+
+              <View style={styles.healthMetricCard}>
+                <View style={styles.healthMetricHeader}>
+                  <Text style={styles.healthMetricTitle}>Quỹ dự phòng</Text>
+                  <Text style={styles.healthMetricPoints}>
+                    {financialHealth.reservePoints.toFixed(1)}/30 điểm
+                  </Text>
+                </View>
+                <Text style={styles.healthMetricValue}>
+                  Đủ {financialHealth.reserveMonths.toFixed(1)} tháng chi tiêu
+                </Text>
+                <Text style={styles.healthMetricFormula}>
+                  Tổng số dư / Chi trong kỳ. Đạt tối đa 30 điểm khi đủ 3 tháng
+                  chi tiêu.
+                </Text>
+              </View>
+
+              <View style={styles.healthMetricCard}>
+                <View style={styles.healthMetricHeader}>
+                  <Text style={styles.healthMetricTitle}>Ngân sách</Text>
+                  <Text style={styles.healthMetricPoints}>
+                    {financialHealth.budgetPoints.toFixed(1)}/30 điểm
+                  </Text>
+                </View>
+                <Text style={styles.healthMetricValue}>
+                  {financialHealth.averageBudgetPercent === null
+                    ? 'Chưa có ngân sách trong kỳ'
+                    : `Đã dùng trung bình ${(
+                        financialHealth.averageBudgetPercent * 100
+                      ).toFixed(1)}% hạn mức`}
+                </Text>
+                <Text style={styles.healthMetricFormula}>
+                  Dùng tối đa 80% hạn mức được 30 điểm; từ 80% đến 120% điểm
+                  giảm dần. Chưa tạo ngân sách được 15 điểm.
+                </Text>
+              </View>
+
+              <View style={styles.healthFormulaSummary}>
+                <Text style={styles.healthFormulaTitle}>Cách tính tổng</Text>
+                <Text style={styles.healthFormulaText}>
+                  Dòng tiền (40) + Quỹ dự phòng (30) + Ngân sách (30) ={' '}
+                  {financialHealth.score}/100 điểm.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.healthModalClose}
+              onPress={() => setHealthDetailsVisible(false)}
+            >
+              <Text style={styles.healthModalCloseText}>Đóng</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 };
@@ -1287,10 +1512,25 @@ const styles = StyleSheet.create({
   },
   allWalletText: { color: '#A94F18', fontWeight: '900', fontSize: 12 },
   balanceLabel: { color: '#FFF4E7', fontWeight: '800', marginTop: 18 },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   balanceValue: {
+    flexShrink: 1,
     color: Colors.white,
     fontSize: 30,
     fontWeight: '900',
+    marginTop: 4,
+  },
+  balanceVisibilityButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 4,
   },
   walletPreview: {
@@ -1345,6 +1585,150 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  healthCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#F0C49B',
+    backgroundColor: '#FFF8F1',
+    padding: 14,
+    gap: 10,
+  },
+  healthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  healthTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  healthIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: '#FFE8D5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  healthTitle: { color: '#4A2B1A', fontWeight: '900' },
+  healthSubtitle: {
+    color: '#8B6548',
+    fontSize: 10,
+    lineHeight: 15,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  healthScoreBadge: { flexDirection: 'row', alignItems: 'baseline' },
+  healthScore: { color: '#B64E28', fontSize: 24, fontWeight: '900' },
+  healthScoreMax: { color: '#9B7354', fontSize: 11, fontWeight: '800' },
+  healthTrack: {
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#F3DCC7',
+    overflow: 'hidden',
+  },
+  healthProgress: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#E97924',
+  },
+  healthStatus: { color: '#7A4A28', fontSize: 12, fontWeight: '900' },
+  healthFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  healthDetailsLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  healthDetailsLinkText: {
+    color: '#B64E28',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  healthModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(57, 30, 13, 0.42)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  healthModalCard: {
+    maxHeight: '86%',
+    borderRadius: 24,
+    backgroundColor: '#FFFDFB',
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#F0C49B',
+  },
+  healthModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 14,
+  },
+  healthModalHeadingCopy: { flex: 1 },
+  healthModalTitle: { color: '#4A2B1A', fontSize: 18, fontWeight: '900' },
+  healthModalPeriod: {
+    color: '#8B6548',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  healthModalScroll: { flexGrow: 0 },
+  healthMetricCard: {
+    borderRadius: 18,
+    backgroundColor: '#FFF7EF',
+    borderWidth: 1,
+    borderColor: '#F2D3B7',
+    padding: 13,
+    marginBottom: 10,
+  },
+  healthMetricHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  healthMetricTitle: { color: '#4A2B1A', fontWeight: '900', fontSize: 14 },
+  healthMetricPoints: { color: '#B64E28', fontWeight: '900', fontSize: 12 },
+  healthMetricValue: {
+    color: '#7A4A28',
+    fontWeight: '800',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  healthMetricFormula: {
+    color: '#8B6548',
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  healthFormulaSummary: {
+    borderRadius: 18,
+    backgroundColor: '#FFF1CF',
+    borderWidth: 1,
+    borderColor: '#F2C972',
+    padding: 13,
+  },
+  healthFormulaTitle: { color: '#6C421C', fontSize: 13, fontWeight: '900' },
+  healthFormulaText: {
+    color: '#7A4A28',
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  healthModalClose: {
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    alignItems: 'center',
+    paddingVertical: 13,
+    marginTop: 14,
+  },
+  healthModalCloseText: { color: Colors.white, fontWeight: '900' },
   statCard: {
     flexGrow: 1,
     flexBasis: '30%',

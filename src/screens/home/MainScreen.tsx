@@ -32,6 +32,7 @@ import {
   ChartColumnBig,
   ChevronDown,
   ChevronUp,
+  ClipboardList,
   History,
   ImagePlus,
   MessageCircleMore,
@@ -60,8 +61,13 @@ import { transactionsService } from '../../services/transactions';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
 import { budgetsService } from '../../services/budgets';
+import { dashboardCache } from '../../services/dashboardCache';
 import { savingsService } from '../../services/savings';
 import { notificationsService } from '../../services/notifications';
+import {
+  findMatchingSmartRule,
+  smartRulesService,
+} from '../../services/smartRules';
 import { syncBankNotifications } from '../../services/bankNotificationSync';
 import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
@@ -83,12 +89,22 @@ import { filterNormalCashFlowCategories } from '../../utils/transactionClassific
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import type { LoanDebtType } from '../../types/loanDebt';
-import type { ReceiptOcrResult } from '../../types/transaction';
+import type { ReceiptItem, ReceiptOcrResult } from '../../types/transaction';
 import type { SavingsGoal } from '../../types/savings';
+import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
+
+const defaultHashtagChoices = [
+  'ăn uống',
+  'mua sắm',
+  'công việc',
+  'gia đình',
+  'di chuyển',
+  'hóa đơn',
+];
 
 const tabs: Array<{
   key: TabKey;
@@ -111,6 +127,10 @@ type ReceiptUploadFile = {
   uri: string;
   name: string;
   type: string;
+};
+type ReceiptItemDraft = {
+  name: string;
+  amount: string;
 };
 const buildReceiptUploadFile = (
   file: ReceiptUploadFile | null,
@@ -195,8 +215,10 @@ const MainScreen = () => {
   const [receiptFile, setReceiptFile] = useState<ReceiptUploadFile | null>(
     null,
   );
+  const [receiptItems, setReceiptItems] = useState<ReceiptItemDraft[]>([]);
   const [isReceiptDetailsExpanded, setIsReceiptDetailsExpanded] =
     useState(false);
+  const [isReceiptItemsExpanded, setIsReceiptItemsExpanded] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const receiptRequestVersion = useRef(0);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -222,6 +244,7 @@ const MainScreen = () => {
     };
   }, [isModalVisible]);
   const [receiptOcrWarnings, setReceiptOcrWarnings] = useState<string[]>([]);
+  const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const shouldReopenTransactionForm = useRef(false);
@@ -258,11 +281,39 @@ const MainScreen = () => {
       setBudgets(nextBudgets);
       setSavingsGoals(nextSavingsGoals);
       setTransactions(mapSharedApiTransactions(nextTransactions, nextWallets));
+      if (user?.id) {
+        dashboardCache
+          .save(user.id, {
+            wallets: nextWallets,
+            transactions: nextTransactions,
+            categories: nextCategories,
+            tags: nextTags,
+            budgets: nextBudgets,
+            savingsGoals: nextSavingsGoals,
+          })
+          .catch(() => undefined);
+      }
       notificationsService
         .getUnreadCount(token)
         .then(nextUnread => setNotificationUnreadCount(nextUnread.count))
         .catch(() => undefined);
     } catch (error) {
+      const cached = user?.id ? await dashboardCache.read(user.id) : null;
+      if (cached) {
+        setWallets(cached.wallets);
+        setCategories(cached.categories);
+        setTags(cached.tags);
+        setBudgets(cached.budgets);
+        setSavingsGoals(cached.savingsGoals);
+        setTransactions(
+          mapSharedApiTransactions(cached.transactions, cached.wallets),
+        );
+        Alert.alert(
+          'Đang dùng dữ liệu trên máy',
+          'Không kết nối được máy chủ. Ứng dụng đã mở bản dữ liệu gần nhất lưu trên thiết bị.',
+        );
+        return;
+      }
       const message = getUserFriendlyErrorMessage(
         error,
         'Không thể tải dữ liệu.',
@@ -271,7 +322,7 @@ const MainScreen = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [setBudgets, setCategories, setTags, setTransactions, token]);
+  }, [setBudgets, setCategories, setTags, setTransactions, token, user?.id]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -321,11 +372,36 @@ const MainScreen = () => {
     isChatDraft,
   ]);
 
+  useEffect(() => {
+    if (!isModalVisible || transactionEntryType === 'LOAN_DEBT') return;
+    const rule = findMatchingSmartRule(transactionNote, smartRules);
+    if (!rule) return;
+
+    const category = normalTransactionCategories.find(
+      item => item.id === rule.categoryId,
+    );
+    if (!category) return;
+
+    setTransactionEntryType(category.type);
+    setSelectedTransactionCategory(category);
+  }, [
+    isModalVisible,
+    normalTransactionCategories,
+    setSelectedTransactionCategory,
+    smartRules,
+    transactionEntryType,
+    transactionNote,
+  ]);
+
   useFocusEffect(
     useCallback(() => {
       fetchDashboardData();
 
       if (token && user?.id) {
+        smartRulesService
+          .getRules(user.id)
+          .then(setSmartRules)
+          .catch(() => undefined);
         syncBankNotifications(token, user.id)
           .then(result => {
             if (result.created > 0) {
@@ -369,11 +445,28 @@ const MainScreen = () => {
       spendableWallets.find(wallet => wallet.id === selectedWalletId) ?? null,
     [selectedWalletId, spendableWallets],
   );
+  const receiptItemTotal = useMemo(
+    () =>
+      receiptItems.reduce((sum, item) => {
+        const amount = parsePositiveMoneyInput(item.amount);
+        return sum + (amount ? Number(amount) : 0);
+      }, 0),
+    [receiptItems],
+  );
+  const enteredTransactionTotal = Number(
+    parsePositiveMoneyInput(transactionAmount) ?? 0,
+  );
+  const receiptDifference = enteredTransactionTotal - receiptItemTotal;
+  const receiptCurrency =
+    selectedWallet?.currency ??
+    chatDraftCurrency ??
+    user?.currency_default ??
+    'VND';
   const selectedTransactionType =
     transactionEntryType === 'LOAN_DEBT'
       ? 'LOAN_DEBT'
       : selectedTransactionCategory?.type ?? transactionEntryType;
-  const recentHashtags = useMemo(() => {
+  const hashtagChoices = useMemo(() => {
     const counter = new Map<string, number>();
 
     transactions.forEach(transaction => {
@@ -394,7 +487,9 @@ const MainScreen = () => {
       .map(tag => normalizeTagName(tag.name))
       .filter(Boolean);
 
-    return [...new Set([...usedTags, ...managedTags])].slice(0, 10);
+    return [
+      ...new Set([...usedTags, ...managedTags, ...defaultHashtagChoices]),
+    ].slice(0, 10);
   }, [tags, transactions]);
   const currentTags = useMemo(
     () => parseTagsInput(transactionTags),
@@ -480,7 +575,9 @@ const MainScreen = () => {
     setTransactionNote('');
     setTransactionTags('');
     setReceiptFile(null);
+    setReceiptItems([]);
     setIsReceiptDetailsExpanded(false);
+    setIsReceiptItemsExpanded(false);
     setIsOcrLoading(false);
     setReceiptOcrWarnings([]);
     setTransactionEntryType('EXPENSE');
@@ -572,8 +669,15 @@ const MainScreen = () => {
         setSelectedTransactionCategory(category);
       }
     }
+    setReceiptItems(
+      result.receipt_items.map(item => ({
+        name: item.name,
+        amount: String(item.amount),
+      })),
+    );
     setReceiptOcrWarnings([...new Set(nextWarnings)]);
     setIsReceiptDetailsExpanded(true);
+    setIsReceiptItemsExpanded(true);
   };
 
   const analyzeReceiptFile = async (
@@ -640,9 +744,10 @@ const MainScreen = () => {
     }
   };
 
-  const pickAndAnalyzeReceipt = async (
+  const pickReceipt = async (
     source: 'camera' | 'library',
     mode: 'form' | 'chatbot' = 'form',
+    scanWithAi = true,
   ) => {
     const pickerVersion = ++receiptRequestVersion.current;
     let result;
@@ -708,26 +813,40 @@ const MainScreen = () => {
       setReceiptFile(nextFile);
       setIsReceiptDetailsExpanded(true);
     }
-    await analyzeReceiptFile(nextFile, mode);
+    if (scanWithAi) {
+      await analyzeReceiptFile(nextFile, mode);
+    }
   };
 
-  const openReceiptPicker = (mode: 'form' | 'chatbot') => {
-    Alert.alert('Quét hóa đơn', 'Bạn muốn lấy ảnh từ đâu?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Thư viện ảnh',
-        onPress: () =>
-          pickAndAnalyzeReceipt('library', mode).catch(() => undefined),
-      },
-      {
-        text: 'Chụp ảnh',
-        onPress: () =>
-          pickAndAnalyzeReceipt('camera', mode).catch(() => undefined),
-      },
-    ]);
+  const openReceiptPicker = (mode: 'form' | 'chatbot', scanWithAi = true) => {
+    Alert.alert(
+      scanWithAi ? 'Quét hóa đơn' : 'Thêm ảnh hóa đơn',
+      'Bạn muốn lấy ảnh từ đâu?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Thư viện ảnh',
+          onPress: () =>
+            pickReceipt('library', mode, scanWithAi).catch(() => undefined),
+        },
+        {
+          text: 'Chụp ảnh',
+          onPress: () =>
+            pickReceipt('camera', mode, scanWithAi).catch(() => undefined),
+        },
+      ],
+    );
   };
 
-  const handlePickReceipt = () => openReceiptPicker('form');
+  const handlePickReceipt = () => openReceiptPicker('form', false);
+  const handleAnalyzeReceipt = () => {
+    if (receiptFile) {
+      analyzeReceiptFile(receiptFile).catch(() => undefined);
+      return;
+    }
+
+    openReceiptPicker('form', true);
+  };
 
   const handleScanReceiptFromChatbot = () => {
     resetTransactionForm();
@@ -739,8 +858,8 @@ const MainScreen = () => {
     setReceiptPickerRequested(true);
   };
 
-  const receiptPickerRef = useRef(() => openReceiptPicker('chatbot'));
-  receiptPickerRef.current = () => openReceiptPicker('chatbot');
+  const receiptPickerRef = useRef(() => openReceiptPicker('chatbot', true));
+  receiptPickerRef.current = () => openReceiptPicker('chatbot', true);
   useEffect(() => {
     if (!receiptPickerRequested) return;
     setReceiptPickerRequested(false);
@@ -833,11 +952,23 @@ const MainScreen = () => {
       const normalizedAmount = parsePositiveMoneyInput(transactionAmount);
 
       if (!normalizedAmount) {
-        Alert.alert(
-          'Số tiền chưa hợp lệ',
-          'Nhập số tiền hợp lệ lớn hơn 0.',
-        );
+        Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền hợp lệ lớn hơn 0.');
         return;
+      }
+
+      const normalizedReceiptItems: ReceiptItem[] = [];
+      for (const [index, item] of receiptItems.entries()) {
+        const name = item.name.trim();
+        const itemAmount = parsePositiveMoneyInput(item.amount);
+        if (!name && !item.amount.trim()) continue;
+        if (!name || !itemAmount) {
+          Alert.alert(
+            'Chi tiết hóa đơn chưa hợp lệ',
+            `Kiểm tra tên và thành tiền của món thứ ${index + 1}.`,
+          );
+          return;
+        }
+        normalizedReceiptItems.push({ name, amount: Number(itemAmount) });
       }
 
       if (!selectedWallet) {
@@ -916,6 +1047,8 @@ const MainScreen = () => {
           amount: normalizedAmount,
           type: selectedTransactionCategory.type,
           note: transactionNote.trim() || undefined,
+          receipt_items:
+            normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
           transaction_date: toDateKey(transactionDate),
           tags: parseTagsInput(transactionTags),
         });
@@ -1015,16 +1148,22 @@ const MainScreen = () => {
         ) : null}
       </View>
 
-      {isOcrLoading && !isModalVisible ? (
+      {isOcrLoading ? (
         <View
-          style={[styles.receiptScanBackdrop, styles.inlineModalLayer]}
+          style={[
+            styles.receiptScanBackdrop,
+            styles.inlineModalLayer,
+            styles.receiptScanLayer,
+          ]}
           accessibilityLabel="Đang kiểm tra ảnh hóa đơn"
         >
           <View style={styles.receiptScanCard}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.receiptScanTitle}>Đang kiểm tra hóa đơn</Text>
             <Text style={styles.receiptScanDescription}>
-              Bản nháp chỉ mở khi ảnh có tổng thanh toán hợp lệ.
+              {isModalVisible
+                ? 'AI đang đọc tổng tiền, ngày, danh mục và từng món. Bạn có thể hủy nếu cần.'
+                : 'Bản nháp chỉ mở khi ảnh có tổng thanh toán hợp lệ.'}
             </Text>
             <TouchableOpacity
               style={styles.receiptScanCancelButton}
@@ -1363,7 +1502,7 @@ const MainScreen = () => {
                     <TouchableOpacity
                       onPress={() => setIsTagModalVisible(true)}
                     >
-                      <Text style={styles.selectorHint}>Thêm nhanh</Text>
+                      <Text style={styles.selectorHint}>Tạo mới</Text>
                     </TouchableOpacity>
                   </View>
                   <TextInput
@@ -1391,9 +1530,9 @@ const MainScreen = () => {
                       ))}
                     </ScrollView>
                   ) : null}
-                  {recentHashtags.length > 0 ? (
+                  {hashtagChoices.length > 0 ? (
                     <>
-                      <Text style={styles.suggestLabel}>Gợi ý gần đây</Text>
+                      <Text style={styles.suggestLabel}>Chọn hashtag</Text>
                       <ScrollView
                         horizontal
                         style={styles.tagScroll}
@@ -1401,7 +1540,7 @@ const MainScreen = () => {
                         showsHorizontalScrollIndicator={false}
                         contentContainerStyle={styles.tagPreviewRow}
                       >
-                        {recentHashtags.map(tag => {
+                        {hashtagChoices.map(tag => {
                           const normalizedTag = normalizeTagName(tag);
                           const isSelected =
                             currentTags.includes(normalizedTag);
@@ -1447,7 +1586,7 @@ const MainScreen = () => {
                         Ảnh hóa đơn
                       </Text>
                       <Text style={styles.receiptSectionMeta}>
-                        {'Không bắt buộc · quét để điền thông tin chung'}
+                        Không bắt buộc
                       </Text>
                     </View>
                     {isReceiptDetailsExpanded ? (
@@ -1459,11 +1598,6 @@ const MainScreen = () => {
 
                   {isReceiptDetailsExpanded ? (
                     <View style={styles.receiptDetailsCard}>
-                      <Text style={styles.receiptHelperText}>
-                        Quét ảnh để gợi ý tổng tiền, ngày và danh mục. Kiểm tra
-                        thông tin trước khi lưu giao dịch.
-                      </Text>
-
                       {receiptFile ? (
                         <View style={styles.receiptPreview}>
                           <Image
@@ -1480,9 +1614,19 @@ const MainScreen = () => {
                                 onPress={handlePickReceipt}
                                 disabled={isOcrLoading}
                               >
+                                <ImagePlus size={14} color={Colors.primary} />
+                                <Text style={styles.secondaryReceiptText}>
+                                  Đổi ảnh
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.secondaryReceiptButton}
+                                onPress={handleAnalyzeReceipt}
+                                disabled={isOcrLoading}
+                              >
                                 <ScanLine size={14} color={Colors.primary} />
                                 <Text style={styles.secondaryReceiptText}>
-                                  Quét lại
+                                  Đọc bằng AI
                                 </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
@@ -1502,35 +1646,75 @@ const MainScreen = () => {
                           </View>
                         </View>
                       ) : (
-                        <TouchableOpacity
-                          style={styles.receiptPickerButton}
-                          onPress={handlePickReceipt}
-                          disabled={isOcrLoading}
-                        >
-                          {isOcrLoading ? (
-                            <ActivityIndicator color={Colors.primary} />
-                          ) : (
+                        <View style={styles.receiptEmptyActions}>
+                          <TouchableOpacity
+                            style={styles.receiptPickerButton}
+                            onPress={handlePickReceipt}
+                            disabled={isOcrLoading}
+                          >
                             <ImagePlus size={18} color="#D87219" />
-                          )}
-                          <Text style={styles.receiptPickerText}>
-                            {isOcrLoading
-                              ? 'Đang đọc hóa đơn...'
-                              : 'Chọn ảnh và quét bằng AI'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {isOcrLoading && receiptFile ? (
-                        <View style={styles.ocrLoadingRow}>
-                          <ActivityIndicator
-                            size="small"
-                            color={Colors.primary}
-                          />
-                          <Text style={styles.ocrLoadingText}>
-                            AI đang đọc tổng tiền và từng món...
-                          </Text>
+                            <Text style={styles.receiptPickerText}>
+                              Thêm ảnh hóa đơn
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.receiptAiButton}
+                            onPress={handleAnalyzeReceipt}
+                            disabled={isOcrLoading}
+                          >
+                            {isOcrLoading ? (
+                              <ActivityIndicator color={Colors.white} />
+                            ) : (
+                              <ScanLine size={18} color={Colors.white} />
+                            )}
+                            <Text style={styles.receiptAiButtonText}>
+                              {isOcrLoading
+                                ? 'Đang đọc hóa đơn...'
+                                : 'Quét ảnh bằng AI'}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
-                      ) : null}
+                      )}
+                    </View>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.receiptSectionHeader,
+                      styles.receiptItemsSectionHeader,
+                    ]}
+                    onPress={() =>
+                      setIsReceiptItemsExpanded(current => !current)
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Chi tiết hóa đơn"
+                  >
+                    <View style={styles.receiptSectionIcon}>
+                      <ClipboardList size={19} color={Colors.primary} />
+                    </View>
+                    <View style={styles.receiptSectionCopy}>
+                      <Text style={styles.receiptSectionTitle}>
+                        Chi tiết hóa đơn
+                      </Text>
+                      <Text style={styles.receiptSectionMeta}>
+                        {receiptItems.length > 0
+                          ? `${receiptItems.length} món · có thể chỉnh sửa`
+                          : 'Có thể nhập từng món bằng tay'}
+                      </Text>
+                    </View>
+                    {isReceiptItemsExpanded ? (
+                      <ChevronUp size={20} color="#8A623F" />
+                    ) : (
+                      <ChevronDown size={20} color="#8A623F" />
+                    )}
+                  </TouchableOpacity>
+
+                  {isReceiptItemsExpanded ? (
+                    <View style={styles.receiptDetailsCard}>
+                      <Text style={styles.receiptHelperText}>
+                        Nhập tên và thành tiền của từng món. Bạn có thể sửa,
+                        thêm hoặc xóa trước khi lưu giao dịch.
+                      </Text>
 
                       {receiptOcrWarnings.map(warning => (
                         <View key={warning} style={styles.ocrWarningRow}>
@@ -1538,6 +1722,157 @@ const MainScreen = () => {
                           <Text style={styles.ocrWarningText}>{warning}</Text>
                         </View>
                       ))}
+
+                      <View style={styles.receiptItemsHeader}>
+                        <Text style={styles.receiptItemsTitle}>
+                          Chi tiết từng món
+                        </Text>
+                        <Text style={styles.receiptItemCount}>
+                          {receiptItems.length} món
+                        </Text>
+                      </View>
+
+                      {receiptItems.map((item, index) => (
+                        <View
+                          style={styles.receiptItemRow}
+                          key={`receipt-item-${index}`}
+                        >
+                          <View style={styles.receiptItemIndex}>
+                            <Text style={styles.receiptItemIndexText}>
+                              {index + 1}
+                            </Text>
+                          </View>
+                          <View style={styles.receiptItemFields}>
+                            <TextInput
+                              style={styles.receiptItemNameInput}
+                              value={item.name}
+                              onChangeText={name =>
+                                setReceiptItems(current =>
+                                  current.map((currentItem, currentIndex) =>
+                                    currentIndex === index
+                                      ? { ...currentItem, name }
+                                      : currentItem,
+                                  ),
+                                )
+                              }
+                              placeholder="Tên món"
+                              placeholderTextColor="#A17B5D"
+                              accessibilityLabel={`Tên món ${index + 1}`}
+                            />
+                            <TextInput
+                              style={styles.receiptItemAmountInput}
+                              value={formatMoneyInputForCurrency(
+                                item.amount,
+                                receiptCurrency,
+                              )}
+                              onChangeText={amountValue =>
+                                setReceiptItems(current =>
+                                  current.map((currentItem, currentIndex) =>
+                                    currentIndex === index
+                                      ? {
+                                          ...currentItem,
+                                          amount:
+                                            normalizeMoneyInputForCurrency(
+                                              amountValue,
+                                              receiptCurrency,
+                                            ),
+                                        }
+                                      : currentItem,
+                                  ),
+                                )
+                              }
+                              placeholder="Thành tiền"
+                              placeholderTextColor="#B58A68"
+                              keyboardType="decimal-pad"
+                              accessibilityLabel={`Thành tiền món ${index + 1}`}
+                            />
+                          </View>
+                          <TouchableOpacity
+                            style={styles.removeReceiptItemButton}
+                            onPress={() =>
+                              setReceiptItems(current =>
+                                current.filter(
+                                  (_, currentIndex) => currentIndex !== index,
+                                ),
+                              )
+                            }
+                            accessibilityLabel={`Xóa món ${index + 1}`}
+                          >
+                            <X size={16} color="#B84A3A" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+
+                      <View style={styles.receiptDetailActions}>
+                        <TouchableOpacity
+                          style={styles.addReceiptItemButton}
+                          onPress={() =>
+                            setReceiptItems(current => [
+                              ...current,
+                              { name: '', amount: '' },
+                            ])
+                          }
+                          accessibilityLabel="Thêm món hóa đơn"
+                        >
+                          <Plus size={16} color={Colors.primary} />
+                          <Text style={styles.addReceiptItemText}>
+                            Thêm món
+                          </Text>
+                        </TouchableOpacity>
+                        {receiptItems.length > 0 ? (
+                          <TouchableOpacity
+                            style={styles.clearReceiptDetailsButton}
+                            onPress={() => setReceiptItems([])}
+                            accessibilityLabel="Xóa toàn bộ chi tiết hóa đơn"
+                          >
+                            <Text style={styles.clearReceiptDetailsText}>
+                              Xóa chi tiết
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+
+                      <View style={styles.receiptSummary}>
+                        <View style={styles.receiptSummaryRow}>
+                          <Text style={styles.receiptSummaryLabel}>
+                            Tổng các món
+                          </Text>
+                          <Text style={styles.receiptSummaryValue}>
+                            {formatCurrency(receiptItemTotal, receiptCurrency)}
+                          </Text>
+                        </View>
+                        {enteredTransactionTotal > 0 ? (
+                          <View style={styles.receiptSummaryRow}>
+                            <Text style={styles.receiptSummaryLabel}>
+                              Tổng thanh toán
+                            </Text>
+                            <Text style={styles.receiptSummaryValue}>
+                              {formatCurrency(
+                                enteredTransactionTotal,
+                                receiptCurrency,
+                              )}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {enteredTransactionTotal > 0 &&
+                        Math.abs(receiptDifference) <= 0.01 ? (
+                          <Text style={styles.receiptMatchedText}>
+                            Tổng các món khớp tổng thanh toán.
+                          </Text>
+                        ) : enteredTransactionTotal > 0 ? (
+                          <View style={styles.receiptDifferenceRow}>
+                            <AlertTriangle size={15} color="#A15C00" />
+                            <Text style={styles.receiptDifferenceText}>
+                              Chênh lệch{' '}
+                              {formatCurrency(
+                                Math.abs(receiptDifference),
+                                receiptCurrency,
+                              )}
+                              . Kiểm tra thuế, phí, giảm giá hoặc món bị thiếu.
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                   ) : null}
                 </>
@@ -1745,6 +2080,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+  },
+  receiptScanLayer: {
+    zIndex: 100,
+    elevation: 100,
   },
   receiptScanCard: {
     width: '100%',
@@ -2204,6 +2543,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     marginTop: 16,
   },
+  receiptItemsSectionHeader: {
+    marginTop: 10,
+  },
   receiptSectionIcon: {
     width: 40,
     height: 40,
@@ -2248,6 +2590,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
+  },
+  receiptEmptyActions: {
+    gap: 8,
+  },
+  receiptAiButton: {
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: '#D87219',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  receiptAiButtonText: {
+    color: Colors.white,
+    fontWeight: '900',
   },
   receiptPickerText: {
     color: '#D87219',
@@ -2309,16 +2668,6 @@ const styles = StyleSheet.create({
     color: '#A94F18',
     fontWeight: '800',
   },
-  ocrLoadingRow: {
-    minHeight: 44,
-    borderRadius: 14,
-    backgroundColor: '#FFF0DF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    paddingHorizontal: 12,
-  },
-  ocrLoadingText: { flex: 1, color: '#7A5438', fontWeight: '800' },
   ocrWarningRow: {
     borderRadius: 13,
     backgroundColor: '#FFF3D8',
@@ -2334,15 +2683,24 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '700',
   },
-  receiptItemRow: {
+  receiptItemsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 3,
+  },
+  receiptItemsTitle: { color: '#4C2A18', fontWeight: '900' },
+  receiptItemCount: { color: '#8A623F', fontSize: 12, fontWeight: '900' },
+  receiptItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 8,
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#F2D9C0',
-    backgroundColor: Colors.white,
-    padding: 8,
+    borderColor: '#EDC596',
+    backgroundColor: '#FFF8F1',
+    padding: 10,
   },
   receiptItemIndex: {
     width: 27,
@@ -2351,28 +2709,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0DF',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 5,
   },
   receiptItemIndexText: {
     color: '#A94F18',
     fontSize: 11,
     fontWeight: '900',
   },
-  receiptItemFields: { flex: 1, minWidth: 0, gap: 5 },
+  receiptItemFields: { flex: 1, minWidth: 0, gap: 8 },
   receiptItemNameInput: {
-    minHeight: 36,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0D1B3',
+    backgroundColor: Colors.white,
     color: '#4C2A18',
     fontWeight: '800',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    textAlignVertical: 'center',
   },
   receiptItemAmountInput: {
-    minHeight: 34,
-    borderRadius: 10,
-    backgroundColor: '#FFF6EF',
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F2D1A4',
+    backgroundColor: '#FFF0DF',
     color: '#9A4D00',
     fontWeight: '900',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    textAlignVertical: 'center',
   },
   removeReceiptItemButton: {
     width: 36,
@@ -2381,6 +2750,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF2EE',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
   receiptDetailActions: { flexDirection: 'row', gap: 8 },
   addReceiptItemButton: {
