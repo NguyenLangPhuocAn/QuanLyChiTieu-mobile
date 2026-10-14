@@ -107,6 +107,6 @@ jobs:
           gh release create "v$VERSION_NAME" \
             "QuanLyChiTieu-$VERSION_NAME.apk" \
             update.json \
-            --title "Sổ Thu Chi $VERSION_NAME" \
+            --title "Sổ Thu Chi Nova $VERSION_NAME" \
             --notes-file release-notes.txt \
             --latest
