@@ -3,6 +3,7 @@ import {
   buildUpcomingMoneyCalendar,
   buildProjectedCashFlow,
   calculateEmergencyFund,
+  calculateEmergencyIncomeShock,
   calculateIrregularIncome,
   calculateSafeToSpendToday,
   detectRecurringMoney,
@@ -70,6 +71,36 @@ describe('financialInsights', () => {
 
     expect(result.monthsCovered).toBe(3);
     expect(result.gap).toBe(0);
+  });
+
+  it('simulates the monthly shortfall after an income reduction', () => {
+    const result = calculateEmergencyIncomeShock(
+      [
+        {
+          id: 1,
+          user_id: 7,
+          name: 'Tiền mặt',
+          currency: 'VND',
+          balance: 12_000_000,
+          created_at: '2026-01-01',
+        },
+      ],
+      [
+        transaction(1, 'INCOME', 10_000_000, '2026-01-10', 'Dự án A'),
+        transaction(2, 'INCOME', 10_000_000, '2026-02-10', 'Dự án B'),
+        transaction(3, 'INCOME', 10_000_000, '2026-03-10', 'Dự án C'),
+        transaction(4, 'EXPENSE', 8_000_000, '2026-01-15', 'Thiết yếu'),
+        transaction(5, 'EXPENSE', 8_000_000, '2026-02-15', 'Thiết yếu'),
+        transaction(6, 'EXPENSE', 8_000_000, '2026-03-15', 'Thiết yếu'),
+      ],
+      50,
+      new Date('2026-04-17T00:00:00.000Z'),
+      3,
+    );
+
+    expect(result.incomeAfterReduction).toBe(5_000_000);
+    expect(result.monthlyShortfall).toBe(3_000_000);
+    expect(result.monthsCovered).toBe(4);
   });
 
   it('detects stable monthly subscriptions and builds the next cash date', () => {

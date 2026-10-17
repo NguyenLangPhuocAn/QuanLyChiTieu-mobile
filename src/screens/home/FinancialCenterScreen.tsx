@@ -46,6 +46,7 @@ import {
   buildUpcomingMoneyCalendar,
   buildProjectedCashFlow,
   calculateEmergencyFund,
+  calculateEmergencyIncomeShock,
   calculateIrregularIncome,
   calculateSafeToSpendToday,
   detectRecurringMoney,
@@ -84,6 +85,8 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
   const [planAmount, setPlanAmount] = useState('');
   const [planDate, setPlanDate] = useState('');
   const [planType, setPlanType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [incomeHistoryMonths, setIncomeHistoryMonths] = useState(6);
+  const [incomeReductionPercent, setIncomeReductionPercent] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -158,8 +161,20 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
     [transactions, wallets],
   );
   const irregularIncome = useMemo(
-    () => calculateIrregularIncome(transactions),
-    [transactions],
+    () =>
+      calculateIrregularIncome(transactions, new Date(), incomeHistoryMonths),
+    [incomeHistoryMonths, transactions],
+  );
+  const emergencyShock = useMemo(
+    () =>
+      calculateEmergencyIncomeShock(
+        wallets,
+        transactions,
+        incomeReductionPercent,
+        new Date(),
+        incomeHistoryMonths,
+      ),
+    [incomeHistoryMonths, incomeReductionPercent, transactions, wallets],
   );
   const recurring = useMemo(
     () => detectRecurringMoney(transactions),
@@ -343,36 +358,126 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
           </Text>
         </View>
 
-        <View style={styles.twoColumn}>
-          <View style={styles.metricCard}>
-            <ShieldCheck size={20} color="#2F7D6B" />
-            <Text style={styles.metricLabel}>Quỹ khẩn cấp</Text>
-            <Text style={styles.metricValue}>
-              {emergency.monthsCovered.toFixed(1)} tháng
-            </Text>
-            <Text style={styles.metricMeta}>
-              {emergency.gap > 0
-                ? `Còn thiếu ${formatCurrency(emergency.gap, currency)} để đủ ${
-                    emergency.targetMonths
-                  } tháng.`
-                : `Đã đạt mốc ${emergency.targetMonths} tháng theo chi tiêu gần đây.`}
-            </Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}>
+              <TrendingUp size={20} color="#6C63A8" />
+            </View>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Thu nhập không đều</Text>
+              <Text style={styles.sectionMeta}>
+                Chọn khoảng lịch sử dùng để tính mức chi thận trọng
+              </Text>
+            </View>
           </View>
-          <View style={styles.metricCard}>
-            <TrendingUp size={20} color="#6C63A8" />
-            <Text style={styles.metricLabel}>Thu nhập không đều</Text>
-            <Text style={styles.metricValue}>
-              {formatCurrency(irregularIncome.conservativeIncome, currency)}
-            </Text>
-            <Text style={styles.metricMeta}>
-              Mức thận trọng; chi đề xuất{' '}
-              {formatCurrency(
+          <View style={styles.optionRow}>
+            {[3, 6, 12].map(months => (
+              <TouchableOpacity
+                key={months}
+                style={[
+                  styles.optionButton,
+                  incomeHistoryMonths === months && styles.optionButtonActive,
+                ]}
+                onPress={() => setIncomeHistoryMonths(months)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    incomeHistoryMonths === months && styles.optionTextActive,
+                  ]}
+                >
+                  {months} tháng
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.metricGrid}>
+            <MetricValue
+              label="Mức thu thận trọng"
+              value={formatCurrency(
+                irregularIncome.conservativeIncome,
+                currency,
+              )}
+            />
+            <MetricValue
+              label="Chi cơ bản đề xuất"
+              value={formatCurrency(
                 irregularIncome.recommendedMonthlySpend,
                 currency,
               )}
-              /tháng.
-            </Text>
+            />
           </View>
+          <Text style={styles.helperText}>
+            Có thu nhập ở {irregularIncome.dataMonths}/{incomeHistoryMonths}{' '}
+            tháng · trung vị thu{' '}
+            {formatCurrency(irregularIncome.medianIncome, currency)} · trung vị
+            chi {formatCurrency(irregularIncome.medianExpense, currency)}.
+          </Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}>
+              <ShieldCheck size={20} color="#2F7D6B" />
+            </View>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Quỹ khẩn cấp</Text>
+              <Text style={styles.sectionMeta}>
+                Mô phỏng khi thu nhập giảm, không thay đổi dữ liệu thật
+              </Text>
+            </View>
+          </View>
+          <View style={styles.optionRow}>
+            {[0, 25, 50, 100].map(percent => (
+              <TouchableOpacity
+                key={percent}
+                style={[
+                  styles.optionButton,
+                  incomeReductionPercent === percent &&
+                    styles.optionButtonActive,
+                ]}
+                onPress={() => setIncomeReductionPercent(percent)}
+              >
+                <Text
+                  style={[
+                    styles.optionText,
+                    incomeReductionPercent === percent &&
+                      styles.optionTextActive,
+                  ]}
+                >
+                  {percent === 0 ? 'Hiện tại' : `Giảm ${percent}%`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.metricValue}>
+            {incomeReductionPercent === 0
+              ? `${emergency.monthsCovered.toFixed(1)} tháng chi thiết yếu`
+              : emergencyShock.monthsCovered === null
+              ? 'Không phát sinh thiếu hụt hàng tháng'
+              : `${emergencyShock.monthsCovered.toFixed(1)} tháng bù thiếu hụt`}
+          </Text>
+          <Text style={styles.metricMeta}>
+            Tiền sẵn có {formatCurrency(emergency.liquidBalance, currency)} ·
+            chi thiết yếu{' '}
+            {formatCurrency(emergency.essentialMonthlyExpense, currency)}
+            /tháng · thu sau mô phỏng{' '}
+            {formatCurrency(emergencyShock.incomeAfterReduction, currency)}.
+          </Text>
+          <Text style={styles.helperText}>
+            {incomeReductionPercent === 0
+              ? emergency.gap > 0
+                ? `Còn thiếu ${formatCurrency(emergency.gap, currency)} để đủ ${
+                    emergency.targetMonths
+                  } tháng chi thiết yếu.`
+                : `Đã đạt mốc ${emergency.targetMonths} tháng chi thiết yếu.`
+              : emergencyShock.monthlyShortfall > 0
+              ? `Thiếu ${formatCurrency(
+                  emergencyShock.monthlyShortfall,
+                  currency,
+                )} mỗi tháng sau cú sốc thu nhập.`
+              : 'Thu nhập thận trọng sau mô phỏng vẫn đủ bù mức chi thiết yếu.'}
+          </Text>
         </View>
 
         <View style={styles.sectionCard}>
@@ -735,6 +840,13 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
   );
 };
 
+const MetricValue = ({ label, value }: { label: string; value: string }) => (
+  <View style={styles.metricBlock}>
+    <Text style={styles.metricLabel}>{label}</Text>
+    <Text style={styles.metricValue}>{value}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF9F4' },
   header: {
@@ -790,16 +902,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   heroText: { color: '#FFE9D5', lineHeight: 20, marginTop: 8, fontSize: 12 },
-  twoColumn: { flexDirection: 'row', gap: 10 },
-  metricCard: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 20,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: '#F0C49B',
-    padding: 14,
-  },
   metricLabel: {
     color: '#7A5438',
     fontWeight: '800',
@@ -813,6 +915,31 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   metricMeta: { color: '#8B6B55', fontSize: 11, lineHeight: 16, marginTop: 7 },
+  metricGrid: { flexDirection: 'row', gap: 10 },
+  metricBlock: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 16,
+    backgroundColor: '#FFF8F0',
+    padding: 12,
+  },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  optionButton: {
+    minHeight: 36,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8B680',
+    backgroundColor: '#FFF9F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  optionButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  optionText: { color: '#8B6B55', fontSize: 11, fontWeight: '900' },
+  optionTextActive: { color: Colors.white },
   sectionCard: {
     borderRadius: 20,
     backgroundColor: Colors.white,

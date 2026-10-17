@@ -116,6 +116,40 @@ export const calculateEmergencyFund = (
   };
 };
 
+export const calculateEmergencyIncomeShock = (
+  wallets: Wallet[],
+  transactions: ApiTransaction[],
+  incomeReductionPercent: number,
+  asOf = new Date(),
+  months = 6,
+) => {
+  const reduction = Math.max(0, Math.min(100, incomeReductionPercent)) / 100;
+  const liquidBalance = wallets.reduce(
+    (sum, wallet) =>
+      sum + Math.max(0, Number(wallet.display_balance ?? wallet.balance) || 0),
+    0,
+  );
+  const history = calculateIrregularIncome(transactions, asOf, months);
+  const incomeAfterReduction = history.conservativeIncome * (1 - reduction);
+  const monthlyShortfall = Math.max(
+    0,
+    history.medianExpense - incomeAfterReduction,
+  );
+  const monthsCovered = monthlyShortfall
+    ? liquidBalance / monthlyShortfall
+    : null;
+
+  return {
+    incomeReductionPercent: reduction * 100,
+    liquidBalance,
+    conservativeIncome: history.conservativeIncome,
+    incomeAfterReduction,
+    essentialMonthlyExpense: history.medianExpense,
+    monthlyShortfall,
+    monthsCovered,
+  };
+};
+
 const normalizeMerchant = (value?: string | null) =>
   (value ?? '')
     .normalize('NFD')
