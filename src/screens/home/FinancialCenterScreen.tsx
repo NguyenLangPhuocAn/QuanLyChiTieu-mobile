@@ -17,7 +17,6 @@ import {
   ArrowLeft,
   CalendarDays,
   ChevronRight,
-  CloudOff,
   HeartPulse,
   Inbox,
   Search,
@@ -35,6 +34,7 @@ import {
   type DashboardCache,
 } from '../../services/dashboardCache';
 import { offlineTransactionQueue } from '../../services/offlineTransactionQueue';
+import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import {
   financialPlanningService,
   type ManualMoneyPlan,
@@ -70,6 +70,7 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
   const [cache, setCache] = useState<DashboardCache | null>(null);
   const [offlineCount, setOfflineCount] = useState(0);
   const [bankCount, setBankCount] = useState(0);
+  const [captureCount, setCaptureCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [naturalQuery, setNaturalQuery] = useState('');
   const [naturalFilters, setNaturalFilters] =
@@ -100,12 +101,14 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
           : Promise.resolve([]),
         financialPlanningService.listRecurringDecisions(user.id),
         financialPlanningService.listManualPlans(user.id),
+        financialCaptureInbox.list(user.id),
       ])
-        .then(([nextCache, drafts, events, decisions, plans]) => {
+        .then(([nextCache, drafts, events, decisions, plans, captures]) => {
           if (!active) return;
           setCache(nextCache);
           setOfflineCount(drafts.length);
           setBankCount(events.length);
+          setCaptureCount(captures.length);
           setRecurringDecisions(decisions);
           setManualPlans(plans);
         })
@@ -380,27 +383,20 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
             <View style={styles.sectionCopy}>
               <Text style={styles.sectionTitle}>Hộp thư tài chính</Text>
               <Text style={styles.sectionMeta}>
-                {offlineCount} bản nháp ngoại tuyến · {bankCount} thông báo ngân
-                hàng chờ duyệt
+                {captureCount + offlineCount + bankCount} mục chờ từ hóa đơn,
+                giọng nói, Excel, ngoại tuyến và ngân hàng
               </Text>
             </View>
           </View>
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('DataManagement', { wallets })}
-            >
-              <CloudOff size={17} color={Colors.primary} />
-              <Text style={styles.secondaryButtonText}>Bản nháp</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('BankNotifications')}
-            >
-              <Inbox size={17} color={Colors.primary} />
-              <Text style={styles.secondaryButtonText}>Ngân hàng</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.primaryInboxButton}
+            onPress={() => navigation.navigate('FinancialInbox')}
+          >
+            <Inbox size={18} color={Colors.white} />
+            <Text style={styles.primaryInboxButtonText}>
+              Mở danh sách duyệt chung
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.helperText}>
             Bản nháp chưa duyệt không làm thay đổi số dư. Bước ghép hóa đơn sẽ
             dựa trên tiền, thời gian và người bán.
@@ -849,6 +845,16 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   secondaryButtonText: { color: Colors.primary, fontWeight: '900' },
+  primaryInboxButton: {
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  primaryInboxButtonText: { color: Colors.white, fontWeight: '900' },
   helperText: { color: '#8B6B55', fontSize: 11, lineHeight: 17 },
   listRow: {
     minHeight: 54,

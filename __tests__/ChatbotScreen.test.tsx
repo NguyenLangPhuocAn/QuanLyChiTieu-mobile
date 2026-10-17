@@ -143,7 +143,7 @@ it.each([
     await act(async () => press('Gửi câu hỏi'));
     expect(service.send).toHaveBeenCalledTimes(1);
     if (action?.type === 'CREATE_TRANSACTION')
-      expect(onCreateTransaction).toHaveBeenCalledWith(action.draft);
+      expect(onCreateTransaction).toHaveBeenCalledWith(action.draft, 'VOICE');
     else expect(onCreateTransaction).not.toHaveBeenCalled();
     expect(onScanReceipt).toHaveBeenCalledTimes(
       action?.type === 'SCAN_RECEIPT' ? 1 : 0,

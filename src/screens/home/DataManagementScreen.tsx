@@ -37,6 +37,7 @@ import {
   dataTransferService,
   type ExcelImportPreview,
 } from '../../services/dataTransfer';
+import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import {
   offlineTransactionQueue,
   type OfflineTransactionDraft,
@@ -64,6 +65,7 @@ const DataManagementScreen = () => {
     file: PickedDocument;
     result: ExcelImportPreview;
     selectedRows: number[];
+    inboxDraftId?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -77,6 +79,25 @@ const DataManagementScreen = () => {
     });
   }, [user?.id]);
 
+  useEffect(() => {
+    const draftId = route.params?.financialDraftId;
+    if (!draftId || !user?.id) return;
+    financialCaptureInbox
+      .get(user.id, draftId)
+      .then(draft => {
+        if (!draft?.excel) return;
+        setExcelPreview({
+          file: draft.excel.file,
+          result: draft.excel.preview,
+          selectedRows: draft.excel.preview.rows
+            .filter(row => row.status === 'READY')
+            .map(row => row.row),
+          inboxDraftId: draft.id,
+        });
+      })
+      .catch(() => undefined);
+  }, [route.params?.financialDraftId, user?.id]);
+
   const performImport = async (
     file: Awaited<ReturnType<typeof localDocumentPicker.pickExcelFile>>,
     selectedRows?: number[],
@@ -87,6 +108,9 @@ const DataManagementScreen = () => {
       file,
       selectedRows,
     );
+    if (excelPreview?.inboxDraftId && user?.id) {
+      await financialCaptureInbox.remove(user.id, excelPreview.inboxDraftId);
+    }
     setExcelPreview(null);
     Alert.alert(
       'Đã nhập dữ liệu',
@@ -136,12 +160,22 @@ const DataManagementScreen = () => {
       if (!file) return;
       setIsImporting(true);
       const result = await dataTransferService.previewExcel(token, file);
+      const captureDraft = user?.id
+        ? await financialCaptureInbox.enqueue(user.id, {
+            source: 'EXCEL',
+            status: result.ready > 0 ? 'READY' : 'NEEDS_REVIEW',
+            dedupeKey: `excel:${result.fileHash}`,
+            title: file.name,
+            excel: { file, preview: result },
+          })
+        : null;
       setExcelPreview({
         file,
         result,
         selectedRows: result.rows
           .filter(row => row.status === 'READY')
           .map(row => row.row),
+        inboxDraftId: captureDraft?.id,
       });
     } catch (error) {
       Alert.alert(
@@ -175,6 +209,15 @@ const DataManagementScreen = () => {
         ),
       )
       .finally(() => setIsImporting(false));
+  };
+
+  const closeExcelPreview = () => {
+    if (excelPreview?.inboxDraftId && user?.id) {
+      financialCaptureInbox
+        .remove(user.id, excelPreview.inboxDraftId)
+        .catch(() => undefined);
+    }
+    setExcelPreview(null);
   };
 
   const syncOfflineDrafts = async () => {
@@ -252,7 +295,7 @@ const DataManagementScreen = () => {
                 accessibilityRole="button"
                 accessibilityLabel="Đóng xem trước Excel"
                 style={styles.previewClose}
-                onPress={() => setExcelPreview(null)}
+                onPress={closeExcelPreview}
               >
                 <Text style={styles.previewCloseText}>Hủy</Text>
               </TouchableOpacity>

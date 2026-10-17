@@ -110,7 +110,10 @@ const formatChatTime = (value?: string) =>
 type ChatbotScreenProps = {
   keyboardVisible?: boolean;
   onScanReceipt?: () => void | Promise<void>;
-  onCreateTransaction?: (draft: ChatTransactionDraft) => void;
+  onCreateTransaction?: (
+    draft: ChatTransactionDraft,
+    source: 'CHATBOT' | 'VOICE',
+  ) => void;
 };
 
 const ChatbotScreen = ({
@@ -122,8 +125,12 @@ const ChatbotScreen = ({
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token } = useAuth();
   const [draft, setDraft] = useState('');
+  const [draftSource, setDraftSource] = useState<'TEXT' | 'VOICE'>('TEXT');
 
-  const voice = useVoiceInput(setDraft);
+  const voice = useVoiceInput(value => {
+    setDraftSource('VOICE');
+    setDraft(value);
+  });
 
   useEffect(
     () => navigation.addListener('blur', voice.cancel),
@@ -425,6 +432,7 @@ const ChatbotScreen = ({
   const handleSend = async (suggestedQuestion?: string) => {
     const isSuggestedQuestion = suggestedQuestion !== undefined;
     const question = (suggestedQuestion ?? draft).trim();
+    const sentSource = isSuggestedQuestion ? 'TEXT' : draftSource;
     if (
       !token ||
       !question ||
@@ -469,7 +477,11 @@ const ChatbotScreen = ({
       if (response.action?.type === 'SCAN_RECEIPT') {
         handleScanReceipt();
       } else if (response.action?.type === 'CREATE_TRANSACTION') {
-        if (onCreateTransaction) onCreateTransaction(response.action.draft);
+        if (onCreateTransaction)
+          onCreateTransaction(
+            response.action.draft,
+            sentSource === 'VOICE' ? 'VOICE' : 'CHATBOT',
+          );
         else
           Alert.alert(
             'Thêm giao dịch',
@@ -840,7 +852,10 @@ const ChatbotScreen = ({
             placeholder="Hỏi hoặc ghi thu chi…"
             placeholderTextColor="#B58A6A"
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={value => {
+              setDraftSource('TEXT');
+              setDraft(value);
+            }}
             onSubmitEditing={() => handleSend()}
             returnKeyType="send"
             editable={!isSending && !voice.isBusy}

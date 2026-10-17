@@ -41,6 +41,7 @@ import BankNotificationSettingsScreen from '../screens/home/BankNotificationSett
 import SmartRulesScreen from '../screens/home/SmartRulesScreen';
 import DataManagementScreen from '../screens/home/DataManagementScreen';
 import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
+import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -68,7 +69,7 @@ export type RootStackParamList = {
     selectedCurrency?: string;
     returnTo: 'CurrencySetup' | 'Profile' | 'Wallets';
   };
-  Main: undefined;
+  Main: { financialDraftId?: string } | undefined;
   Wallets:
     | {
         selectedCurrency?: string;
@@ -107,7 +108,8 @@ export type RootStackParamList = {
   NotificationSettings: undefined;
   BankNotifications: undefined;
   SmartRules: undefined;
-  DataManagement: { wallets?: Wallet[] } | undefined;
+  DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
+  FinancialInbox: undefined;
   FinancialCenter: { wallets?: Wallet[] } | undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
@@ -233,6 +235,10 @@ const AppNavigator = () => {
           <Stack.Screen
             name="FinancialCenter"
             component={FinancialCenterScreen}
+          />
+          <Stack.Screen
+            name="FinancialInbox"
+            component={FinancialInboxScreen}
           />
           <Stack.Screen name="LoanDebts" component={LoanDebtsScreen} />
           <Stack.Screen name="LoanDebtForm" component={LoanDebtFormScreen} />

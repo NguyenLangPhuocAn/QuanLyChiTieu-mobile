@@ -24,7 +24,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type {
+  NativeStackNavigationProp,
+  NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -63,6 +66,7 @@ import {
   isRetryableOfflineTransactionError,
   offlineTransactionQueue,
 } from '../../services/offlineTransactionQueue';
+import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
 import { budgetsService } from '../../services/budgets';
@@ -177,7 +181,9 @@ const buildReceiptUploadFile = (
   };
 };
 
-const MainScreen = () => {
+type MainScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
+
+const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
@@ -255,6 +261,9 @@ const MainScreen = () => {
     };
   }, [isModalVisible]);
   const [receiptOcrWarnings, setReceiptOcrWarnings] = useState<string[]>([]);
+  const [activeFinancialDraftId, setActiveFinancialDraftId] = useState<
+    string | null
+  >(null);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -518,9 +527,8 @@ const MainScreen = () => {
           let created = 0;
           let syncedDrafts = 0;
           try {
-            syncedDrafts = (
-              await offlineTransactionQueue.sync(token, user.id)
-            ).synced;
+            syncedDrafts = (await offlineTransactionQueue.sync(token, user.id))
+              .synced;
           } catch {
             // Bản nháp vẫn nằm trong hàng chờ và sẽ được thử lại khi có mạng.
           }
@@ -631,6 +639,7 @@ const MainScreen = () => {
     [transactionTags],
   );
   const openTransactionModal = () => {
+    setActiveFinancialDraftId(null);
     resetTransactionForm();
     setIsModalVisible(true);
   };
@@ -849,6 +858,28 @@ const MainScreen = () => {
         setIsReceiptDetailsExpanded(true);
       }
       applyReceiptOcrResult(result);
+      if (user?.id) {
+        setActiveFinancialDraftId(null);
+        await financialCaptureInbox
+          .enqueue(user.id, {
+            source: 'OCR',
+            status: hasValidAmount ? 'READY' : 'NEEDS_REVIEW',
+            dedupeKey: `ocr:${file.uri}:${file.name}`,
+            title: result.note?.trim() || file.name,
+            transactionDraft: {
+              type: 'EXPENSE',
+              amount: hasValidAmount ? result.amount! : null,
+              currency: result.currency || null,
+              note: result.note || '',
+              transaction_date: result.transaction_date || null,
+              category_name: result.suggested_category?.name ?? null,
+              wallet_name: null,
+            },
+            receiptItems: result.receipt_items,
+          })
+          .then(capture => setActiveFinancialDraftId(capture.id))
+          .catch(() => undefined);
+      }
       if (mode === 'chatbot') setIsModalVisible(true);
       return true;
     } catch (error) {
@@ -1004,7 +1035,7 @@ const MainScreen = () => {
     receiptPickerRef.current();
   }, [receiptPickerRequested]);
 
-  const handleCreateTransactionFromChatbot = (draft: ChatTransactionDraft) => {
+  const applyCapturedTransactionDraft = (draft: ChatTransactionDraft) => {
     resetTransactionForm();
     setIsChatDraft(true);
     setChatDraftCurrency(draft.currency);
@@ -1026,6 +1057,49 @@ const MainScreen = () => {
     );
     setIsModalVisible(true);
   };
+
+  const applyCapturedTransactionDraftRef = useRef<
+    (draft: ChatTransactionDraft) => void
+  >(() => undefined);
+  applyCapturedTransactionDraftRef.current = applyCapturedTransactionDraft;
+
+  const handleCreateTransactionFromChatbot = async (
+    draft: ChatTransactionDraft,
+    source: 'CHATBOT' | 'VOICE',
+  ) => {
+    if (source === 'VOICE' && user?.id) {
+      setActiveFinancialDraftId(null);
+      await financialCaptureInbox
+        .enqueue(user.id, {
+          source: 'VOICE',
+          status: draft.amount && draft.amount > 0 ? 'READY' : 'NEEDS_REVIEW',
+          dedupeKey: `voice:${draft.transaction_date ?? ''}:${draft.type}:${
+            draft.amount ?? ''
+          }:${draft.note.trim().toLocaleLowerCase('vi')}`,
+          title: draft.note.trim() || 'Giao dịch nhập bằng giọng nói',
+          transactionDraft: draft,
+        })
+        .then(capture => setActiveFinancialDraftId(capture.id))
+        .catch(() => undefined);
+    } else {
+      setActiveFinancialDraftId(null);
+    }
+    applyCapturedTransactionDraft(draft);
+  };
+
+  useEffect(() => {
+    const draftId = route?.params?.financialDraftId;
+    if (!draftId || !user?.id) return;
+    financialCaptureInbox
+      .get(user.id, draftId)
+      .then(capture => {
+        if (!capture?.transactionDraft) return;
+        setActiveFinancialDraftId(capture.id);
+        applyCapturedTransactionDraftRef.current(capture.transactionDraft);
+        navigation.setParams({ financialDraftId: undefined });
+      })
+      .catch(() => undefined);
+  }, [navigation, route?.params?.financialDraftId, user?.id]);
 
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
@@ -1198,6 +1272,12 @@ const MainScreen = () => {
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
           await offlineTransactionQueue.enqueue(user.id, createPayload);
+          if (activeFinancialDraftId) {
+            await financialCaptureInbox
+              .remove(user.id, activeFinancialDraftId)
+              .catch(() => undefined);
+            setActiveFinancialDraftId(null);
+          }
           setIsModalVisible(false);
           resetTransactionForm();
           Alert.alert(
@@ -1237,6 +1317,13 @@ const MainScreen = () => {
 
       await fetchDashboardData();
       showBudgetAlertIfNeeded(selectedWallet, amount, transactionType);
+
+      if (activeFinancialDraftId && user?.id) {
+        await financialCaptureInbox
+          .remove(user.id, activeFinancialDraftId)
+          .catch(() => undefined);
+        setActiveFinancialDraftId(null);
+      }
 
       setIsModalVisible(false);
       resetTransactionForm();
