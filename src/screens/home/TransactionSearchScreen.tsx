@@ -106,14 +106,32 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
   const initialToDate = route.params.initialToDate ?? initialFromDate;
   const cashFlow = route.params.cashFlow;
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(route.params.initialQuery ?? '');
   const [noteQuery, setNoteQuery] = useState('');
   const [tagQuery, setTagQuery] = useState('');
-  const [walletId, setWalletId] = useState<number | null>(null);
-  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [minAmount, setMinAmount] = useState(
+    route.params.initialMinAmount?.toString() ?? '',
+  );
+  const [maxAmount, setMaxAmount] = useState(
+    route.params.initialMaxAmount?.toString() ?? '',
+  );
+  const [walletId, setWalletId] = useState<number | null>(
+    route.params.initialWalletId ?? null,
+  );
+  const [categoryId, setCategoryId] = useState<number | null>(
+    route.params.initialCategoryId ?? null,
+  );
   const [isCategoryModalVisible, setIsCategoryModalVisible] = useState(false);
-  const [categoryMode, setCategoryMode] = useState<CategoryMode>('expense');
-  const [typeMode, setTypeMode] = useState<TypeMode>('all');
+  const [categoryMode, setCategoryMode] = useState<CategoryMode>(
+    route.params.initialType === 'INCOME' ? 'income' : 'expense',
+  );
+  const [typeMode, setTypeMode] = useState<TypeMode>(
+    route.params.initialType === 'INCOME'
+      ? 'income'
+      : route.params.initialType === 'EXPENSE'
+      ? 'expense'
+      : 'all',
+  );
   const [dateMode, setDateMode] = useState<DateMode>(initialDateMode ?? 'all');
   const [quarter, setQuarter] = useState(
     `Q${Math.floor(currentMonth / 3) + 1}`,
@@ -223,6 +241,8 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
       tag: normalizeTagName(tagQuery) || undefined,
       q: query.trim() || undefined,
       note: noteQuery.trim() || undefined,
+      min_amount: minAmount.trim() ? Number(minAmount) : undefined,
+      max_amount: maxAmount.trim() ? Number(maxAmount) : undefined,
     };
 
     if (dateMode === 'after') {
@@ -278,6 +298,8 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
     dayDate,
     effectiveCashFlow,
     fromDate,
+    maxAmount,
+    minAmount,
     noteQuery,
     page,
     query,
@@ -358,6 +380,8 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
     dateMode,
     dayDate,
     fromDate,
+    maxAmount,
+    minAmount,
     noteQuery,
     query,
     quarter,
@@ -438,6 +462,8 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
     setQuery('');
     setNoteQuery('');
     setTagQuery('');
+    setMinAmount('');
+    setMaxAmount('');
     setWalletId(null);
     setCategoryId(null);
     setTypeMode('all');
@@ -859,6 +885,27 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
             placeholder="Có ghi chú chứa..."
             placeholderTextColor="#A26B48"
           />
+
+          <Text style={styles.label}>Khoảng tiền</Text>
+          <View style={styles.amountRow}>
+            <TextInput
+              style={[styles.input, styles.amountInput]}
+              value={minAmount}
+              onChangeText={value => setMinAmount(value.replace(/\D/g, ''))}
+              placeholder="Từ"
+              placeholderTextColor="#A26B48"
+              keyboardType="number-pad"
+            />
+            <Text style={styles.amountSeparator}>–</Text>
+            <TextInput
+              style={[styles.input, styles.amountInput]}
+              value={maxAmount}
+              onChangeText={value => setMaxAmount(value.replace(/\D/g, ''))}
+              placeholder="Đến"
+              placeholderTextColor="#A26B48"
+              keyboardType="number-pad"
+            />
+          </View>
 
           <Text style={styles.label}>Hashtag</Text>
           <View style={styles.tagInputBox}>
@@ -1370,6 +1417,9 @@ const styles = StyleSheet.create({
     color: '#4C2A18',
     fontWeight: '700',
   },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  amountInput: { flex: 1 },
+  amountSeparator: { color: '#A06B42', fontWeight: '900' },
   quarterYearInput: { marginTop: 10 },
   tagInputBox: {
     minHeight: 50,

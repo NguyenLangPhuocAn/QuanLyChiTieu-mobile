@@ -43,4 +43,18 @@ describe('calculateFinancialHealthScore', () => {
     expect(result.budgetPoints).toBeCloseTo(15);
     expect(result.score).toBe(75);
   });
+
+  it('uses a stable recent expense baseline for emergency reserves', () => {
+    const result = calculateFinancialHealthBreakdown({
+      income: 10_000_000,
+      expense: 2_000_000,
+      totalBalance: 6_000_000,
+      budgetPercents: [0.5],
+      monthlyExpenseBaseline: 4_000_000,
+    });
+
+    expect(result.reserveMonths).toBeCloseTo(1.5);
+    expect(result.reserveTarget).toBe(12_000_000);
+    expect(result.reserveGap).toBe(6_000_000);
+  });
 });

@@ -28,6 +28,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { bankNotificationSettings } from '../../services/bankNotificationSettings';
 import { createTransactionFromBankEvent } from '../../services/bankNotificationSync';
 import { categoriesService } from '../../services/categories';
+import { transactionsService } from '../../services/transactions';
 import { walletsService } from '../../services/wallets';
 import type {
   BankAppRule,
@@ -35,8 +36,13 @@ import type {
   LaunchableAndroidApp,
 } from '../../types/bankNotification';
 import type { Category } from '../../types/category';
+import type { ApiTransaction } from '../../types/transaction';
 import type { Wallet } from '../../types/wallet';
 import { parseBankNotification } from '../../utils/bankNotificationParser';
+import {
+  findBestEvidenceMatch,
+  mergeBankEvidenceNote,
+} from '../../utils/evidenceMatcher';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 
@@ -67,6 +73,8 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
   const { token, user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isReading, setIsReading] = useState(false);
+  const [shakeEnabled, setShakeEnabled] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [apps, setApps] = useState<LaunchableAndroidApp[]>([]);
   const [rules, setRules] = useState<BankAppRule[]>([]);
@@ -75,6 +83,9 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
   const [pendingEvents, setPendingEvents] = useState<BankNotificationEvent[]>(
     [],
   );
+  const [recentTransactions, setRecentTransactions] = useState<
+    ApiTransaction[]
+  >([]);
   const [query, setQuery] = useState('');
   const [busyEventId, setBusyEventId] = useState<string | null>(null);
 
@@ -89,6 +100,8 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         nextWallets,
         nextCategories,
         events,
+        storedShakeEnabled,
+        recentResponse,
       ] = await Promise.all([
         bankNotificationReader.isNotificationAccessGranted(),
         bankNotificationReader.getLaunchableApps(),
@@ -96,6 +109,14 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         walletsService.getAll(token),
         categoriesService.getAll(token),
         bankNotificationReader.getPendingEvents(user.id),
+        bankNotificationSettings.getShakeEnabled(user.id),
+        transactionsService.getPage(token, {
+          page: 1,
+          limit: 100,
+          from: new Date(Date.now() - 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10),
+        }),
       ]);
       setPermissionGranted(access);
       setApps(installedApps);
@@ -109,6 +130,8 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         ),
       );
       setPendingEvents(events.sort((a, b) => b.postedAt - a.postedAt));
+      setShakeEnabled(storedShakeEnabled);
+      setRecentTransactions(recentResponse.data);
     } catch (error) {
       Alert.alert(
         'Chưa tải được cài đặt',
@@ -182,6 +205,7 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     setIsSaving(true);
     try {
       await bankNotificationSettings.saveRules(user.id, rules);
+      await bankNotificationSettings.saveShakeEnabled(user.id, shakeEnabled);
       await bankNotificationReader.setConfiguration(
         user.id,
         rules.filter(rule => rule.enabled).map(rule => rule.packageName),
@@ -194,6 +218,35 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
       );
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const readNewNotifications = async () => {
+    if (!user) return;
+    if (!permissionGranted) {
+      Alert.alert(
+        'Chưa có quyền đọc thông báo',
+        'Hãy cấp quyền cho Sổ Thu Chi Nova trước khi đọc thông báo ngân hàng.',
+      );
+      return;
+    }
+    setIsReading(true);
+    try {
+      const events = await bankNotificationReader.getPendingEvents(user.id);
+      setPendingEvents(events.sort((a, b) => b.postedAt - a.postedAt));
+      if (!events.length) {
+        Alert.alert(
+          'Chưa có thông báo mới',
+          'App chỉ nhận thông báo giao dịch phát sinh sau khi bạn cấp quyền và bật app ngân hàng.',
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        'Chưa đọc được thông báo',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+      );
+    } finally {
+      setIsReading(false);
     }
   };
 
@@ -236,6 +289,39 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     if (!user) return;
     await bankNotificationReader.dismissEvent(user.id, eventId);
     setPendingEvents(current => current.filter(item => item.id !== eventId));
+  };
+
+  const handleMergeEvidence = async (
+    event: BankNotificationEvent,
+    transaction: ApiTransaction,
+  ) => {
+    if (!token || !user) return;
+    const parsed = parseBankNotification(event);
+    setBusyEventId(event.id);
+    try {
+      const note = mergeBankEvidenceNote(transaction.note, parsed.note);
+      if (note !== (transaction.note?.trim() ?? '')) {
+        await transactionsService.update(token, transaction.id, { note });
+      }
+      await bankNotificationReader.markProcessed(user.id, event.id);
+      setPendingEvents(current => current.filter(item => item.id !== event.id));
+      setRecentTransactions(current =>
+        current.map(item =>
+          item.id === transaction.id ? { ...item, note } : item,
+        ),
+      );
+      Alert.alert(
+        'Đã ghép bằng chứng',
+        'Thông báo ngân hàng đã được nối vào giao dịch có ảnh hóa đơn; không tạo thêm giao dịch mới.',
+      );
+    } catch (error) {
+      Alert.alert(
+        'Chưa ghép được',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+      );
+    } finally {
+      setBusyEventId(null);
+    }
   };
 
   if (isLoading) {
@@ -413,6 +499,23 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
           );
         })}
 
+        <View style={styles.shakeCard}>
+          <View style={styles.shakeCopy}>
+            <Text style={styles.shakeTitle}>Lắc để mở giao dịch mới</Text>
+            <Text style={styles.shakeDescription}>
+              Khi đang ở màn hình chính, lắc điện thoại hai nhịp để mở các thông
+              báo ngân hàng đang chờ duyệt.
+            </Text>
+          </View>
+          <Switch
+            value={shakeEnabled}
+            onValueChange={setShakeEnabled}
+            trackColor={{ false: '#D5D0CA', true: '#9BCDBB' }}
+            thumbColor={shakeEnabled ? '#26734D' : '#8C8178'}
+            accessibilityLabel="Bật lắc điện thoại để đọc thông báo ngân hàng"
+          />
+        </View>
+
         <TouchableOpacity
           style={styles.saveButton}
           disabled={isSaving}
@@ -425,6 +528,23 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
           )}
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.readButton}
+          disabled={isReading}
+          onPress={() => readNewNotifications().catch(() => undefined)}
+          accessibilityRole="button"
+          accessibilityLabel="Đọc thông báo ngân hàng mới"
+        >
+          {isReading ? (
+            <ActivityIndicator color={Colors.primary} />
+          ) : (
+            <>
+              <RefreshCw size={18} color={Colors.primary} />
+              <Text style={styles.readButtonText}>Đọc thông báo mới</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
         <Text style={styles.sectionTitle}>Thông báo chờ kiểm tra</Text>
         {!pendingEvents.length ? (
           <Text style={styles.emptyText}>
@@ -433,6 +553,11 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         ) : null}
         {pendingEvents.map(event => {
           const parsed = parseBankNotification(event);
+          const evidenceMatch = findBestEvidenceMatch(
+            parsed,
+            event.postedAt,
+            recentTransactions,
+          );
           return (
             <View style={styles.pendingCard} key={event.id}>
               <View style={styles.pendingHeader}>
@@ -451,7 +576,7 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
               </Text>
               {parsed.status === 'READY' && parsed.amount && parsed.currency ? (
                 <Text style={styles.detectedAmount}>
-                  {parsed.type === 'INCOME' ? 'Tiền vào' : 'Tiền ra'} ·{' '}
+                  {parsed.type === 'INCOME' ? 'Tiền vào +' : 'Tiền ra -'}{' '}
                   {formatCurrency(Number(parsed.amount), parsed.currency)}
                 </Text>
               ) : (
@@ -460,6 +585,34 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
               <Text style={styles.pendingNote} numberOfLines={3}>
                 Ghi chú sẽ lưu: {parsed.note}
               </Text>
+              {evidenceMatch ? (
+                <View style={styles.matchCard}>
+                  <Text style={styles.matchTitle}>
+                    Có thể ghép với hóa đơn đã lưu
+                  </Text>
+                  <Text style={styles.matchText}>
+                    {evidenceMatch.transaction.note || 'Giao dịch có hóa đơn'} ·{' '}
+                    độ tin cậy {evidenceMatch.score}%
+                  </Text>
+                  <Text style={styles.matchReason}>
+                    {evidenceMatch.reasons.join(' · ')}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.mergeButton}
+                    disabled={busyEventId === event.id}
+                    onPress={() =>
+                      handleMergeEvidence(
+                        event,
+                        evidenceMatch.transaction,
+                      ).catch(() => undefined)
+                    }
+                  >
+                    <Text style={styles.mergeButtonText}>
+                      Ghép, không tạo giao dịch mới
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               <TouchableOpacity
                 style={[
                   styles.createButton,
@@ -666,6 +819,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 14,
   },
+  shakeCard: {
+    borderRadius: 18,
+    borderWidth: 1.2,
+    borderColor: '#E8B680',
+    backgroundColor: '#FFF8F1',
+    padding: 14,
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  shakeCopy: { flex: 1 },
+  shakeTitle: { color: '#4C2A18', fontWeight: '900', fontSize: 14 },
+  shakeDescription: {
+    color: '#7A5B45',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
   saveButton: {
     minHeight: 50,
     borderRadius: 17,
@@ -675,6 +847,19 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   saveButtonText: { color: Colors.white, fontWeight: '900', fontSize: 15 },
+  readButton: {
+    minHeight: 50,
+    borderRadius: 17,
+    borderWidth: 1.2,
+    borderColor: Colors.primary,
+    backgroundColor: '#FFF8F1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  readButtonText: { color: Colors.primary, fontWeight: '900', fontSize: 15 },
   pendingCard: {
     borderRadius: 20,
     borderWidth: 1.2,
@@ -693,6 +878,31 @@ const styles = StyleSheet.create({
   detectedAmount: { color: '#26734D', fontWeight: '900', marginTop: 10 },
   reviewReason: { color: '#B54708', fontWeight: '800', marginTop: 10 },
   pendingNote: { color: '#70482E', fontSize: 12, lineHeight: 17, marginTop: 8 },
+  matchCard: {
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#A8D8BE',
+    backgroundColor: '#F1FAF5',
+    padding: 12,
+    marginTop: 10,
+  },
+  matchTitle: { color: '#245B40', fontWeight: '900' },
+  matchText: { color: '#47725C', fontSize: 12, marginTop: 4 },
+  matchReason: {
+    color: '#5F7F6D',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  mergeButton: {
+    minHeight: 40,
+    borderRadius: 13,
+    backgroundColor: '#2F7D6B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 9,
+  },
+  mergeButtonText: { color: Colors.white, fontWeight: '900', fontSize: 12 },
   createButton: {
     minHeight: 44,
     borderRadius: 14,

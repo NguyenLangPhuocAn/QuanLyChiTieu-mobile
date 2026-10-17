@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Hash,
   HandCoins,
+  HeartPulse,
   ListTree,
   LogOut,
   Palette,
@@ -385,6 +386,12 @@ const AccountScreen = ({
             subtitle: 'Số dư, hạn mức, loại ví',
             Icon: WalletCards,
             action: () => navigation.navigate('Wallets'),
+          },
+          {
+            title: 'Trung tâm tài chính',
+            subtitle: 'Chi an toàn, lịch tiền, quỹ khẩn cấp và dữ liệu cần sửa',
+            Icon: HeartPulse,
+            action: () => navigation.navigate('FinancialCenter', { wallets }),
           },
           {
             title: 'Kế hoạch tài chính',

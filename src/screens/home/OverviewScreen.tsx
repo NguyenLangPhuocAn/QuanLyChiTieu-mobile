@@ -73,6 +73,7 @@ type FinancialHealthInput = {
   expense: number;
   totalBalance: number;
   budgetPercents: number[];
+  monthlyExpenseBaseline?: number;
 };
 
 export const calculateFinancialHealthBreakdown = ({
@@ -80,12 +81,17 @@ export const calculateFinancialHealthBreakdown = ({
   expense,
   totalBalance,
   budgetPercents,
+  monthlyExpenseBaseline,
 }: FinancialHealthInput) => {
   const clamp = (value: number, minimum = 0, maximum = 1) =>
     Math.min(maximum, Math.max(minimum, value));
   const savingRate = income > 0 ? (income - expense) / income : 0;
   const cashFlowPoints = clamp(savingRate / 0.2) * 40;
-  const reserveMonths = expense > 0 ? totalBalance / expense : 0;
+  const expenseBaseline =
+    monthlyExpenseBaseline && monthlyExpenseBaseline > 0
+      ? monthlyExpenseBaseline
+      : expense;
+  const reserveMonths = expenseBaseline > 0 ? totalBalance / expenseBaseline : 0;
   const reservePoints = clamp(reserveMonths / 3) * 30;
   const budgetPoints = budgetPercents.length
     ? (budgetPercents.reduce(
@@ -96,6 +102,10 @@ export const calculateFinancialHealthBreakdown = ({
       30
     : 15;
   const score = Math.round(cashFlowPoints + reservePoints + budgetPoints);
+  const savingTargetGap =
+    income > 0 ? Math.max(0, income * 0.2 - (income - expense)) : 0;
+  const reserveTarget = expenseBaseline * 3;
+  const reserveGap = Math.max(0, reserveTarget - totalBalance);
 
   return {
     score,
@@ -109,6 +119,10 @@ export const calculateFinancialHealthBreakdown = ({
         : 'Cần chú ý',
     savingRate,
     reserveMonths,
+    expenseBaseline,
+    savingTargetGap,
+    reserveTarget,
+    reserveGap,
     averageBudgetPercent: budgetPercents.length
       ? budgetPercents.reduce((sum, percent) => sum + percent, 0) /
         budgetPercents.length
@@ -484,7 +498,31 @@ const OverviewScreen = ({
     expense,
     totalBalance,
     budgetPercents: budgetRows.map(row => row.percent),
+    monthlyExpenseBaseline: lastThreeAverageExpense,
   });
+  const financialHealthActions = [
+    income <= 0
+      ? 'Ghi nhận thu nhập trong kỳ để đánh giá dòng tiền chính xác hơn.'
+      : financialHealth.savingTargetGap > 0
+        ? `Giữ lại thêm ${formatCurrency(
+            financialHealth.savingTargetGap,
+            preferredCurrency,
+          )} để đạt mức dư 20% thu nhập.`
+        : 'Dòng tiền đã đạt mức dư tối thiểu 20% thu nhập.',
+    financialHealth.reserveGap > 0
+      ? `Quỹ dự phòng còn thiếu ${formatCurrency(
+          financialHealth.reserveGap,
+          preferredCurrency,
+        )} để đủ 3 tháng chi tiêu theo mức trung bình gần đây.`
+      : 'Quỹ dự phòng đã đủ ít nhất 3 tháng chi tiêu trung bình.',
+    financialHealth.averageBudgetPercent === null
+      ? 'Tạo ít nhất một ngân sách để điểm phản ánh khả năng kiểm soát chi tiêu.'
+      : financialHealth.averageBudgetPercent > 1
+        ? 'Ngân sách đang vượt hạn mức; ưu tiên giảm các nhóm đã dùng quá 100%.'
+        : financialHealth.averageBudgetPercent > 0.8
+          ? 'Ngân sách đã dùng trên 80%; hạn chế khoản không thiết yếu đến cuối kỳ.'
+          : 'Mức dùng ngân sách hiện nằm trong ngưỡng an toàn dưới 80%.',
+  ];
 
   const moveMonth = (amount: number) => {
     setSelectedMonth(
@@ -1307,8 +1345,8 @@ const OverviewScreen = ({
                   Đủ {financialHealth.reserveMonths.toFixed(1)} tháng chi tiêu
                 </Text>
                 <Text style={styles.healthMetricFormula}>
-                  Tổng số dư / Chi trong kỳ. Đạt tối đa 30 điểm khi đủ 3 tháng
-                  chi tiêu.
+                  Tổng số dư / Chi trung bình 3 tháng trước. Đạt tối đa 30 điểm
+                  khi đủ 3 tháng chi tiêu.
                 </Text>
               </View>
 
@@ -1330,6 +1368,18 @@ const OverviewScreen = ({
                   Dùng tối đa 80% hạn mức được 30 điểm; từ 80% đến 120% điểm
                   giảm dần. Chưa tạo ngân sách được 15 điểm.
                 </Text>
+              </View>
+
+              <View style={styles.healthActionsCard}>
+                <Text style={styles.healthActionsTitle}>Việc nên làm tiếp</Text>
+                {financialHealthActions.map((action, index) => (
+                  <View style={styles.healthActionRow} key={action}>
+                    <View style={styles.healthActionIndex}>
+                      <Text style={styles.healthActionIndexText}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.healthActionText}>{action}</Text>
+                  </View>
+                ))}
               </View>
 
               <View style={styles.healthFormulaSummary}>
@@ -1712,6 +1762,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F2C972',
     padding: 13,
+  },
+  healthActionsCard: {
+    borderRadius: 18,
+    backgroundColor: '#F2F8F3',
+    borderWidth: 1,
+    borderColor: '#B8D8C0',
+    padding: 13,
+    marginBottom: 10,
+  },
+  healthActionsTitle: { color: '#245C38', fontSize: 13, fontWeight: '900' },
+  healthActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 9,
+  },
+  healthActionIndex: {
+    width: 22,
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: '#DCEFE1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  healthActionIndexText: { color: '#26734D', fontSize: 11, fontWeight: '900' },
+  healthActionText: {
+    flex: 1,
+    color: '#365C43',
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '700',
   },
   healthFormulaTitle: { color: '#6C421C', fontSize: 13, fontWeight: '900' },
   healthFormulaText: {

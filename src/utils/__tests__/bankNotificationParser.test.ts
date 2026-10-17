@@ -24,6 +24,15 @@ describe('parseBankNotification', () => {
     });
   });
 
+  it('never treats a remaining balance as the transaction amount', () => {
+    const result = parseBankNotification(
+      makeEvent('Tài khoản vừa ghi nợ. Số dư: 1.250.000 VND.'),
+    );
+
+    expect(result.status).toBe('REVIEW');
+    expect(result.reason).toContain('số tiền giao dịch');
+  });
+
   it('reads an incoming transfer', () => {
     const result = parseBankNotification(
       makeEvent('Tài khoản nhận tiền +10,000,000 VND từ NGUYEN VAN A'),

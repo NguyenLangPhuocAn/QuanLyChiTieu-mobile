@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import type {
   BankNotificationEvent,
   LaunchableAndroidApp,
@@ -9,14 +9,22 @@ type BankNotificationReaderNative = {
   openNotificationAccessSettings(): Promise<boolean>;
   getLaunchableAppsJson(): Promise<string>;
   getPendingEventsJson(activeUser: string): Promise<string>;
-  setConfiguration(activeUser: string | null, packages: string[]): Promise<boolean>;
+  setConfiguration(
+    activeUser: string | null,
+    packages: string[],
+  ): Promise<boolean>;
   markProcessed(activeUser: string, eventId: string): Promise<boolean>;
   dismissEvent(activeUser: string, eventId: string): Promise<boolean>;
+  startShakeDetection(): Promise<boolean>;
+  stopShakeDetection(): Promise<boolean>;
 };
 
 const nativeReader = NativeModules.BankNotificationReader as
   | BankNotificationReaderNative
   | undefined;
+const nativeEventEmitter = nativeReader
+  ? new NativeEventEmitter(NativeModules.BankNotificationReader)
+  : null;
 
 const requireAndroidReader = () => {
   if (Platform.OS !== 'android' || !nativeReader) {
@@ -55,4 +63,12 @@ export const bankNotificationReader = {
     requireAndroidReader().markProcessed(String(userId), eventId),
   dismissEvent: (userId: number, eventId: string) =>
     requireAndroidReader().dismissEvent(String(userId), eventId),
+  startShakeDetection: () => requireAndroidReader().startShakeDetection(),
+  stopShakeDetection: () => requireAndroidReader().stopShakeDetection(),
+  onShake: (listener: () => void) => {
+    if (!nativeEventEmitter) {
+      return { remove: () => undefined };
+    }
+    return nativeEventEmitter.addListener('BankNotificationShake', listener);
+  },
 };

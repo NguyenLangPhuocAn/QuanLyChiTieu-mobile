@@ -1,20 +1,40 @@
 package com.mobile.banknotifications
 
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.provider.Settings
+import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import kotlin.math.sqrt
 import org.json.JSONArray
 import org.json.JSONObject
 
 class BankNotificationModule(
   private val reactContext: ReactApplicationContext,
-) : ReactContextBaseJavaModule(reactContext) {
+) : ReactContextBaseJavaModule(reactContext), SensorEventListener, LifecycleEventListener {
+  private val sensorManager =
+    reactContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+  private var shakeDetectionRequested = false
+  private var firstShakeAt = 0L
+  private var lastPeakAt = 0L
+  private var lastEmittedAt = 0L
+  private var shakePeakCount = 0
+
+  init {
+    reactContext.addLifecycleEventListener(this)
+  }
+
   override fun getName(): String = "BankNotificationReader"
 
   @ReactMethod
@@ -100,5 +120,99 @@ class BankNotificationModule(
   fun dismissEvent(activeUser: String, eventId: String, promise: Promise) {
     BankNotificationStore.remove(reactContext, eventId, activeUser)
     promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun startShakeDetection(promise: Promise) {
+    shakeDetectionRequested = true
+    promise.resolve(registerShakeSensor())
+  }
+
+  @ReactMethod
+  fun stopShakeDetection(promise: Promise) {
+    shakeDetectionRequested = false
+    resetShakeSequence()
+    sensorManager.unregisterListener(this)
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun addListener(eventName: String) = Unit
+
+  @ReactMethod
+  fun removeListeners(count: Int) = Unit
+
+  override fun onSensorChanged(event: SensorEvent?) {
+    val values = event?.values ?: return
+    if (event.sensor.type != Sensor.TYPE_ACCELEROMETER || values.size < 3) return
+
+    val gravity = SensorManager.GRAVITY_EARTH
+    val x = values[0] / gravity
+    val y = values[1] / gravity
+    val z = values[2] / gravity
+    val force = sqrt(x * x + y * y + z * z)
+    if (force < shakeThreshold) return
+
+    val now = System.currentTimeMillis()
+    if (now - lastPeakAt < minimumPeakGapMs || now - lastEmittedAt < eventCooldownMs) return
+    lastPeakAt = now
+
+    if (firstShakeAt == 0L || now - firstShakeAt > shakeWindowMs) {
+      firstShakeAt = now
+      shakePeakCount = 1
+      return
+    }
+
+    shakePeakCount += 1
+    if (shakePeakCount < requiredPeakCount) return
+
+    lastEmittedAt = now
+    resetShakeSequence()
+    reactContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(shakeEventName, null)
+  }
+
+  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+  override fun onHostResume() {
+    if (shakeDetectionRequested) registerShakeSensor()
+  }
+
+  override fun onHostPause() {
+    sensorManager.unregisterListener(this)
+    resetShakeSequence()
+  }
+
+  override fun onHostDestroy() {
+    sensorManager.unregisterListener(this)
+    resetShakeSequence()
+  }
+
+  override fun invalidate() {
+    shakeDetectionRequested = false
+    sensorManager.unregisterListener(this)
+    reactContext.removeLifecycleEventListener(this)
+    super.invalidate()
+  }
+
+  private fun registerShakeSensor(): Boolean {
+    val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return false
+    return sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME)
+  }
+
+  private fun resetShakeSequence() {
+    firstShakeAt = 0L
+    lastPeakAt = 0L
+    shakePeakCount = 0
+  }
+
+  companion object {
+    private const val shakeEventName = "BankNotificationShake"
+    private const val shakeThreshold = 2.7f
+    private const val requiredPeakCount = 2
+    private const val minimumPeakGapMs = 220L
+    private const val shakeWindowMs = 1_000L
+    private const val eventCooldownMs = 2_500L
   }
 }

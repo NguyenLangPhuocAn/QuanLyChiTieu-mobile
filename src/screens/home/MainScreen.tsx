@@ -58,10 +58,18 @@ import { useSingleFlight } from '../../hooks/useSingleFlight';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
 import { transactionsService } from '../../services/transactions';
+import {
+  createClientRequestId,
+  isRetryableOfflineTransactionError,
+  offlineTransactionQueue,
+} from '../../services/offlineTransactionQueue';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
 import { budgetsService } from '../../services/budgets';
-import { dashboardCache } from '../../services/dashboardCache';
+import {
+  dashboardCache,
+  type DashboardCache,
+} from '../../services/dashboardCache';
 import { savingsService } from '../../services/savings';
 import { notificationsService } from '../../services/notifications';
 import {
@@ -69,6 +77,8 @@ import {
   smartRulesService,
 } from '../../services/smartRules';
 import { syncBankNotifications } from '../../services/bankNotificationSync';
+import { bankNotificationSettings } from '../../services/bankNotificationSettings';
+import { bankNotificationReader } from '../../native/bankNotificationReader';
 import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
 import { toDateKey } from '../../utils/budgetPeriod';
@@ -221,6 +231,7 @@ const MainScreen = () => {
   const [isReceiptItemsExpanded, setIsReceiptItemsExpanded] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const receiptRequestVersion = useRef(0);
+  const shakeShortcutBusy = useRef(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () =>
@@ -248,84 +259,120 @@ const MainScreen = () => {
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const shouldReopenTransactionForm = useRef(false);
+  const dashboardFetchInFlight = useRef<Promise<void> | null>(null);
+  const dashboardDataVisible = useRef(false);
   const amountInputRef = useRef<TextInput>(null);
   const transactionFormScrollRef = useRef<ScrollView>(null);
 
-  const fetchDashboardData = useCallback(async () => {
-    if (!token) {
-      return;
-    }
+  const applyDashboardSnapshot = useCallback(
+    (snapshot: DashboardCache) => {
+      setWallets(snapshot.wallets);
+      setCategories(snapshot.categories);
+      setTags(snapshot.tags);
+      setBudgets(snapshot.budgets);
+      setSavingsGoals(snapshot.savingsGoals);
+      setTransactions(
+        mapSharedApiTransactions(snapshot.transactions, snapshot.wallets),
+      );
+      dashboardDataVisible.current = true;
+    },
+    [setBudgets, setCategories, setTags, setTransactions],
+  );
 
-    setRefreshing(true);
+  useEffect(() => {
+    let cancelled = false;
+    dashboardDataVisible.current = false;
+    dashboardFetchInFlight.current = null;
+    if (!user?.id) return () => undefined;
 
-    try {
-      const [
-        nextWallets,
-        nextTransactions,
-        nextCategories,
-        nextTags,
-        nextBudgets,
-        nextSavingsGoals,
-      ] = await Promise.all([
-        walletsService.getAll(token),
-        transactionsService.getAll(token),
-        categoriesService.getAll(token),
-        tagsService.getAll(token),
-        budgetsService.getAll(token),
-        savingsService.getAll(token).catch(() => []),
-      ]);
+    dashboardCache
+      .read(user.id)
+      .then(cached => {
+        if (!cancelled && cached) {
+          applyDashboardSnapshot(cached);
+          setRefreshing(false);
+        }
+      })
+      .catch(() => undefined);
 
-      setWallets(nextWallets);
-      setCategories(nextCategories);
-      setTags(nextTags);
-      setBudgets(nextBudgets);
-      setSavingsGoals(nextSavingsGoals);
-      setTransactions(mapSharedApiTransactions(nextTransactions, nextWallets));
-      if (user?.id) {
-        dashboardCache
-          .save(user.id, {
+    return () => {
+      cancelled = true;
+    };
+  }, [applyDashboardSnapshot, user?.id]);
+
+  const fetchDashboardData = useCallback(
+    (showIndicator = true) => {
+      if (!token) return Promise.resolve();
+      if (dashboardFetchInFlight.current) {
+        return dashboardFetchInFlight.current;
+      }
+
+      if (showIndicator || !dashboardDataVisible.current) setRefreshing(true);
+      const request = (async () => {
+        try {
+          const [
+            nextWallets,
+            nextTransactions,
+            nextCategories,
+            nextTags,
+            nextBudgets,
+            nextSavingsGoals,
+          ] = await Promise.all([
+            walletsService.getAll(token),
+            transactionsService.getAll(token),
+            categoriesService.getAll(token),
+            tagsService.getAll(token),
+            budgetsService.getAll(token),
+            savingsService.getAll(token).catch(() => []),
+          ]);
+
+          const snapshot: DashboardCache = {
             wallets: nextWallets,
             transactions: nextTransactions,
             categories: nextCategories,
             tags: nextTags,
             budgets: nextBudgets,
             savingsGoals: nextSavingsGoals,
-          })
-          .catch(() => undefined);
-      }
-      notificationsService
-        .getUnreadCount(token)
-        .then(nextUnread => setNotificationUnreadCount(nextUnread.count))
-        .catch(() => undefined);
-    } catch (error) {
-      const cached = user?.id ? await dashboardCache.read(user.id) : null;
-      if (cached) {
-        setWallets(cached.wallets);
-        setCategories(cached.categories);
-        setTags(cached.tags);
-        setBudgets(cached.budgets);
-        setSavingsGoals(cached.savingsGoals);
-        setTransactions(
-          mapSharedApiTransactions(cached.transactions, cached.wallets),
-        );
-        Alert.alert(
-          'Đang dùng dữ liệu trên máy',
-          'Không kết nối được máy chủ. Ứng dụng đã mở bản dữ liệu gần nhất lưu trên thiết bị.',
-        );
-        return;
-      }
-      const message = getUserFriendlyErrorMessage(
-        error,
-        'Không thể tải dữ liệu.',
-      );
-      Alert.alert('Không tải được dữ liệu', message);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [setBudgets, setCategories, setTags, setTransactions, token, user?.id]);
+            updatedAt: new Date().toISOString(),
+          };
+          applyDashboardSnapshot(snapshot);
+          if (user?.id) {
+            dashboardCache.save(user.id, snapshot).catch(() => undefined);
+          }
+          notificationsService
+            .getUnreadCount(token)
+            .then(nextUnread => setNotificationUnreadCount(nextUnread.count))
+            .catch(() => undefined);
+        } catch (error) {
+          const cached = user?.id ? await dashboardCache.read(user.id) : null;
+          if (cached && !dashboardDataVisible.current) {
+            applyDashboardSnapshot(cached);
+          }
+          if (!cached || showIndicator) {
+            Alert.alert(
+              cached ? 'Đang dùng dữ liệu trên máy' : 'Không tải được dữ liệu',
+              cached
+                ? 'Không kết nối được máy chủ. Ứng dụng đang hiển thị bản dữ liệu gần nhất trên thiết bị.'
+                : getUserFriendlyErrorMessage(error, 'Không thể tải dữ liệu.'),
+            );
+          }
+        } finally {
+          setRefreshing(false);
+        }
+      })().finally(() => {
+        if (dashboardFetchInFlight.current === request) {
+          dashboardFetchInFlight.current = null;
+        }
+      });
+
+      dashboardFetchInFlight.current = request;
+      return request;
+    },
+    [applyDashboardSnapshot, token, user?.id],
+  );
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchDashboardData(false).catch(() => undefined);
   }, [fetchDashboardData]);
 
   useEffect(() => {
@@ -393,32 +440,120 @@ const MainScreen = () => {
     transactionNote,
   ]);
 
+  const handleBankNotificationShake = useCallback(async () => {
+    if (!token || !user?.id || shakeShortcutBusy.current) return;
+    shakeShortcutBusy.current = true;
+    try {
+      const granted =
+        await bankNotificationReader.isNotificationAccessGranted();
+      if (!granted) {
+        Alert.alert(
+          'Chưa có quyền đọc thông báo',
+          'Mở cài đặt giao dịch ngân hàng để cấp quyền trước khi dùng thao tác lắc.',
+          [
+            { text: 'Để sau', style: 'cancel' },
+            {
+              text: 'Thiết lập',
+              onPress: () => navigation.navigate('BankNotifications'),
+            },
+          ],
+        );
+        return;
+      }
+
+      const events = await bankNotificationReader.getPendingEvents(user.id);
+      if (!events.length) {
+        Alert.alert(
+          'Chưa có giao dịch mới',
+          'Nova vẫn tự nhận thông báo mới từ các ứng dụng ngân hàng đã bật. Hiện không có giao dịch nào đang chờ duyệt.',
+        );
+        return;
+      }
+      navigation.navigate('BankNotifications');
+    } catch (error) {
+      Alert.alert(
+        'Chưa đọc được thông báo',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+      );
+    } finally {
+      shakeShortcutBusy.current = false;
+    }
+  }, [navigation, token, user?.id]);
+
   useFocusEffect(
     useCallback(() => {
-      fetchDashboardData();
+      if (!user?.id || !bankNotificationReader.isSupported) return undefined;
+
+      let disposed = false;
+      let shakeSubscription: { remove: () => void } | null = null;
+      bankNotificationSettings
+        .getShakeEnabled(user.id)
+        .then(enabled => {
+          if (!enabled || disposed) return;
+          shakeSubscription = bankNotificationReader.onShake(() => {
+            handleBankNotificationShake().catch(() => undefined);
+          });
+          bankNotificationReader.startShakeDetection().catch(() => undefined);
+        })
+        .catch(() => undefined);
+
+      return () => {
+        disposed = true;
+        shakeSubscription?.remove();
+        bankNotificationReader.stopShakeDetection().catch(() => undefined);
+      };
+    }, [handleBankNotificationShake, user?.id]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
 
       if (token && user?.id) {
         smartRulesService
           .getRules(user.id)
           .then(setSmartRules)
           .catch(() => undefined);
-        syncBankNotifications(token, user.id)
-          .then(result => {
-            if (result.created > 0) {
-              fetchDashboardData();
-              Alert.alert(
-                'Đã cập nhật giao dịch',
-                `${result.created} biến động ngân hàng đã được thêm.`,
-              );
-            }
-          })
-          .catch(() => undefined);
+        (async () => {
+          let created = 0;
+          let syncedDrafts = 0;
+          try {
+            syncedDrafts = (
+              await offlineTransactionQueue.sync(token, user.id)
+            ).synced;
+          } catch {
+            // Bản nháp vẫn nằm trong hàng chờ và sẽ được thử lại khi có mạng.
+          }
+          try {
+            created = (await syncBankNotifications(token, user.id)).created;
+          } catch {
+            // Dashboard data should still refresh when bank sync is unavailable.
+          }
+          await fetchDashboardData(false);
+          if (active && created > 0) {
+            Alert.alert(
+              'Đã cập nhật giao dịch',
+              `${created} biến động ngân hàng đã được thêm.`,
+            );
+          } else if (active && syncedDrafts > 0) {
+            Alert.alert(
+              'Đã đồng bộ bản nháp',
+              `${syncedDrafts} giao dịch ngoại tuyến đã được thêm an toàn.`,
+            );
+          }
+        })().catch(() => undefined);
+      } else {
+        fetchDashboardData(false).catch(() => undefined);
       }
 
       if (shouldReopenTransactionForm.current) {
         shouldReopenTransactionForm.current = false;
         setIsModalVisible(true);
       }
+
+      return () => {
+        active = false;
+      };
     }, [fetchDashboardData, token, user?.id]),
   );
 
@@ -755,7 +890,9 @@ const MainScreen = () => {
     try {
       const options = {
         mediaType: 'photo',
-        quality: 0.8,
+        maxWidth: 1600,
+        maxHeight: 2400,
+        quality: 0.7,
         ...(source === 'library' ? { selectionLimit: 1 as const } : {}),
       } as const;
       result =
@@ -1039,20 +1176,38 @@ const MainScreen = () => {
 
       const transactionType =
         selectedTransactionCategory.type === 'INCOME' ? 'income' : 'expense';
+      const clientRequestId = createClientRequestId();
+      const createPayload = {
+        wallet_id: selectedWallet.id,
+        category_id: selectedTransactionCategory.id,
+        amount: normalizedAmount,
+        type: selectedTransactionCategory.type,
+        note: transactionNote.trim() || undefined,
+        receipt_items:
+          normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
+        transaction_date: toDateKey(transactionDate),
+        tags: parseTagsInput(transactionTags),
+        client_request_id: clientRequestId,
+      };
       let createdTransaction;
       try {
-        createdTransaction = await transactionsService.create(token, {
-          wallet_id: selectedWallet.id,
-          category_id: selectedTransactionCategory.id,
-          amount: normalizedAmount,
-          type: selectedTransactionCategory.type,
-          note: transactionNote.trim() || undefined,
-          receipt_items:
-            normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
-          transaction_date: toDateKey(transactionDate),
-          tags: parseTagsInput(transactionTags),
-        });
+        createdTransaction = await transactionsService.create(
+          token,
+          createPayload,
+        );
       } catch (error) {
+        if (user?.id && isRetryableOfflineTransactionError(error)) {
+          await offlineTransactionQueue.enqueue(user.id, createPayload);
+          setIsModalVisible(false);
+          resetTransactionForm();
+          Alert.alert(
+            'Đã giữ bản nháp ngoại tuyến',
+            receiptFile
+              ? 'Giao dịch sẽ tự đồng bộ khi có mạng. Ảnh hóa đơn chưa được tải lên; hãy thêm lại ảnh sau khi giao dịch xuất hiện trong lịch sử.'
+              : 'Giao dịch sẽ tự đồng bộ khi có mạng. Bản nháp chưa làm thay đổi số dư.',
+          );
+          return;
+        }
         const message = getUserFriendlyErrorMessage(
           error,
           'Không thể lưu giao dịch.',

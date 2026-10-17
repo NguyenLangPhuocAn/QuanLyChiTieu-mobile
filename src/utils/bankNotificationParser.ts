@@ -18,7 +18,8 @@ const transactionTerms = [
   'bien dong',
   'amount',
 ];
-const balanceTerms = ['số dư', 'so du', 'balance', 'khả dụng', 'kha dung'];
+const balanceAmountLabel =
+  /(?:số dư|so du|balance|khả dụng|kha dung)\s*[:：-]?\s*$/iu;
 const incomeTerms = [
   'nhận tiền',
   'nhan tien',
@@ -104,12 +105,9 @@ const findAmounts = (content: string, type?: 'INCOME' | 'EXPENSE') => {
 
     const start = match.index ?? 0;
     const nearby = content.slice(Math.max(0, start - 35), start + match[0].length + 20);
-    const balanceContext = content.slice(
-      Math.max(0, start - 14),
-      start + match[0].length + 8,
-    );
+    const balanceContext = content.slice(Math.max(0, start - 22), start);
+    if (balanceAmountLabel.test(balanceContext)) continue;
     let score = transactionTerms.some(term => nearby.includes(term)) ? 4 : 0;
-    if (balanceTerms.some(term => balanceContext.includes(term))) score -= 6;
     if (type === 'INCOME' && rawAmount.trim().startsWith('+')) score += 3;
     if (type === 'EXPENSE' && rawAmount.trim().startsWith('-')) score += 3;
     candidates.push({ amount, currency, score });

@@ -3,6 +3,8 @@ import type { BankAppRule } from '../types/bankNotification';
 
 const storageKey = (userId: number) =>
   `quan_ly_chi_tieu_bank_notification_rules_${userId}`;
+const shakeStorageKey = (userId: number) =>
+  `quan_ly_chi_tieu_bank_notification_shake_${userId}`;
 
 export const bankNotificationSettings = {
   async getRules(userId: number): Promise<BankAppRule[]> {
@@ -18,5 +20,13 @@ export const bankNotificationSettings = {
 
   async saveRules(userId: number, rules: BankAppRule[]) {
     await AsyncStorage.setItem(storageKey(userId), JSON.stringify(rules));
+  },
+
+  async getShakeEnabled(userId: number): Promise<boolean> {
+    return (await AsyncStorage.getItem(shakeStorageKey(userId))) === 'true';
+  },
+
+  async saveShakeEnabled(userId: number, enabled: boolean) {
+    await AsyncStorage.setItem(shakeStorageKey(userId), String(enabled));
   },
 };

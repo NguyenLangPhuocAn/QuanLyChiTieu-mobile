@@ -16,6 +16,8 @@ export type TransactionQuery = {
   note?: string;
   from?: string;
   to?: string;
+  min_amount?: number;
+  max_amount?: number;
   page?: number;
   limit?: number;
 };
@@ -31,6 +33,21 @@ export type PaginatedTransactions = {
     expense?: number;
     net?: number;
   };
+};
+
+export type CreateTransactionPayload = {
+  wallet_id: number;
+  category_id?: number;
+  amount: string;
+  type: ApiTransactionType;
+  note?: string;
+  receipt_image?: string;
+  receipt_items?: ReceiptItem[] | null;
+  transaction_date?: string;
+  tags?: string[];
+  source?: 'BANK_NOTIFICATION';
+  source_ref?: string;
+  client_request_id?: string;
 };
 
 const buildTransactionQuery = (query?: TransactionQuery) => {
@@ -70,19 +87,7 @@ export const transactionsService = {
 
   create(
     token: string,
-    payload: {
-      wallet_id: number;
-      category_id?: number;
-      amount: string;
-      type: ApiTransactionType;
-      note?: string;
-      receipt_image?: string;
-      receipt_items?: ReceiptItem[] | null;
-      transaction_date?: string;
-      tags?: string[];
-      source?: 'BANK_NOTIFICATION';
-      source_ref?: string;
-    },
+    payload: CreateTransactionPayload,
   ) {
     return apiRequest<ApiTransaction>('/transactions', {
       method: 'POST',

@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,8 +21,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ArrowLeft, Image as ImageIcon, ImagePlus, MoreHorizontal, Search, WalletCards, X } from 'lucide-react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import {
+  ArrowLeft,
+  Image as ImageIcon,
+  ImagePlus,
+  MoreHorizontal,
+  Search,
+  WalletCards,
+  X,
+} from 'lucide-react-native';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,14 +41,21 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
-import { transactionsService, type TransactionQuery } from '../../services/transactions';
+import {
+  transactionsService,
+  type TransactionQuery,
+} from '../../services/transactions';
 import { tagsService } from '../../services/tags';
 import { mapApiTransactions } from '../../utils/mapTransactions';
 import type { Category } from '../../types/category';
 import type { Wallet } from '../../types/wallet';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
-import { formatCurrency, formatDisplayDate, formatShortDate } from '../../utils/format';
+import {
+  formatCurrency,
+  formatDisplayDate,
+  formatShortDate,
+} from '../../utils/format';
 import { normalizeTagName, parseTagsInput } from '../../utils/hashtags';
 import HashtagChip from '../../components/HashtagChip';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
@@ -54,7 +77,10 @@ type HistoryScreenProps = {
 
 const today = new Date();
 const toDateKey = (date: Date) =>
-  `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
+  `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(
+    2,
+    '0',
+  )}-${`${date.getDate()}`.padStart(2, '0')}`;
 const parseDateKey = (value: string) => {
   const [year, month, day] = value.split('-').map(Number);
 
@@ -64,7 +90,9 @@ const parseDateKey = (value: string) => {
 
   return new Date(year, month - 1, day);
 };
-const defaultMonth = `${today.getFullYear()}-${`${today.getMonth() + 1}`.padStart(2, '0')}`;
+const defaultMonth = `${today.getFullYear()}-${`${
+  today.getMonth() + 1
+}`.padStart(2, '0')}`;
 const defaultDay = toDateKey(today);
 const PAGE_SIZE = 10;
 
@@ -114,7 +142,10 @@ const getHistoryDateRange = (
   return {};
 };
 
-const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: number) => {
+const buildReceiptUploadFile = (
+  file: ReceiptUploadFile | null,
+  transactionId: number,
+) => {
   if (!file) {
     return null;
   }
@@ -128,15 +159,23 @@ const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: n
     png: 'image/png',
     webp: 'image/webp',
   };
-  const type = file.type || (extension ? mimeByExtension[extension] : undefined);
+  const type =
+    file.type || (extension ? mimeByExtension[extension] : undefined);
 
-  if (!type || !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
+  if (
+    !type ||
+    !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)
+  ) {
     throw new Error('Ảnh hóa đơn chỉ hỗ trợ JPG, PNG hoặc WEBP.');
   }
 
   return {
     uri: file.uri,
-    name: file.name || `receipt-${transactionId}.${extension === 'jpeg' ? 'jpg' : extension ?? 'jpg'}`,
+    name:
+      file.name ||
+      `receipt-${transactionId}.${
+        extension === 'jpeg' ? 'jpg' : extension ?? 'jpg'
+      }`,
     type,
   };
 };
@@ -144,12 +183,26 @@ const buildReceiptUploadFile = (file: ReceiptUploadFile | null, transactionId: n
 const EMPTY_WALLETS: Wallet[] = [];
 const EMPTY_CATEGORIES: Category[] = [];
 
-const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES, refreshing = false, onRefresh }: HistoryScreenProps) => {
+const HistoryScreen = ({
+  wallets = EMPTY_WALLETS,
+  categories = EMPTY_CATEGORIES,
+  refreshing = false,
+  onRefresh,
+}: HistoryScreenProps) => {
   const { run: runTransactionMutation } = useSingleFlight();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
-  const { preferredCurrency, selectedTransactionCategory, setSelectedTransactionCategory, setTags, tags } = useFinance();
-  const [serverTransactions, setServerTransactions] = useState<TransactionItem[]>([]);
+  const {
+    preferredCurrency,
+    selectedTransactionCategory,
+    setSelectedTransactionCategory,
+    setTags,
+    tags,
+  } = useFinance();
+  const [serverTransactions, setServerTransactions] = useState<
+    TransactionItem[]
+  >([]);
   const [serverMeta, setServerMeta] = useState({
     total: 0,
     totalPages: 1,
@@ -160,7 +213,8 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadRevision = useRef(0);
-  const [selectedTransaction, setSelectedTransaction] = useState<TransactionItem | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<TransactionItem | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editTags, setEditTags] = useState('');
@@ -170,10 +224,12 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
   const [editType, setEditType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [newTagName, setNewTagName] = useState('');
   const [isTagModalVisible, setIsTagModalVisible] = useState(false);
-  const [editReceiptFile, setEditReceiptFile] = useState<ReceiptUploadFile | null>(null);
+  const [editReceiptFile, setEditReceiptFile] =
+    useState<ReceiptUploadFile | null>(null);
   const [shouldRemoveReceipt, setShouldRemoveReceipt] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [datePickerTarget, setDatePickerTarget] = useState<DatePickerTarget>(null);
+  const [datePickerTarget, setDatePickerTarget] =
+    useState<DatePickerTarget>(null);
   const [dateMode] = useState<DateFilterMode>('all');
   const [dayFilter, setDayFilter] = useState(defaultDay);
   const [monthFilter] = useState(defaultMonth);
@@ -189,7 +245,14 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
   const shouldReopenEditForm = useRef(false);
   const hasPremiumFilters = user?.role === 'PREMIUM' || user?.role === 'ADMIN';
   const transactionQuery = useMemo<TransactionQuery>(() => {
-    const dateRange = getHistoryDateRange(dateMode, dayFilter, monthFilter, yearFilter, fromDate, toDate);
+    const dateRange = getHistoryDateRange(
+      dateMode,
+      dayFilter,
+      monthFilter,
+      yearFilter,
+      fromDate,
+      toDate,
+    );
     const normalizedTag = tagFilter.trim().replace(/^#+/, '').toLowerCase();
     const normalizedSearch = searchText.trim();
 
@@ -197,8 +260,8 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
       page,
       limit: PAGE_SIZE,
       ...dateRange,
-      wallet_id: hasPremiumFilters ? (walletFilter ?? undefined) : undefined,
-      category_id: hasPremiumFilters ? (categoryFilter ?? undefined) : undefined,
+      wallet_id: hasPremiumFilters ? walletFilter ?? undefined : undefined,
+      category_id: hasPremiumFilters ? categoryFilter ?? undefined : undefined,
       type:
         hasPremiumFilters && typeFilter !== 'all'
           ? typeFilter === 'income'
@@ -236,7 +299,10 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     setLoadError(null);
 
     try {
-      const response = await transactionsService.getPage(token, transactionQuery);
+      const response = await transactionsService.getPage(
+        token,
+        transactionQuery,
+      );
       if (revision !== loadRevision.current) return;
       const lastPage = Math.max(1, response.meta.totalPages);
       if (transactionQuery.page && transactionQuery.page > lastPage) {
@@ -253,7 +319,12 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
       });
     } catch (error) {
       if (revision === loadRevision.current) {
-        setLoadError(getUserFriendlyErrorMessage(error, 'Không tải được lịch sử. Vui lòng thử lại.'));
+        setLoadError(
+          getUserFriendlyErrorMessage(
+            error,
+            'Không tải được lịch sử. Vui lòng thử lại.',
+          ),
+        );
       }
     } finally {
       if (revision === loadRevision.current) setIsPageLoading(false);
@@ -262,7 +333,9 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
 
   useEffect(() => {
     fetchTransactionPage();
-    return () => { loadRevision.current += 1; };
+    return () => {
+      loadRevision.current += 1;
+    };
   }, [fetchTransactionPage]);
 
   const handleRefresh = useCallback(async () => {
@@ -285,7 +358,10 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     return parseDateKey(dayFilter);
   };
 
-  const handleDatePickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+  const handleDatePickerChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
     const target = datePickerTarget;
     setDatePickerTarget(null);
 
@@ -351,15 +427,20 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     }
   }, [page, totalPages]);
 
-  const selectedCategory = categories.find(category => category.id === editCategoryId);
-  const selectedEditWallet = wallets.find(wallet => wallet.id === editWalletId) ?? null;
+  const selectedCategory = categories.find(
+    category => category.id === editCategoryId,
+  );
+  const selectedEditWallet =
+    wallets.find(wallet => wallet.id === editWalletId) ?? null;
   const currentEditTags = useMemo(() => parseTagsInput(editTags), [editTags]);
   const recentHashtags = useMemo(() => {
     const usedTags = serverTransactions
       .flatMap(transaction => transaction.tags ?? [])
       .map(normalizeTagName)
       .filter(Boolean);
-    const managedTags = tags.map(tag => normalizeTagName(tag.name)).filter(Boolean);
+    const managedTags = tags
+      .map(tag => normalizeTagName(tag.name))
+      .filter(Boolean);
 
     return [...new Set([...usedTags, ...managedTags])].slice(0, 10);
   }, [serverTransactions, tags]);
@@ -381,7 +462,10 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     const transactionId = Number(item.id);
 
     if (!Number.isFinite(transactionId)) {
-      Alert.alert('Thông báo', 'Giao dịch này chưa đồng bộ nên chưa thể chỉnh sửa.');
+      Alert.alert(
+        'Thông báo',
+        'Giao dịch này chưa đồng bộ nên chưa thể chỉnh sửa.',
+      );
       return;
     }
 
@@ -406,9 +490,13 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     setEditTags((item.tags ?? []).map(tag => `#${tag}`).join(' '));
     setEditDate(item.date.slice(0, 10));
     setEditWalletId(item.walletId ?? wallets[0]?.id ?? null);
-    const nextCategory = categories.find(category => category.id === item.categoryId) ?? categories.find(category => category.name === item.category);
+    const nextCategory =
+      categories.find(category => category.id === item.categoryId) ??
+      categories.find(category => category.name === item.category);
     setEditCategoryId(nextCategory?.id ?? null);
-    setEditType(nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'));
+    setEditType(
+      nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'),
+    );
     setEditReceiptFile(null);
     setShouldRemoveReceipt(false);
   };
@@ -440,7 +528,9 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
   };
 
   const openEditCategoryPicker = () => {
-    const currentCategory = categories.find(category => category.id === editCategoryId);
+    const currentCategory = categories.find(
+      category => category.id === editCategoryId,
+    );
 
     if (currentCategory) {
       setSelectedTransactionCategory(currentCategory);
@@ -475,7 +565,10 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
       setNewTagName('');
       setIsTagModalVisible(false);
     } catch (error) {
-      Alert.alert('Chưa tạo được hashtag', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+      Alert.alert(
+        'Chưa tạo được hashtag',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+      );
     }
   };
 
@@ -485,7 +578,9 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     try {
       result = await launchImageLibrary({
         mediaType: 'photo',
-        quality: 0.8,
+        maxWidth: 1600,
+        maxHeight: 2400,
+        quality: 0.7,
         selectionLimit: 1,
       });
     } catch {
@@ -500,90 +595,123 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
     const asset = result.assets?.[0];
 
     if (!asset?.uri) {
-      Alert.alert('Chưa chọn được ảnh', 'Vui lòng thử lại với ảnh JPG, PNG hoặc WEBP.');
+      Alert.alert(
+        'Chưa chọn được ảnh',
+        'Vui lòng thử lại với ảnh JPG, PNG hoặc WEBP.',
+      );
       return;
     }
 
     const type = asset.type ?? 'image/jpeg';
 
-    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
-      Alert.alert('Ảnh chưa hợp lệ', 'Ảnh hóa đơn chỉ hỗ trợ JPG, PNG hoặc WEBP.');
+    if (
+      !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)
+    ) {
+      Alert.alert(
+        'Ảnh chưa hợp lệ',
+        'Ảnh hóa đơn chỉ hỗ trợ JPG, PNG hoặc WEBP.',
+      );
       return;
     }
 
     setEditReceiptFile({
       uri: asset.uri,
-      name: asset.fileName ?? `receipt-${Date.now()}.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`,
+      name:
+        asset.fileName ??
+        `receipt-${Date.now()}.${
+          type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'
+        }`,
       type,
     });
     setShouldRemoveReceipt(false);
   };
 
-  const handleSaveTransaction = () => runTransactionMutation(async () => {
-    if (!token || !selectedTransaction) {
-      Alert.alert('Thông báo', 'Vui lòng đăng nhập lại để cập nhật giao dịch.');
-      return;
-    }
-
-    const plainAmount = parsePositiveMoneyInput(editAmount);
-
-    if (!editWalletId || !editCategoryId) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn ví, danh mục và nhập số tiền.');
-      return;
-    }
-
-    if (!plainAmount) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền hợp lệ lớn hơn 0.');
-      return;
-    }
-
-    const transactionId = Number(selectedTransaction.id);
-    const category = categories.find(item => item.id === editCategoryId);
-
-    if (!Number.isFinite(transactionId) || !category) {
-      Alert.alert('Thông báo', 'Không tìm thấy giao dịch hoặc danh mục cần cập nhật.');
-      return;
-    }
-
-    setIsSaving(true);
-    let detailsSaved = false;
-    let receiptSaved = !editReceiptFile;
-
-    try {
-      const uploadFile = buildReceiptUploadFile(editReceiptFile, transactionId);
-      // Backend lưu thu/chi theo type INCOME/EXPENSE, nên type luôn đi theo danh mục đang chọn.
-      await transactionsService.update(token, transactionId, {
-        wallet_id: editWalletId,
-        category_id: editCategoryId,
-        amount: plainAmount,
-        type: category.type,
-        note: editNote.trim(),
-        receipt_image: shouldRemoveReceipt && !editReceiptFile ? null : undefined,
-        transaction_date: editDate,
-        tags: parseTagsInput(editTags),
-      });
-      detailsSaved = true;
-      if (uploadFile) {
-        await transactionsService.uploadReceipt(token, transactionId, uploadFile);
-        receiptSaved = true;
+  const handleSaveTransaction = () =>
+    runTransactionMutation(async () => {
+      if (!token || !selectedTransaction) {
+        Alert.alert(
+          'Thông báo',
+          'Vui lòng đăng nhập lại để cập nhật giao dịch.',
+        );
+        return;
       }
 
-      await Promise.all([fetchTransactionPage(), onRefresh?.()]);
-      resetEditForm();
-    } catch (error) {
-      const message = getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.');
-      Alert.alert(
-        detailsSaved ? 'Giao dịch đã được lưu' : 'Không thể cập nhật',
-        detailsSaved
-          ? receiptSaved
-            ? `Chưa làm mới được dữ liệu. ${message}`
-            : `Thông tin thu chi đã lưu, nhưng ảnh hóa đơn chưa được xác nhận. ${message}`
-          : message,
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  });
+      const plainAmount = parsePositiveMoneyInput(editAmount);
+
+      if (!editWalletId || !editCategoryId) {
+        Alert.alert(
+          'Thiếu thông tin',
+          'Vui lòng chọn ví, danh mục và nhập số tiền.',
+        );
+        return;
+      }
+
+      if (!plainAmount) {
+        Alert.alert('Số tiền chưa hợp lệ', 'Nhập số tiền hợp lệ lớn hơn 0.');
+        return;
+      }
+
+      const transactionId = Number(selectedTransaction.id);
+      const category = categories.find(item => item.id === editCategoryId);
+
+      if (!Number.isFinite(transactionId) || !category) {
+        Alert.alert(
+          'Thông báo',
+          'Không tìm thấy giao dịch hoặc danh mục cần cập nhật.',
+        );
+        return;
+      }
+
+      setIsSaving(true);
+      let detailsSaved = false;
+      let receiptSaved = !editReceiptFile;
+
+      try {
+        const uploadFile = buildReceiptUploadFile(
+          editReceiptFile,
+          transactionId,
+        );
+        // Backend lưu thu/chi theo type INCOME/EXPENSE, nên type luôn đi theo danh mục đang chọn.
+        await transactionsService.update(token, transactionId, {
+          wallet_id: editWalletId,
+          category_id: editCategoryId,
+          amount: plainAmount,
+          type: category.type,
+          note: editNote.trim(),
+          receipt_image:
+            shouldRemoveReceipt && !editReceiptFile ? null : undefined,
+          transaction_date: editDate,
+          tags: parseTagsInput(editTags),
+        });
+        detailsSaved = true;
+        if (uploadFile) {
+          await transactionsService.uploadReceipt(
+            token,
+            transactionId,
+            uploadFile,
+          );
+          receiptSaved = true;
+        }
+
+        await Promise.all([fetchTransactionPage(), onRefresh?.()]);
+        resetEditForm();
+      } catch (error) {
+        const message = getUserFriendlyErrorMessage(
+          error,
+          'Vui lòng thử lại sau.',
+        );
+        Alert.alert(
+          detailsSaved ? 'Giao dịch đã được lưu' : 'Không thể cập nhật',
+          detailsSaved
+            ? receiptSaved
+              ? `Chưa làm mới được dữ liệu. ${message}`
+              : `Thông tin thu chi đã lưu, nhưng ảnh hóa đơn chưa được xác nhận. ${message}`
+            : message,
+        );
+      } finally {
+        setIsSaving(false);
+      }
+    });
 
   const handleDeleteTransaction = () => {
     if (!token || !selectedTransaction) {
@@ -602,19 +730,23 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
       {
         text: 'Xóa',
         style: 'destructive',
-        onPress: () => runTransactionMutation(async () => {
-          setIsSaving(true);
+        onPress: () =>
+          runTransactionMutation(async () => {
+            setIsSaving(true);
 
-          try {
-            await transactionsService.remove(token, transactionId);
-            await Promise.all([fetchTransactionPage(), onRefresh?.()]);
-            resetEditForm();
-          } catch (error) {
-            Alert.alert('Không thể xóa', getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
-          } finally {
-            setIsSaving(false);
-          }
-        }),
+            try {
+              await transactionsService.remove(token, transactionId);
+              await Promise.all([fetchTransactionPage(), onRefresh?.()]);
+              resetEditForm();
+            } catch (error) {
+              Alert.alert(
+                'Không thể xóa',
+                getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
+              );
+            } finally {
+              setIsSaving(false);
+            }
+          }),
       },
     ]);
   };
@@ -631,35 +763,50 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
             tintColor={Colors.primary}
             colors={[Colors.primary]}
           />
-        }>
+        }
+      >
         <View style={styles.historyHeader}>
           <Text style={styles.title}>Lịch sử thu chi</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={styles.headerActionButton}
               activeOpacity={0.86}
-              onPress={() => navigation.navigate('TransactionSearch', { wallets })}>
+              onPress={() =>
+                navigation.navigate('TransactionSearch', { wallets })
+              }
+            >
               <Search size={18} color="#A26B48" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {!loadError ? <View style={styles.summaryRow}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Tổng thu</Text>
-            <Text style={styles.incomeSummary}>{formatCurrency(summary.income, preferredCurrency)}</Text>
+        {!loadError ? (
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Tổng thu</Text>
+              <Text style={styles.incomeSummary}>
+                {formatCurrency(summary.income, preferredCurrency)}
+              </Text>
+            </View>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>Tổng chi</Text>
+              <Text style={styles.expenseSummary}>
+                {formatCurrency(summary.expense, preferredCurrency)}
+              </Text>
+            </View>
           </View>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Tổng chi</Text>
-            <Text style={styles.expenseSummary}>{formatCurrency(summary.expense, preferredCurrency)}</Text>
-          </View>
-        </View> : null}
+        ) : null}
 
         {loadError ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Chưa tải được lịch sử</Text>
             <Text style={styles.emptyText}>{loadError}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại lịch sử" style={styles.retryButton} onPress={fetchTransactionPage}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Thử tải lại lịch sử"
+              style={styles.retryButton}
+              onPress={fetchTransactionPage}
+            >
               <Text style={styles.selectorHint}>Thử lại</Text>
             </TouchableOpacity>
           </View>
@@ -674,23 +821,38 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
               <WalletCards size={28} color="#D87219" />
             </View>
             <Text style={styles.emptyTitle}>Chưa có giao dịch phù hợp</Text>
-            <Text style={styles.emptyText}>Thử đổi bộ lọc hoặc thêm giao dịch mới bằng nút +.</Text>
+            <Text style={styles.emptyText}>
+              Thử đổi bộ lọc hoặc thêm giao dịch mới bằng nút +.
+            </Text>
           </View>
         ) : (
           groupedTransactions.map(([dateKey, items]) => (
             <View key={dateKey} style={styles.dayGroup}>
               <View style={styles.dayHeader}>
-                <Text style={styles.dayTitle}>{formatDisplayDate(dateKey)}</Text>
+                <Text style={styles.dayTitle}>
+                  {formatDisplayDate(dateKey)}
+                </Text>
                 <Text style={styles.dayCount}>{items.length} giao dịch</Text>
               </View>
               {items.map(item => (
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Sửa giao dịch ${item.id}`} key={item.id} style={styles.card} activeOpacity={0.86} onPress={() => openEditModal(item)}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Sửa giao dịch ${item.id}`}
+                  key={item.id}
+                  style={styles.card}
+                  activeOpacity={0.86}
+                  onPress={() => openEditModal(item)}
+                >
                   <View style={styles.iconBox}>
                     <CategoryIcon icon={item.categoryIcon} size={18} />
                   </View>
                   <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle} numberOfLines={1}>{item.note}</Text>
-                    <Text style={styles.meta}>{item.category} · {item.wallet}</Text>
+                    <Text style={styles.itemTitle} numberOfLines={1}>
+                      {item.note}
+                    </Text>
+                    <Text style={styles.meta}>
+                      {item.category} · {item.wallet}
+                    </Text>
                     {(item.tags ?? []).length > 0 ? (
                       <View style={styles.tagRow}>
                         {(item.tags ?? []).slice(0, 3).map(tag => (
@@ -700,7 +862,11 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
                     ) : null}
                   </View>
                   <View style={styles.amountColumn}>
-                    <Text style={item.type === 'income' ? styles.income : styles.expense}>
+                    <Text
+                      style={
+                        item.type === 'income' ? styles.income : styles.expense
+                      }
+                    >
                       {item.type === 'income' ? '+' : '-'}
                       {formatCurrency(item.amount, item.currency)}
                     </Text>
@@ -714,228 +880,376 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
         {!loadError && serverMeta.total > PAGE_SIZE ? (
           <View style={styles.paginationRow}>
             <TouchableOpacity
-              style={[styles.pageButton, page === 1 && styles.pageButtonDisabled]}
+              style={[
+                styles.pageButton,
+                page === 1 && styles.pageButtonDisabled,
+              ]}
               disabled={page === 1}
-              onPress={() => setPage(current => Math.max(1, current - 1))}>
-              <Text style={[styles.pageButtonText, page === 1 && styles.pageButtonTextDisabled]}>Trước</Text>
+              onPress={() => setPage(current => Math.max(1, current - 1))}
+            >
+              <Text
+                style={[
+                  styles.pageButtonText,
+                  page === 1 && styles.pageButtonTextDisabled,
+                ]}
+              >
+                Trước
+              </Text>
             </TouchableOpacity>
             <Text style={styles.pageMeta}>
               Trang {page}/{totalPages}
             </Text>
             <TouchableOpacity
-              style={[styles.pageButton, page === totalPages && styles.pageButtonDisabled]}
+              style={[
+                styles.pageButton,
+                page === totalPages && styles.pageButtonDisabled,
+              ]}
               disabled={page === totalPages}
-              onPress={() => setPage(current => Math.min(totalPages, current + 1))}>
-              <Text style={[styles.pageButtonText, page === totalPages && styles.pageButtonTextDisabled]}>Sau</Text>
+              onPress={() =>
+                setPage(current => Math.min(totalPages, current + 1))
+              }
+            >
+              <Text
+                style={[
+                  styles.pageButtonText,
+                  page === totalPages && styles.pageButtonTextDisabled,
+                ]}
+              >
+                Sau
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
 
-      <Modal visible={Boolean(selectedTransaction)} transparent animationType="slide" onRequestClose={closeEditModal}>
+      <Modal
+        visible={Boolean(selectedTransaction)}
+        transparent
+        animationType="slide"
+        onRequestClose={closeEditModal}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
-          <Pressable style={styles.backdropPressable} onPress={closeEditModal} />
+          style={styles.modalBackdrop}
+        >
+          <Pressable
+            style={styles.backdropPressable}
+            onPress={closeEditModal}
+          />
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <View style={styles.modalTitleRow}>
-              <TouchableOpacity style={styles.backButton} onPress={closeEditModal}>
-                <ArrowLeft size={18} color="#7A4A28" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Sửa giao dịch</Text>
-            </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.modalTitleRow}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={closeEditModal}
+                >
+                  <ArrowLeft size={18} color="#7A4A28" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Sửa giao dịch</Text>
+              </View>
 
-            <Text style={styles.fieldLabel}>Số tiền</Text>
-            <TextInput
-              value={formatMoneyInputForCurrency(
-                editAmount,
-                selectedEditWallet?.currency ?? selectedTransaction?.currency,
-              )}
-              accessibilityLabel="Số tiền giao dịch đang sửa"
-              editable={!isSaving}
-              onChangeText={value =>
-                setEditAmount(
-                  normalizeMoneyInputForCurrency(
-                    value,
+              <Text style={styles.fieldLabel}>Số tiền</Text>
+              <TextInput
+                value={formatMoneyInputForCurrency(
+                  editAmount,
+                  selectedEditWallet?.currency ?? selectedTransaction?.currency,
+                )}
+                accessibilityLabel="Số tiền giao dịch đang sửa"
+                editable={!isSaving}
+                onChangeText={value =>
+                  setEditAmount(
+                    normalizeMoneyInputForCurrency(
+                      value,
+                      selectedEditWallet?.currency ??
+                        selectedTransaction?.currency,
+                    ),
+                  )
+                }
+                placeholder="50.000"
+                keyboardType={
+                  isVndCurrency(
                     selectedEditWallet?.currency ??
                       selectedTransaction?.currency,
-                  ),
-                )
-              }
-              placeholder="50.000"
-              keyboardType={
-                isVndCurrency(
-                  selectedEditWallet?.currency ?? selectedTransaction?.currency,
-                )
-                  ? 'number-pad'
-                  : 'decimal-pad'
-              }
-              style={styles.input}
-            />
+                  )
+                    ? 'number-pad'
+                    : 'decimal-pad'
+                }
+                style={styles.input}
+              />
 
-            <Text style={styles.fieldLabel}>Ngày giao dịch</Text>
-            <TouchableOpacity style={styles.dateButton} onPress={() => setDatePickerTarget('edit')}>
-              <Text style={styles.dateButtonText}>{formatShortDate(editDate)}</Text>
-              <Text style={styles.dateButtonHint}>Chọn ngày</Text>
-            </TouchableOpacity>
-
-            {datePickerTarget ? (
-              <DateTimePicker value={getPickerValue()} mode="date" onChange={handleDatePickerChange} />
-            ) : null}
-
-            <Text style={styles.fieldLabel}>Ví</Text>
-            {selectedEditWallet ? (
-              <Text style={styles.walletCurrencyHint}>
-                Giao dịch này sẽ dùng tiền tệ của ví: {selectedEditWallet.currency}
-              </Text>
-            ) : null}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.walletCardRow}>
-              {wallets.map(wallet => {
-                const typeMeta = getWalletTypeMeta(wallet.wallet_type);
-                const WalletTypeIcon = typeMeta.Icon;
-                const active = editWalletId === wallet.id;
-
-                return (
-                  <TouchableOpacity
-                    key={wallet.id}
-                    style={[styles.walletPickerCard, active && styles.walletPickerCardActive]}
-                    onPress={() => setEditWalletId(wallet.id)}>
-                    <View style={[styles.walletPickerIcon, active && styles.walletPickerIconActive]}>
-                      <WalletTypeIcon size={18} color={active ? Colors.white : '#D87219'} />
-                    </View>
-                    <Text style={styles.walletPickerName} numberOfLines={1}>
-                      {wallet.name}
-                    </Text>
-                    <Text style={styles.walletPickerBalance} numberOfLines={1}>
-                      {formatCurrency(Number(wallet.balance || 0), wallet.currency)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            {wallets.length === 0 ? (
-              <Text style={styles.emptyWalletText}>
-                Bạn cần tạo ví trước khi lưu giao dịch.
-              </Text>
-            ) : null}
-
-            <Text style={styles.fieldLabel}>Danh mục</Text>
-            <View style={styles.typeSegment}>
-              {(['EXPENSE', 'INCOME'] as const).map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.typeSegmentButton, editType === type && styles.typeSegmentButtonActive]}
-                  onPress={() => handleEditTypeChange(type)}>
-                  <Text style={[styles.typeSegmentText, editType === type && styles.typeSegmentTextActive]}>
-                    {type === 'EXPENSE' ? 'Chi' : 'Thu'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.categorySelectCard} onPress={openEditCategoryPicker}>
-              <View style={styles.categorySelectIcon}>
-                <CategoryIcon icon={selectedCategory?.icon ?? null} size={20} />
-              </View>
-              <View style={styles.categorySelectCopy}>
-                <Text style={styles.categorySelectName}>{selectedCategory?.name ?? 'Chọn danh mục'}</Text>
-                <Text style={styles.categorySelectMeta}>{editType === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}</Text>
-              </View>
-              <Text style={styles.selectorHint}>Đổi</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.fieldLabel}>Ghi chú</Text>
-            <TextInput
-              value={editNote}
-              accessibilityLabel="Ghi chú giao dịch đang sửa"
-              onChangeText={setEditNote}
-              placeholder="Ví dụ: ăn trưa, đổ xăng..."
-              style={[styles.input, styles.noteInput]}
-              multiline
-            />
-
-            <Text style={styles.fieldLabel}>Hashtag</Text>
-            <View style={styles.hashtagHeaderRow}>
-              <Text style={styles.optionalText}>Không bắt buộc</Text>
-              <TouchableOpacity onPress={() => setIsTagModalVisible(true)}>
-                <Text style={styles.selectorHint}>Thêm nhanh</Text>
+              <Text style={styles.fieldLabel}>Ngày giao dịch</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setDatePickerTarget('edit')}
+              >
+                <Text style={styles.dateButtonText}>
+                  {formatShortDate(editDate)}
+                </Text>
+                <Text style={styles.dateButtonHint}>Chọn ngày</Text>
               </TouchableOpacity>
-            </View>
-            <TextInput
-              value={editTags}
-              onChangeText={setEditTags}
-              placeholder="Ví dụ: #ăntrưa #côngviệc"
-              style={styles.input}
-              autoCapitalize="none"
-            />
-            {recentHashtags.length > 0 ? (
-              <ScrollView horizontal style={styles.tagScroll} keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagWrap}>
-                {recentHashtags.map(tag => {
-                  const normalizedTag = normalizeTagName(tag);
-                  const isSelected = currentEditTags.includes(normalizedTag);
+
+              {datePickerTarget ? (
+                <DateTimePicker
+                  value={getPickerValue()}
+                  mode="date"
+                  onChange={handleDatePickerChange}
+                />
+              ) : null}
+
+              <Text style={styles.fieldLabel}>Ví</Text>
+              {selectedEditWallet ? (
+                <Text style={styles.walletCurrencyHint}>
+                  Giao dịch này sẽ dùng tiền tệ của ví:{' '}
+                  {selectedEditWallet.currency}
+                </Text>
+              ) : null}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.walletCardRow}
+              >
+                {wallets.map(wallet => {
+                  const typeMeta = getWalletTypeMeta(wallet.wallet_type);
+                  const WalletTypeIcon = typeMeta.Icon;
+                  const active = editWalletId === wallet.id;
 
                   return (
                     <TouchableOpacity
-                      key={normalizedTag}
-                      style={[styles.suggestTagChip, isSelected && styles.suggestTagChipActive]}
-                      onPress={() => toggleEditTag(normalizedTag)}>
-                      <Text numberOfLines={1} style={[styles.suggestTagText, isSelected && styles.suggestTagTextActive]}>
-                        #{normalizedTag}
+                      key={wallet.id}
+                      style={[
+                        styles.walletPickerCard,
+                        active && styles.walletPickerCardActive,
+                      ]}
+                      onPress={() => setEditWalletId(wallet.id)}
+                    >
+                      <View
+                        style={[
+                          styles.walletPickerIcon,
+                          active && styles.walletPickerIconActive,
+                        ]}
+                      >
+                        <WalletTypeIcon
+                          size={18}
+                          color={active ? Colors.white : '#D87219'}
+                        />
+                      </View>
+                      <Text style={styles.walletPickerName} numberOfLines={1}>
+                        {wallet.name}
+                      </Text>
+                      <Text
+                        style={styles.walletPickerBalance}
+                        numberOfLines={1}
+                      >
+                        {formatCurrency(
+                          Number(wallet.balance || 0),
+                          wallet.currency,
+                        )}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-            ) : null}
+              {wallets.length === 0 ? (
+                <Text style={styles.emptyWalletText}>
+                  Bạn cần tạo ví trước khi lưu giao dịch.
+                </Text>
+              ) : null}
 
-            <Text style={styles.fieldLabel}>Ảnh hóa đơn</Text>
-            {editReceiptFile ? (
-              <View style={styles.receiptPreview}>
-                <Image source={{ uri: editReceiptFile.uri }} style={styles.receiptImage} />
-                <View style={styles.receiptActions}>
-                  <TouchableOpacity style={styles.secondaryReceiptButton} onPress={handlePickEditReceipt}>
-                    <ImagePlus size={15} color={Colors.primary} />
-                    <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
+              <Text style={styles.fieldLabel}>Danh mục</Text>
+              <View style={styles.typeSegment}>
+                {(['EXPENSE', 'INCOME'] as const).map(type => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.typeSegmentButton,
+                      editType === type && styles.typeSegmentButtonActive,
+                    ]}
+                    onPress={() => handleEditTypeChange(type)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeSegmentText,
+                        editType === type && styles.typeSegmentTextActive,
+                      ]}
+                    >
+                      {type === 'EXPENSE' ? 'Chi' : 'Thu'}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.clearReceiptButton} onPress={() => setEditReceiptFile(null)}>
-                    <X size={14} color="#A94F18" />
-                    <Text style={styles.clearReceiptText}>Bỏ ảnh</Text>
-                  </TouchableOpacity>
-                </View>
+                ))}
               </View>
-            ) : !shouldRemoveReceipt && resolveReceiptUrl(selectedTransaction?.receiptImage) ? (
-              <View style={styles.receiptPreview}>
-              <Image
-                source={{ uri: resolveReceiptUrl(selectedTransaction?.receiptImage) ?? undefined }}
-                style={styles.receiptImage}
+              <TouchableOpacity
+                style={styles.categorySelectCard}
+                onPress={openEditCategoryPicker}
+              >
+                <View style={styles.categorySelectIcon}>
+                  <CategoryIcon
+                    icon={selectedCategory?.icon ?? null}
+                    size={20}
+                  />
+                </View>
+                <View style={styles.categorySelectCopy}>
+                  <Text style={styles.categorySelectName}>
+                    {selectedCategory?.name ?? 'Chọn danh mục'}
+                  </Text>
+                  <Text style={styles.categorySelectMeta}>
+                    {editType === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
+                  </Text>
+                </View>
+                <Text style={styles.selectorHint}>Đổi</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.fieldLabel}>Ghi chú</Text>
+              <TextInput
+                value={editNote}
+                accessibilityLabel="Ghi chú giao dịch đang sửa"
+                onChangeText={setEditNote}
+                placeholder="Ví dụ: ăn trưa, đổ xăng..."
+                style={[styles.input, styles.noteInput]}
+                multiline
               />
-                <View style={styles.receiptActions}>
-                  <TouchableOpacity style={styles.secondaryReceiptButton} onPress={handlePickEditReceipt}>
-                    <ImagePlus size={15} color={Colors.primary} />
-                    <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.clearReceiptButton} onPress={() => setShouldRemoveReceipt(true)}>
-                    <X size={14} color="#A94F18" />
-                    <Text style={styles.clearReceiptText}>Xóa ảnh</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Chọn ảnh hóa đơn đang sửa" style={styles.receiptEmpty} onPress={handlePickEditReceipt}>
-                <ImageIcon size={22} color="#A06B42" />
-                <Text style={styles.receiptEmptyText}>Giao dịch này chưa có ảnh hóa đơn.</Text>
-                <Text style={styles.receiptPickerText}>Chọn ảnh</Text>
-              </TouchableOpacity>
-            )}
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteTransaction} disabled={isSaving}>
-                <Text style={styles.deleteButtonText}>Xóa</Text>
-              </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Lưu giao dịch đang sửa" style={styles.saveButton} onPress={handleSaveTransaction} disabled={isSaving}>
-                {isSaving ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveButtonText}>Lưu</Text>}
-              </TouchableOpacity>
-            </View>
+              <Text style={styles.fieldLabel}>Hashtag</Text>
+              <View style={styles.hashtagHeaderRow}>
+                <Text style={styles.optionalText}>Không bắt buộc</Text>
+                <TouchableOpacity onPress={() => setIsTagModalVisible(true)}>
+                  <Text style={styles.selectorHint}>Thêm nhanh</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={editTags}
+                onChangeText={setEditTags}
+                placeholder="Ví dụ: #ăntrưa #côngviệc"
+                style={styles.input}
+                autoCapitalize="none"
+              />
+              {recentHashtags.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  style={styles.tagScroll}
+                  keyboardShouldPersistTaps="handled"
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.tagWrap}
+                >
+                  {recentHashtags.map(tag => {
+                    const normalizedTag = normalizeTagName(tag);
+                    const isSelected = currentEditTags.includes(normalizedTag);
+
+                    return (
+                      <TouchableOpacity
+                        key={normalizedTag}
+                        style={[
+                          styles.suggestTagChip,
+                          isSelected && styles.suggestTagChipActive,
+                        ]}
+                        onPress={() => toggleEditTag(normalizedTag)}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.suggestTagText,
+                            isSelected && styles.suggestTagTextActive,
+                          ]}
+                        >
+                          #{normalizedTag}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : null}
+
+              <Text style={styles.fieldLabel}>Ảnh hóa đơn</Text>
+              {editReceiptFile ? (
+                <View style={styles.receiptPreview}>
+                  <Image
+                    source={{ uri: editReceiptFile.uri }}
+                    style={styles.receiptImage}
+                  />
+                  <View style={styles.receiptActions}>
+                    <TouchableOpacity
+                      style={styles.secondaryReceiptButton}
+                      onPress={handlePickEditReceipt}
+                    >
+                      <ImagePlus size={15} color={Colors.primary} />
+                      <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.clearReceiptButton}
+                      onPress={() => setEditReceiptFile(null)}
+                    >
+                      <X size={14} color="#A94F18" />
+                      <Text style={styles.clearReceiptText}>Bỏ ảnh</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : !shouldRemoveReceipt &&
+                resolveReceiptUrl(selectedTransaction?.receiptImage) ? (
+                <View style={styles.receiptPreview}>
+                  <Image
+                    source={{
+                      uri:
+                        resolveReceiptUrl(selectedTransaction?.receiptImage) ??
+                        undefined,
+                    }}
+                    style={styles.receiptImage}
+                  />
+                  <View style={styles.receiptActions}>
+                    <TouchableOpacity
+                      style={styles.secondaryReceiptButton}
+                      onPress={handlePickEditReceipt}
+                    >
+                      <ImagePlus size={15} color={Colors.primary} />
+                      <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.clearReceiptButton}
+                      onPress={() => setShouldRemoveReceipt(true)}
+                    >
+                      <X size={14} color="#A94F18" />
+                      <Text style={styles.clearReceiptText}>Xóa ảnh</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Chọn ảnh hóa đơn đang sửa"
+                  style={styles.receiptEmpty}
+                  onPress={handlePickEditReceipt}
+                >
+                  <ImageIcon size={22} color="#A06B42" />
+                  <Text style={styles.receiptEmptyText}>
+                    Giao dịch này chưa có ảnh hóa đơn.
+                  </Text>
+                  <Text style={styles.receiptPickerText}>Chọn ảnh</Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDeleteTransaction}
+                  disabled={isSaving}
+                >
+                  <Text style={styles.deleteButtonText}>Xóa</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Lưu giao dịch đang sửa"
+                  style={styles.saveButton}
+                  onPress={handleSaveTransaction}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Lưu</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -944,8 +1258,12 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
       <Modal transparent visible={isTagModalVisible} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
-          <Pressable style={styles.backdropPressable} onPress={() => setIsTagModalVisible(false)} />
+          style={styles.modalBackdrop}
+        >
+          <Pressable
+            style={styles.backdropPressable}
+            onPress={() => setIsTagModalVisible(false)}
+          />
           <View style={styles.tagModalCard}>
             <Text style={styles.modalTitle}>Thêm hashtag</Text>
             <Text style={styles.fieldLabel}>Tên hashtag</Text>
@@ -958,10 +1276,16 @@ const HistoryScreen = ({ wallets = EMPTY_WALLETS, categories = EMPTY_CATEGORIES,
               autoCapitalize="none"
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={() => setIsTagModalVisible(false)}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setIsTagModalVisible(false)}
+              >
                 <ArrowLeft size={18} color="#7A4A28" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleCreateQuickTag}>
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleCreateQuickTag}
+              >
                 <Text style={styles.saveButtonText}>Tạo</Text>
               </TouchableOpacity>
             </View>
@@ -1493,7 +1817,12 @@ const styles = StyleSheet.create({
   },
   categorySelectCopy: { flex: 1 },
   categorySelectName: { color: '#4C2A18', fontSize: 15, fontWeight: '900' },
-  categorySelectMeta: { color: '#8B6548', fontSize: 12, fontWeight: '800', marginTop: 4 },
+  categorySelectMeta: {
+    color: '#8B6548',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   selectorHint: { color: Colors.primary, fontWeight: '900' },
   hashtagHeaderRow: {
     flexDirection: 'row',
@@ -1529,7 +1858,14 @@ const styles = StyleSheet.create({
   suggestTagChipActive: {
     backgroundColor: Colors.primary,
   },
-  suggestTagText: { color: '#A94F18', fontSize: 12, lineHeight: 18, includeFontPadding: false, textAlignVertical: 'center', fontWeight: '900' },
+  suggestTagText: {
+    color: '#A94F18',
+    fontSize: 12,
+    lineHeight: 18,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    fontWeight: '900',
+  },
   suggestTagTextActive: { color: Colors.white },
   walletCurrencyHint: {
     color: '#8A623F',

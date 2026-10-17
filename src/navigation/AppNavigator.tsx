@@ -40,6 +40,7 @@ import FinancialPlanScreen from '../screens/home/FinancialPlanScreen';
 import BankNotificationSettingsScreen from '../screens/home/BankNotificationSettingsScreen';
 import SmartRulesScreen from '../screens/home/SmartRulesScreen';
 import DataManagementScreen from '../screens/home/DataManagementScreen';
+import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -107,6 +108,7 @@ export type RootStackParamList = {
   BankNotifications: undefined;
   SmartRules: undefined;
   DataManagement: { wallets?: Wallet[] } | undefined;
+  FinancialCenter: { wallets?: Wallet[] } | undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
   LoanDebtDetail: { loanDebtId: number };
@@ -123,6 +125,12 @@ export type RootStackParamList = {
     initialFromDate?: string;
     initialToDate?: string;
     cashFlow?: 'normal' | 'loan_debt';
+    initialQuery?: string;
+    initialType?: 'INCOME' | 'EXPENSE';
+    initialWalletId?: number;
+    initialCategoryId?: number;
+    initialMinAmount?: number;
+    initialMaxAmount?: number;
   };
   TransactionDetail: {
     transaction: TransactionItem;
@@ -221,6 +229,10 @@ const AppNavigator = () => {
           <Stack.Screen
             name="DataManagement"
             component={DataManagementScreen}
+          />
+          <Stack.Screen
+            name="FinancialCenter"
+            component={FinancialCenterScreen}
           />
           <Stack.Screen name="LoanDebts" component={LoanDebtsScreen} />
           <Stack.Screen name="LoanDebtForm" component={LoanDebtFormScreen} />
