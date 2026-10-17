@@ -461,6 +461,7 @@ export const apiUploadRequest = async <T>(
   },
   method = 'POST',
   timeoutMs = REQUEST_TIMEOUT_MS,
+  fields?: Record<string, string>,
 ) => {
   const revision = sessionRevision;
   let authToken = await getValidToken(token);
@@ -471,6 +472,9 @@ export const apiUploadRequest = async <T>(
   try {
     const formData = new FormData();
     formData.append('file', file as unknown as Blob);
+    Object.entries(fields ?? {}).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
 
     let response = await fetchWithTimeout(
       `${baseUrl}${path}`,

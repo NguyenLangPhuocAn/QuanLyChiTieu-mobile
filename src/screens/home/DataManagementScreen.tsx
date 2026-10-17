@@ -20,6 +20,7 @@ import {
   Database,
   Download,
   FileSpreadsheet,
+  LockKeyhole,
   RefreshCw,
   Trash2,
   Upload,
@@ -436,6 +437,22 @@ const DataManagementScreen = () => {
             ))
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('PersonalBackup')}
+        >
+          <View style={styles.actionIcon}>
+            <LockKeyhole size={22} color={Colors.primary} />
+          </View>
+          <View style={styles.actionCopy}>
+            <Text style={styles.cardTitle}>Backup cá nhân mã hóa</Text>
+            <Text style={styles.cardText}>
+              Tạo file có mật khẩu hoặc xem trước từng giao dịch trước khi khôi
+              phục.
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionCard}

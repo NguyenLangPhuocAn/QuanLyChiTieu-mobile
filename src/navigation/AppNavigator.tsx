@@ -42,6 +42,7 @@ import SmartRulesScreen from '../screens/home/SmartRulesScreen';
 import DataManagementScreen from '../screens/home/DataManagementScreen';
 import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
 import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
+import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -110,6 +111,7 @@ export type RootStackParamList = {
   SmartRules: undefined;
   DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
   FinancialInbox: undefined;
+  PersonalBackup: undefined;
   FinancialCenter: { wallets?: Wallet[] } | undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
@@ -239,6 +241,10 @@ const AppNavigator = () => {
           <Stack.Screen
             name="FinancialInbox"
             component={FinancialInboxScreen}
+          />
+          <Stack.Screen
+            name="PersonalBackup"
+            component={PersonalBackupScreen}
           />
           <Stack.Screen name="LoanDebts" component={LoanDebtsScreen} />
           <Stack.Screen name="LoanDebtForm" component={LoanDebtFormScreen} />

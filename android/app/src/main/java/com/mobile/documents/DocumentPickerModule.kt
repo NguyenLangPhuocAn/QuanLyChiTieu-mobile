@@ -18,6 +18,7 @@ class DocumentPickerModule(
   private val context: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(context) {
   private var pendingPromise: Promise? = null
+  private var pendingRequestCode: Int? = null
 
   private val activityListener: ActivityEventListener =
     object : BaseActivityEventListener() {
@@ -27,9 +28,10 @@ class DocumentPickerModule(
         resultCode: Int,
         data: Intent?,
       ) {
-        if (requestCode != PICK_EXCEL_REQUEST) return
+        if (requestCode != pendingRequestCode) return
         val promise = pendingPromise ?: return
         pendingPromise = null
+        pendingRequestCode = null
 
         if (resultCode != Activity.RESULT_OK || data?.data == null) {
           promise.resolve(null)
@@ -37,7 +39,7 @@ class DocumentPickerModule(
         }
 
         try {
-          promise.resolve(copyToCache(data.data!!))
+          promise.resolve(copyToCache(data.data!!, requestCode))
         } catch (error: Exception) {
           promise.reject("DOCUMENT_READ_FAILED", "Không đọc được file đã chọn.", error)
         }
@@ -63,6 +65,7 @@ class DocumentPickerModule(
     }
 
     pendingPromise = promise
+    pendingRequestCode = PICK_EXCEL_REQUEST
     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
       addCategory(Intent.CATEGORY_OPENABLE)
       type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -77,9 +80,39 @@ class DocumentPickerModule(
     activity.startActivityForResult(intent, PICK_EXCEL_REQUEST)
   }
 
-  private fun copyToCache(uri: Uri): WritableNativeMap {
+  @ReactMethod
+  fun pickBackupFile(promise: Promise) {
+    if (pendingPromise != null) {
+      promise.reject("PICKER_BUSY", "Trình chọn file đang mở.")
+      return
+    }
+    val activity = context.currentActivity
+    if (activity == null) {
+      promise.reject("NO_ACTIVITY", "Không mở được trình chọn file.")
+      return
+    }
+    pendingPromise = promise
+    pendingRequestCode = PICK_BACKUP_REQUEST
+    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      type = "application/octet-stream"
+      putExtra(
+        Intent.EXTRA_MIME_TYPES,
+        arrayOf(
+          "application/vnd.sothuchinova.backup+json",
+          "application/json",
+          "application/octet-stream",
+          "*/*",
+        ),
+      )
+    }
+    activity.startActivityForResult(intent, PICK_BACKUP_REQUEST)
+  }
+
+  private fun copyToCache(uri: Uri, requestCode: Int): WritableNativeMap {
     val resolver = context.contentResolver
-    var displayName = "du-lieu-cu.xlsx"
+    val isBackup = requestCode == PICK_BACKUP_REQUEST
+    var displayName = if (isBackup) "du-lieu.stcn-backup" else "du-lieu-cu.xlsx"
     val cursor: Cursor? = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
     cursor?.use {
       if (it.moveToFirst()) {
@@ -87,7 +120,10 @@ class DocumentPickerModule(
       }
     }
     val safeName = displayName.replace(Regex("[^A-Za-z0-9._-]"), "-")
-    val directory = File(context.cacheDir, "excel-imports").apply { mkdirs() }
+    val directory = File(
+      context.cacheDir,
+      if (isBackup) "personal-backups" else "excel-imports",
+    ).apply { mkdirs() }
     val target = File(directory, "${System.currentTimeMillis()}-$safeName")
     resolver.openInputStream(uri).use { input ->
       requireNotNull(input) { "Không mở được file." }
@@ -99,12 +135,17 @@ class DocumentPickerModule(
       putString("name", displayName)
       putString(
         "type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        if (isBackup) {
+          "application/vnd.sothuchinova.backup+json"
+        } else {
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        },
       )
     }
   }
 
   companion object {
     private const val PICK_EXCEL_REQUEST = 7311
+    private const val PICK_BACKUP_REQUEST = 7312
   }
 }

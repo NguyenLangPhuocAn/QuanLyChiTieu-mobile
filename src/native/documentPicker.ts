@@ -9,6 +9,7 @@ export type PickedDocument = {
 const nativePicker = NativeModules.LocalDocumentPicker as
   | {
       pickExcelFile(): Promise<PickedDocument | null>;
+      pickBackupFile(): Promise<PickedDocument | null>;
     }
   | undefined;
 
@@ -18,5 +19,11 @@ export const localDocumentPicker = {
       throw new Error('Thiết bị này chưa hỗ trợ chọn file Excel.');
     }
     return nativePicker.pickExcelFile();
+  },
+  async pickBackupFile() {
+    if (Platform.OS !== 'android' || !nativePicker) {
+      throw new Error('Thiết bị này chưa hỗ trợ chọn file backup.');
+    }
+    return nativePicker.pickBackupFile();
   },
 };
