@@ -414,6 +414,8 @@ export type DataQualityIssue = {
   severity: 'HIGH' | 'MEDIUM' | 'LOW';
   message: string;
   transactionIds: number[];
+  confidence: number;
+  actionLabel: string;
 };
 
 export const findDataQualityIssues = (
@@ -431,6 +433,8 @@ export const findDataQualityIssues = (
         severity: 'MEDIUM',
         message: 'Giao dịch chưa có danh mục.',
         transactionIds: [transaction.id],
+        confidence: 1,
+        actionLabel: 'Chọn danh mục',
       });
     }
     const receiptTotal = (transaction.receipt_items ?? []).reduce(
@@ -447,6 +451,8 @@ export const findDataQualityIssues = (
         severity: 'MEDIUM',
         message: 'Tổng chi tiết món khác tổng giao dịch.',
         transactionIds: [transaction.id],
+        confidence: 1,
+        actionLabel: 'Kiểm tra tổng tiền',
       });
     }
     if (
@@ -459,6 +465,8 @@ export const findDataQualityIssues = (
         severity: 'LOW',
         message: 'Giao dịch khác tiền tệ chưa có giá trị quy đổi.',
         transactionIds: [transaction.id],
+        confidence: 1,
+        actionLabel: 'Bổ sung tỷ giá',
       });
     }
     const key = [
@@ -483,6 +491,8 @@ export const findDataQualityIssues = (
       severity: 'HIGH',
       message: `${transactionIds.length} giao dịch rất giống nhau trong cùng ngày.`,
       transactionIds,
+      confidence: 0.92,
+      actionLabel: 'So sánh giao dịch',
     });
   });
 

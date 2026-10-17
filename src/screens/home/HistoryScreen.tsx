@@ -73,6 +73,8 @@ type HistoryScreenProps = {
   categories?: Category[];
   refreshing?: boolean;
   onRefresh?: () => Promise<void> | void;
+  initialEditTransaction?: TransactionItem | null;
+  onInitialEditConsumed?: () => void;
 };
 
 const today = new Date();
@@ -188,6 +190,8 @@ const HistoryScreen = ({
   categories = EMPTY_CATEGORIES,
   refreshing = false,
   onRefresh,
+  initialEditTransaction,
+  onInitialEditConsumed,
 }: HistoryScreenProps) => {
   const { run: runTransactionMutation } = useSingleFlight();
   const navigation =
@@ -458,48 +462,57 @@ const HistoryScreen = ({
     }, [selectedTransaction, selectedTransactionCategory]),
   );
 
-  const openEditModal = (item: TransactionItem) => {
-    const transactionId = Number(item.id);
+  const openEditModal = useCallback(
+    (item: TransactionItem) => {
+      const transactionId = Number(item.id);
 
-    if (!Number.isFinite(transactionId)) {
-      Alert.alert(
-        'Thông báo',
-        'Giao dịch này chưa đồng bộ nên chưa thể chỉnh sửa.',
+      if (!Number.isFinite(transactionId)) {
+        Alert.alert(
+          'Thông báo',
+          'Giao dịch này chưa đồng bộ nên chưa thể chỉnh sửa.',
+        );
+        return;
+      }
+
+      if (item.cashFlowType === 'loan_debt') {
+        Alert.alert(
+          'Giao dịch vay/nợ',
+          'Khoản này thuộc nhóm vay/nợ nên không sửa bằng form thu/chi thường. Hãy quản lý trong mục Vay/Nợ để tránh sai nghiệp vụ.',
+          [
+            { text: 'Đóng', style: 'cancel' },
+            {
+              text: 'Mở Vay/Nợ',
+              onPress: () => navigation.navigate('LoanDebts'),
+            },
+          ],
+        );
+        return;
+      }
+
+      setSelectedTransaction(item);
+      setEditAmount(String(item.amount));
+      setEditNote(item.note === 'Không có ghi chú' ? '' : item.note);
+      setEditTags((item.tags ?? []).map(tag => `#${tag}`).join(' '));
+      setEditDate(item.date.slice(0, 10));
+      setEditWalletId(item.walletId ?? wallets[0]?.id ?? null);
+      const nextCategory =
+        categories.find(category => category.id === item.categoryId) ??
+        categories.find(category => category.name === item.category);
+      setEditCategoryId(nextCategory?.id ?? null);
+      setEditType(
+        nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'),
       );
-      return;
-    }
+      setEditReceiptFile(null);
+      setShouldRemoveReceipt(false);
+    },
+    [categories, navigation, wallets],
+  );
 
-    if (item.cashFlowType === 'loan_debt') {
-      Alert.alert(
-        'Giao dịch vay/nợ',
-        'Khoản này thuộc nhóm vay/nợ nên không sửa bằng form thu/chi thường. Hãy quản lý trong mục Vay/Nợ để tránh sai nghiệp vụ.',
-        [
-          { text: 'Đóng', style: 'cancel' },
-          {
-            text: 'Mở Vay/Nợ',
-            onPress: () => navigation.navigate('LoanDebts'),
-          },
-        ],
-      );
-      return;
-    }
-
-    setSelectedTransaction(item);
-    setEditAmount(String(item.amount));
-    setEditNote(item.note === 'Không có ghi chú' ? '' : item.note);
-    setEditTags((item.tags ?? []).map(tag => `#${tag}`).join(' '));
-    setEditDate(item.date.slice(0, 10));
-    setEditWalletId(item.walletId ?? wallets[0]?.id ?? null);
-    const nextCategory =
-      categories.find(category => category.id === item.categoryId) ??
-      categories.find(category => category.name === item.category);
-    setEditCategoryId(nextCategory?.id ?? null);
-    setEditType(
-      nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'),
-    );
-    setEditReceiptFile(null);
-    setShouldRemoveReceipt(false);
-  };
+  useEffect(() => {
+    if (!initialEditTransaction) return;
+    openEditModal(initialEditTransaction);
+    onInitialEditConsumed?.();
+  }, [initialEditTransaction, onInitialEditConsumed, openEditModal]);
 
   const resetEditForm = () => {
     setSelectedTransaction(null);

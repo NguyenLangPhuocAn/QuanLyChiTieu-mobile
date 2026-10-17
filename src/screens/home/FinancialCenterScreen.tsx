@@ -56,6 +56,8 @@ import {
   parseNaturalTransactionSearch,
   type NaturalTransactionFilters,
 } from '../../utils/naturalTransactionSearch';
+import { mapApiTransactions } from '../../utils/mapTransactions';
+import type { DataQualityIssue } from '../../utils/financialInsights';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FinancialCenter'>;
 
@@ -244,6 +246,44 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
       initialMinAmount: naturalFilters.minAmount,
       initialMaxAmount: naturalFilters.maxAmount,
     });
+  };
+
+  const openDataQualityIssue = (issue: DataQualityIssue) => {
+    const related = mapApiTransactions(
+      transactions.filter(item => issue.transactionIds.includes(item.id)),
+      wallets,
+    );
+    if (!related.length) {
+      Alert.alert(
+        'Chưa mở được giao dịch',
+        'Dữ liệu gần nhất đã thay đổi. Hãy quay lại Tổng quan và làm mới.',
+      );
+      return;
+    }
+    if (issue.type === 'DUPLICATE') {
+      Alert.alert(
+        'So sánh giao dịch nghi trùng',
+        related
+          .map(
+            item =>
+              `#${item.id} · ${formatShortDate(item.date)} · ${formatCurrency(
+                item.amount,
+                item.currency,
+              )} · ${item.note}`,
+          )
+          .join('\n'),
+        [
+          { text: 'Đóng', style: 'cancel' },
+          ...related.slice(0, 2).map(item => ({
+            text: `Sửa #${item.id}`,
+            onPress: () =>
+              navigation.navigate('Main', { editTransaction: item }),
+          })),
+        ],
+      );
+      return;
+    }
+    navigation.navigate('Main', { editTransaction: related[0] });
   };
 
   const setRecurringDecision = async (
@@ -749,19 +789,27 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
             </View>
           </View>
           {issues.slice(0, 4).map(issue => (
-            <TouchableOpacity
-              key={issue.id}
-              style={styles.listRow}
-              onPress={() =>
-                navigation.navigate('TransactionSearch', { wallets })
-              }
-            >
+            <View key={issue.id} style={styles.qualityRow}>
               <View style={styles.sectionCopy}>
                 <Text style={styles.listTitle}>{issueLabels[issue.type]}</Text>
                 <Text style={styles.listMeta}>{issue.message}</Text>
+                <Text style={styles.confidenceText}>
+                  Độ tin cậy {Math.round(issue.confidence * 100)}% · liên quan{' '}
+                  {issue.transactionIds.length} giao dịch
+                </Text>
               </View>
-              <ChevronRight size={18} color="#A06B42" />
-            </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`${issue.actionLabel}: ${issue.message}`}
+                style={styles.qualityAction}
+                onPress={() => openDataQualityIssue(issue)}
+              >
+                <Text style={styles.qualityActionText}>
+                  {issue.actionLabel}
+                </Text>
+                <ChevronRight size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
           ))}
           {issues.length === 0 ? (
             <Text style={styles.emptyText}>
@@ -994,6 +1042,29 @@ const styles = StyleSheet.create({
   },
   listTitle: { color: '#4A2B1A', fontWeight: '900' },
   listMeta: { color: '#8B6B55', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  qualityRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#F5E3D3',
+    paddingTop: 10,
+    gap: 9,
+  },
+  confidenceText: {
+    color: '#2F7D6B',
+    fontSize: 10,
+    fontWeight: '900',
+    marginTop: 5,
+  },
+  qualityAction: {
+    alignSelf: 'flex-start',
+    minHeight: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFF0DF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 11,
+  },
+  qualityActionText: { color: Colors.primary, fontSize: 11, fontWeight: '900' },
   incomeAmount: { color: '#188F5A', fontWeight: '900', textAlign: 'right' },
   expenseAmount: { color: '#D4621D', fontWeight: '900', textAlign: 'right' },
   emptyText: { color: '#8B6B55', fontSize: 12, lineHeight: 18 },

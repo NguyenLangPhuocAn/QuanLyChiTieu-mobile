@@ -70,7 +70,9 @@ export type RootStackParamList = {
     selectedCurrency?: string;
     returnTo: 'CurrencySetup' | 'Profile' | 'Wallets';
   };
-  Main: { financialDraftId?: string } | undefined;
+  Main:
+    | { financialDraftId?: string; editTransaction?: TransactionItem }
+    | undefined;
   Wallets:
     | {
         selectedCurrency?: string;

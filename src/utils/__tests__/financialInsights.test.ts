@@ -235,6 +235,10 @@ describe('financialInsights', () => {
       2,
     );
     expect(issues.some(issue => issue.type === 'RECEIPT_MISMATCH')).toBe(true);
+    expect(issues.every(issue => issue.actionLabel.length > 0)).toBe(true);
+    expect(
+      issues.every(issue => issue.confidence > 0 && issue.confidence <= 1),
+    ).toBe(true);
   });
 
   it('projects the daily balance and identifies the first shortage date', () => {

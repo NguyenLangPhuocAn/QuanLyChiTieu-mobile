@@ -203,6 +203,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     budgets,
   } = useFinance();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [historyEditTransaction, setHistoryEditTransaction] =
+    useState<TransactionItem | null>(null);
   const [isTabLoading, setIsTabLoading] = useState(false);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
@@ -1101,6 +1103,14 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       .catch(() => undefined);
   }, [navigation, route?.params?.financialDraftId, user?.id]);
 
+  useEffect(() => {
+    const transaction = route?.params?.editTransaction;
+    if (!transaction) return;
+    setHistoryEditTransaction(transaction);
+    setActiveTab('history');
+    navigation.setParams({ editTransaction: undefined });
+  }, [navigation, route?.params?.editTransaction]);
+
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
     amount: number,
@@ -1355,6 +1365,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             categories={categories}
             refreshing={refreshing}
             onRefresh={fetchDashboardData}
+            initialEditTransaction={historyEditTransaction}
+            onInitialEditConsumed={() => setHistoryEditTransaction(null)}
           />
         );
       case 'chatbot':
