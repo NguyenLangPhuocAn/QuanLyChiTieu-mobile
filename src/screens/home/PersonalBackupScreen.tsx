@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import RNFS from 'react-native-fs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -61,15 +60,17 @@ const PersonalBackupScreen = () => {
     setBusy('export');
     try {
       const result = await personalBackupService.export(token, exportPassword);
-      const directory =
-        RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath;
-      const target = `${directory}/${result.filename}`;
-      await RNFS.writeFile(target, result.base64, 'base64');
+      const savedFile = await localDocumentPicker.saveBase64File(
+        result.filename,
+        result.mimeType,
+        result.base64,
+      );
+      if (!savedFile) return;
       setExportPassword('');
       setExportConfirm('');
       Alert.alert(
         'Đã tạo backup mã hóa',
-        `${result.summary.transactions} giao dịch · ${result.summary.wallets} ví\nĐã lưu tại ${target}\n\nHãy giữ mật khẩu riêng; ứng dụng không thể lấy lại mật khẩu này.`,
+        `${result.summary.transactions} giao dịch · ${result.summary.wallets} ví\nĐã lưu file ${savedFile.name} vào thư mục bạn chọn.\n\nHãy giữ mật khẩu riêng; ứng dụng không thể lấy lại mật khẩu này.`,
       );
     } catch (error) {
       Alert.alert(

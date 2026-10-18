@@ -5,6 +5,7 @@ import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Base64
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
@@ -19,6 +20,7 @@ class DocumentPickerModule(
 ) : ReactContextBaseJavaModule(context) {
   private var pendingPromise: Promise? = null
   private var pendingRequestCode: Int? = null
+  private var pendingSave: PendingSave? = null
 
   private val activityListener: ActivityEventListener =
     object : BaseActivityEventListener() {
@@ -30,8 +32,10 @@ class DocumentPickerModule(
       ) {
         if (requestCode != pendingRequestCode) return
         val promise = pendingPromise ?: return
+        val saveRequest = pendingSave
         pendingPromise = null
         pendingRequestCode = null
+        pendingSave = null
 
         if (resultCode != Activity.RESULT_OK || data?.data == null) {
           promise.resolve(null)
@@ -39,9 +43,17 @@ class DocumentPickerModule(
         }
 
         try {
-          promise.resolve(copyToCache(data.data!!, requestCode))
+          if (requestCode == SAVE_FILE_REQUEST && saveRequest != null) {
+            promise.resolve(writeSavedFile(data.data!!, saveRequest))
+          } else {
+            promise.resolve(copyToCache(data.data!!, requestCode))
+          }
         } catch (error: Exception) {
-          promise.reject("DOCUMENT_READ_FAILED", "Không đọc được file đã chọn.", error)
+          promise.reject(
+            if (requestCode == SAVE_FILE_REQUEST) "DOCUMENT_WRITE_FAILED" else "DOCUMENT_READ_FAILED",
+            if (requestCode == SAVE_FILE_REQUEST) "Không lưu được file đã chọn." else "Không đọc được file đã chọn.",
+            error,
+          )
         }
       }
     }
@@ -109,6 +121,45 @@ class DocumentPickerModule(
     activity.startActivityForResult(intent, PICK_BACKUP_REQUEST)
   }
 
+  @ReactMethod
+  fun saveBase64File(
+    filename: String,
+    mimeType: String,
+    base64: String,
+    promise: Promise,
+  ) {
+    if (pendingPromise != null) {
+      promise.reject("PICKER_BUSY", "Trình chọn file đang mở.")
+      return
+    }
+    val activity = context.currentActivity
+    if (activity == null) {
+      promise.reject("NO_ACTIVITY", "Không mở được trình lưu file.")
+      return
+    }
+    if (base64.isBlank()) {
+      promise.reject("EMPTY_FILE", "File không có dữ liệu.")
+      return
+    }
+
+    val safeFilename = filename
+      .replace(Regex("[\\\\/:*?\"<>|]"), "-")
+      .trim()
+      .take(120)
+      .ifEmpty { "so-thu-chi-nova.dat" }
+    val safeMimeType = mimeType.trim().takeIf { it.contains('/') }
+      ?: "application/octet-stream"
+    pendingPromise = promise
+    pendingRequestCode = SAVE_FILE_REQUEST
+    pendingSave = PendingSave(safeFilename, safeMimeType, base64)
+    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      type = safeMimeType
+      putExtra(Intent.EXTRA_TITLE, safeFilename)
+    }
+    activity.startActivityForResult(intent, SAVE_FILE_REQUEST)
+  }
+
   private fun copyToCache(uri: Uri, requestCode: Int): WritableNativeMap {
     val resolver = context.contentResolver
     val isBackup = requestCode == PICK_BACKUP_REQUEST
@@ -144,8 +195,29 @@ class DocumentPickerModule(
     }
   }
 
+  private fun writeSavedFile(uri: Uri, request: PendingSave): WritableNativeMap {
+    val bytes = Base64.decode(request.base64, Base64.DEFAULT)
+    context.contentResolver.openOutputStream(uri, "w").use { output ->
+      requireNotNull(output) { "Không mở được nơi lưu file." }
+      output.write(bytes)
+      output.flush()
+    }
+    return WritableNativeMap().apply {
+      putString("uri", uri.toString())
+      putString("name", request.filename)
+      putString("type", request.mimeType)
+    }
+  }
+
   companion object {
     private const val PICK_EXCEL_REQUEST = 7311
     private const val PICK_BACKUP_REQUEST = 7312
+    private const val SAVE_FILE_REQUEST = 7313
   }
 }
+
+private data class PendingSave(
+  val filename: String,
+  val mimeType: String,
+  val base64: String,
+)

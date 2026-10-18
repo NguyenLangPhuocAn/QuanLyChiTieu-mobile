@@ -105,4 +105,74 @@ describe('offlineTransactionQueue', () => {
     expect(result).toEqual({ synced: 0, pending: 0, needsReview: 1 });
     expect(draft.status).toBe('NEEDS_REVIEW');
   });
+
+  it('keeps a new draft created while another draft is syncing', async () => {
+    await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '75000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_syncing_existing_12345',
+    });
+    let confirmCreate: ((value: { id: number }) => void) | undefined;
+    createTransaction.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          confirmCreate = resolve;
+        }),
+    );
+
+    const syncing = offlineTransactionQueue.sync('token', 7);
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    const adding = offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '99000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_added_during_sync_12345',
+    });
+    await Promise.resolve();
+    expect(confirmCreate).toBeDefined();
+    confirmCreate?.({ id: 91 });
+
+    await syncing;
+    await adding;
+    await expect(offlineTransactionQueue.list(7)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'txn_added_during_sync_12345',
+        payload: expect.objectContaining({ amount: '99000' }),
+      }),
+    ]);
+  });
+
+  it('lets a rejected draft be corrected without changing its idempotency key', async () => {
+    await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '0',
+      type: 'EXPENSE',
+      client_request_id: 'txn_review_then_edit_12345',
+    });
+    createTransaction.mockRejectedValueOnce(
+      new ApiError('Số tiền chưa hợp lệ', 400, 'VALIDATION_ERROR'),
+    );
+    await offlineTransactionQueue.sync('token', 7);
+
+    const updated = await offlineTransactionQueue.update(
+      7,
+      'txn_review_then_edit_12345',
+      {
+        amount: '125000',
+        note: 'Sửa sau khi kiểm tra',
+        client_request_id: 'must_not_replace_the_original',
+      },
+    );
+
+    expect(updated).toMatchObject({
+      status: 'PENDING',
+      lastError: undefined,
+      payload: {
+        amount: '125000',
+        note: 'Sửa sau khi kiểm tra',
+        client_request_id: 'txn_review_then_edit_12345',
+      },
+    });
+  });
 });

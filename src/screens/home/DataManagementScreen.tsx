@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,6 +22,7 @@ import {
   Download,
   FileSpreadsheet,
   LockKeyhole,
+  Pencil,
   RefreshCw,
   Trash2,
   Upload,
@@ -45,11 +47,21 @@ import {
 } from '../../services/offlineTransactionQueue';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
+import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
   'DataManagement'
 >['route'];
+
+type OfflineDraftEditor = {
+  id: string;
+  amount: string;
+  note: string;
+  walletId: number;
+  categoryId?: number;
+  type: 'INCOME' | 'EXPENSE';
+};
 
 const DataManagementScreen = () => {
   const navigation =
@@ -62,6 +74,9 @@ const DataManagementScreen = () => {
   );
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
+  const [draftEditor, setDraftEditor] = useState<OfflineDraftEditor | null>(
+    null,
+  );
   const [excelPreview, setExcelPreview] = useState<{
     file: PickedDocument;
     result: ExcelImportPreview;
@@ -263,6 +278,70 @@ const DataManagementScreen = () => {
     );
   };
 
+  const editOfflineDraft = (draft: OfflineTransactionDraft) => {
+    setDraftEditor({
+      id: draft.id,
+      amount: draft.payload.amount,
+      note: draft.payload.note ?? '',
+      walletId: draft.payload.wallet_id,
+      categoryId: draft.payload.category_id,
+      type: draft.payload.type,
+    });
+  };
+
+  const confirmDraftUpdate = () => {
+    if (!user?.id || !draftEditor || !cache) return;
+    const amount = parsePositiveMoneyInput(draftEditor.amount);
+    const wallet = cache.wallets.find(item => item.id === draftEditor.walletId);
+    const category = cache.categories.find(
+      item =>
+        item.id === draftEditor.categoryId && item.type === draftEditor.type,
+    );
+    if (!amount || !wallet || !category) {
+      Alert.alert(
+        'Chưa đủ dữ liệu',
+        'Hãy nhập số tiền lớn hơn 0, chọn ví và danh mục phù hợp.',
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Lưu bản nháp đã sửa?',
+      `${draftEditor.type === 'INCOME' ? 'Thu +' : 'Chi -'}${formatCurrency(
+        Number(amount),
+        wallet.currency,
+      )}\n${wallet.name} · ${
+        category.name
+      }\n\nBước này chưa ghi tiền; bản nháp sẽ chờ bạn đồng bộ.`,
+      [
+        { text: 'Xem lại', style: 'cancel' },
+        {
+          text: 'Lưu bản nháp',
+          onPress: () => {
+            offlineTransactionQueue
+              .update(user.id, draftEditor.id, {
+                amount,
+                wallet_id: wallet.id,
+                category_id: category.id,
+                note: draftEditor.note.trim() || undefined,
+              })
+              .then(() => offlineTransactionQueue.list(user.id))
+              .then(drafts => {
+                setOfflineDrafts(drafts);
+                setDraftEditor(null);
+              })
+              .catch(error =>
+                Alert.alert(
+                  'Chưa lưu được bản nháp',
+                  getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+                ),
+              );
+          },
+        },
+      ],
+    );
+  };
+
   const getDraftCurrency = (draft: OfflineTransactionDraft) =>
     cache?.wallets.find(wallet => wallet.id === draft.payload.wallet_id)
       ?.currency ??
@@ -408,33 +487,179 @@ const DataManagementScreen = () => {
           {offlineDrafts.length === 0 ? (
             <Text style={styles.emptyDraft}>Không có giao dịch đang chờ.</Text>
           ) : (
-            offlineDrafts.map(draft => (
-              <View key={draft.id} style={styles.draftRow}>
-                <View style={styles.actionCopy}>
-                  <Text style={styles.draftAmount}>
-                    {draft.payload.type === 'INCOME' ? '+' : '-'}
-                    {formatCurrency(
-                      Number(draft.payload.amount),
-                      getDraftCurrency(draft),
-                    )}
-                  </Text>
-                  <Text style={styles.draftMeta} numberOfLines={2}>
-                    {draft.payload.note || 'Giao dịch chưa có ghi chú'} ·{' '}
-                    {draft.status === 'NEEDS_REVIEW'
-                      ? 'Cần kiểm tra'
-                      : 'Đang chờ đồng bộ'}
-                  </Text>
+            offlineDrafts.map(draft => {
+              const isEditing = draftEditor?.id === draft.id;
+              const compatibleCategories = (cache?.categories ?? []).filter(
+                category =>
+                  category.type === draft.payload.type &&
+                  (category.cash_flow_group ?? 'NORMAL') === 'NORMAL',
+              );
+              return (
+                <View key={draft.id} style={styles.draftItem}>
+                  <View style={styles.draftRow}>
+                    <View style={styles.actionCopy}>
+                      <Text style={styles.draftAmount}>
+                        {draft.payload.type === 'INCOME' ? '+' : '-'}
+                        {formatCurrency(
+                          Number(draft.payload.amount),
+                          getDraftCurrency(draft),
+                        )}
+                      </Text>
+                      <Text style={styles.draftMeta} numberOfLines={2}>
+                        {draft.payload.note || 'Giao dịch chưa có ghi chú'} ·{' '}
+                        {draft.status === 'NEEDS_REVIEW'
+                          ? `Cần kiểm tra: ${
+                              draft.lastError || 'dữ liệu chưa hợp lệ'
+                            }`
+                          : 'Đang chờ đồng bộ'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Sửa bản nháp"
+                      style={styles.editDraftButton}
+                      onPress={() =>
+                        isEditing
+                          ? setDraftEditor(null)
+                          : editOfflineDraft(draft)
+                      }
+                    >
+                      <Pencil size={17} color={Colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Xóa bản nháp"
+                      style={styles.deleteDraftButton}
+                      onPress={() => removeOfflineDraft(draft)}
+                    >
+                      <Trash2 size={17} color="#C9483D" />
+                    </TouchableOpacity>
+                  </View>
+
+                  {isEditing && draftEditor ? (
+                    <View style={styles.draftEditor}>
+                      <Text style={styles.editorTitle}>
+                        Xem lại trước khi đồng bộ
+                      </Text>
+                      <Text style={styles.editorLabel}>Số tiền</Text>
+                      <TextInput
+                        style={styles.editorInput}
+                        value={draftEditor.amount}
+                        onChangeText={amount =>
+                          setDraftEditor(current =>
+                            current ? { ...current, amount } : current,
+                          )
+                        }
+                        keyboardType="decimal-pad"
+                        placeholder="Ví dụ: 125000"
+                        placeholderTextColor="#A8866C"
+                      />
+
+                      <Text style={styles.editorLabel}>Ví</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.editorChoices}
+                      >
+                        {(cache?.wallets ?? [])
+                          .filter(wallet => wallet.wallet_type !== 'SAVINGS')
+                          .map(wallet => {
+                            const selected = draftEditor.walletId === wallet.id;
+                            return (
+                              <TouchableOpacity
+                                key={wallet.id}
+                                style={[
+                                  styles.editorChip,
+                                  selected && styles.editorChipSelected,
+                                ]}
+                                onPress={() =>
+                                  setDraftEditor(current =>
+                                    current
+                                      ? { ...current, walletId: wallet.id }
+                                      : current,
+                                  )
+                                }
+                              >
+                                <Text
+                                  style={[
+                                    styles.editorChipText,
+                                    selected && styles.editorChipTextSelected,
+                                  ]}
+                                >
+                                  {wallet.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                      </ScrollView>
+
+                      <Text style={styles.editorLabel}>Danh mục</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.editorChoices}
+                      >
+                        {compatibleCategories.map(category => {
+                          const selected =
+                            draftEditor.categoryId === category.id;
+                          return (
+                            <TouchableOpacity
+                              key={category.id}
+                              style={[
+                                styles.editorChip,
+                                selected && styles.editorChipSelected,
+                              ]}
+                              onPress={() =>
+                                setDraftEditor(current =>
+                                  current
+                                    ? { ...current, categoryId: category.id }
+                                    : current,
+                                )
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.editorChipText,
+                                  selected && styles.editorChipTextSelected,
+                                ]}
+                              >
+                                {category.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+
+                      <Text style={styles.editorLabel}>Ghi chú</Text>
+                      <TextInput
+                        style={[styles.editorInput, styles.editorNoteInput]}
+                        value={draftEditor.note}
+                        onChangeText={note =>
+                          setDraftEditor(current =>
+                            current ? { ...current, note } : current,
+                          )
+                        }
+                        multiline
+                        placeholder="Nội dung giao dịch"
+                        placeholderTextColor="#A8866C"
+                      />
+                      <TouchableOpacity
+                        style={styles.saveDraftButton}
+                        onPress={confirmDraftUpdate}
+                      >
+                        <Text style={styles.saveDraftButtonText}>
+                          Lưu bản nháp đã sửa
+                        </Text>
+                      </TouchableOpacity>
+                      <Text style={styles.editorHint}>
+                        Chưa thay đổi số dư. Nhấn nút đồng bộ phía trên khi bạn
+                        đã kiểm tra xong.
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Xóa bản nháp"
-                  style={styles.deleteDraftButton}
-                  onPress={() => removeOfflineDraft(draft)}
-                >
-                  <Trash2 size={17} color="#C9483D" />
-                </TouchableOpacity>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
 
@@ -599,9 +824,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  draftItem: {
     borderTopWidth: 1,
     borderTopColor: '#F5E3D3',
     paddingTop: 10,
+    gap: 10,
   },
   draftAmount: { color: '#4A2B1A', fontWeight: '900' },
   draftMeta: {
@@ -618,6 +846,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  editDraftButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  draftEditor: {
+    borderRadius: 16,
+    backgroundColor: '#FFF8F0',
+    borderWidth: 1,
+    borderColor: '#F0C49B',
+    padding: 12,
+    gap: 8,
+  },
+  editorTitle: { color: '#4A2B1A', fontSize: 14, fontWeight: '900' },
+  editorLabel: { color: '#7A5438', fontSize: 11, fontWeight: '900' },
+  editorInput: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8C6A7',
+    backgroundColor: Colors.white,
+    color: '#4A2B1A',
+    paddingHorizontal: 12,
+    fontWeight: '700',
+  },
+  editorNoteInput: { minHeight: 72, paddingTop: 11, textAlignVertical: 'top' },
+  editorChoices: { gap: 8, paddingRight: 10 },
+  editorChip: {
+    minHeight: 36,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#E8C6A7',
+    backgroundColor: Colors.white,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editorChipSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: '#FFE8CE',
+  },
+  editorChipText: { color: '#7A5438', fontSize: 12, fontWeight: '800' },
+  editorChipTextSelected: { color: Colors.primary },
+  saveDraftButton: {
+    minHeight: 44,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveDraftButtonText: { color: Colors.white, fontWeight: '900' },
+  editorHint: { color: '#8B6B55', fontSize: 11, lineHeight: 16 },
   noticeCard: {
     borderRadius: 18,
     backgroundColor: '#FFF3D8',

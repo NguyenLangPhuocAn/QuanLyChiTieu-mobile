@@ -64,7 +64,23 @@ const save = (userId: number, drafts: OfflineTransactionDraft[]) =>
 export const isRetryableOfflineTransactionError = (error: unknown) =>
   !(error instanceof ApiError) || error.status === 0 || error.status >= 500;
 
-let activeSync: Promise<OfflineQueueSyncResult> | null = null;
+const activeSyncByUser = new Map<number, Promise<OfflineQueueSyncResult>>();
+const userOperations = new Map<number, Promise<unknown>>();
+
+const withUserLock = <T>(userId: number, operation: () => Promise<T>) => {
+  const previous = userOperations.get(userId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  const queued = current
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      if (userOperations.get(userId) === queued) userOperations.delete(userId);
+    });
+  userOperations.set(userId, queued);
+  return current;
+};
 
 const runSync = async (
   token: string,
@@ -111,51 +127,92 @@ export const offlineTransactionQueue = {
     userId: number,
     payload: CreateTransactionPayload & { client_request_id?: string },
   ) {
-    const drafts = await this.list(userId);
-    const requestId = payload.client_request_id ?? createClientRequestId();
-    const existing = drafts.find(
-      item => item.payload.client_request_id === requestId,
-    );
-    if (existing) return existing;
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      const requestId = payload.client_request_id ?? createClientRequestId();
+      const existing = drafts.find(
+        item => item.payload.client_request_id === requestId,
+      );
+      if (existing) return existing;
 
-    const now = new Date().toISOString();
-    const draft: OfflineTransactionDraft = {
-      id: requestId,
-      createdAt: now,
-      updatedAt: now,
-      status: 'PENDING',
-      attempts: 0,
-      payload: { ...payload, client_request_id: requestId },
-    };
-    drafts.push(draft);
-    await save(userId, drafts);
-    return draft;
+      const now = new Date().toISOString();
+      const draft: OfflineTransactionDraft = {
+        id: requestId,
+        createdAt: now,
+        updatedAt: now,
+        status: 'PENDING',
+        attempts: 0,
+        payload: { ...payload, client_request_id: requestId },
+      };
+      drafts.push(draft);
+      await save(userId, drafts);
+      return draft;
+    });
   },
 
   async remove(userId: number, id: string) {
-    const drafts = await this.list(userId);
-    await save(
-      userId,
-      drafts.filter(item => item.id !== id),
-    );
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      await save(
+        userId,
+        drafts.filter(item => item.id !== id),
+      );
+    });
+  },
+
+  async update(
+    userId: number,
+    id: string,
+    payload: Partial<CreateTransactionPayload>,
+  ) {
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      const draft = drafts.find(item => item.id === id);
+      if (!draft) return null;
+      const clientRequestId = draft.payload.client_request_id;
+      draft.payload = {
+        ...draft.payload,
+        ...payload,
+        client_request_id: clientRequestId,
+      };
+      draft.status = 'PENDING';
+      draft.lastError = undefined;
+      draft.updatedAt = new Date().toISOString();
+      await save(userId, drafts);
+      return draft;
+    });
   },
 
   async retry(userId: number, id: string) {
-    const drafts = await this.list(userId);
-    const draft = drafts.find(item => item.id === id);
-    if (!draft) return null;
-    draft.status = 'PENDING';
-    draft.lastError = undefined;
-    draft.updatedAt = new Date().toISOString();
-    await save(userId, drafts);
-    return draft;
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      const draft = drafts.find(item => item.id === id);
+      if (!draft) return null;
+      draft.status = 'PENDING';
+      draft.lastError = undefined;
+      draft.updatedAt = new Date().toISOString();
+      await save(userId, drafts);
+      return draft;
+    });
   },
 
   sync(token: string, userId: number) {
+    let activeSync = activeSyncByUser.get(userId);
     if (!activeSync) {
-      activeSync = runSync(token, userId).finally(() => {
-        activeSync = null;
-      });
+      activeSync = withUserLock(userId, () => runSync(token, userId)).finally(
+        () => {
+          activeSyncByUser.delete(userId);
+        },
+      );
+      activeSyncByUser.set(userId, activeSync);
     }
     return activeSync;
   },

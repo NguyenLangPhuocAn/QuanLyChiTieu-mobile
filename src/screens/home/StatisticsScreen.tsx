@@ -15,7 +15,6 @@ import {
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import RNFS from 'react-native-fs';
 import Svg, { Circle, Path, Rect, Text as SvgText } from 'react-native-svg';
 import {
   ArrowLeft,
@@ -35,6 +34,7 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
+import { localDocumentPicker } from '../../native/documentPicker';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import {
   statisticsService,
@@ -1406,12 +1406,16 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
           format,
           reportRequest.range,
         );
-        const targetDirectory =
-          RNFS.DownloadDirectoryPath || RNFS.DocumentDirectoryPath;
-        const targetPath = `${targetDirectory}/${report.filename}`;
-
-        await RNFS.writeFile(targetPath, report.base64, 'base64');
-        Alert.alert('Đã xuất báo cáo', `File đã được lưu tại:\n${targetPath}`);
+        const savedFile = await localDocumentPicker.saveBase64File(
+          report.filename,
+          report.mimeType,
+          report.base64,
+        );
+        if (!savedFile) return;
+        Alert.alert(
+          'Đã xuất báo cáo',
+          `Đã lưu file ${savedFile.name} vào thư mục bạn chọn.`,
+        );
       } catch (error) {
         Alert.alert(
           'Không thể xuất báo cáo',
