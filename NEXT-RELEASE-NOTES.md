@@ -1,8 +1,10 @@
 # Sổ Thu Chi Nova — bản cập nhật kế tiếp
 
-**Trạng thái:** Hoàn thành mã MVP, chưa phát hành  
-**Cập nhật nội dung:** 18/10/2026  
-**Phiên bản:** Sẽ chốt khi tạo APK
+**Trạng thái:** Đã chốt phiên bản 1.2.0, đang phát hành
+
+**Cập nhật nội dung:** 18/10/2026
+
+**Phiên bản:** 1.2.0 (`versionCode 5`)
 
 Bản cập nhật này tập trung vào việc thu nhận giao dịch an toàn, dự báo dòng tiền và giúp người dùng hiểu rõ tình hình tài chính. Mọi thao tác có thể làm thay đổi số dư đều yêu cầu xem trước hoặc xác nhận; dữ liệu nghi trùng không được tự động ghi hay tự động gộp.
 

@@ -53,7 +53,6 @@ react {
     /* Autolinking */
     autolinkLibrariesWithApp()
 }
-
 // The React Native bundle task does not track JSON config by default.
 // Rebundle when the API endpoint changes so release APKs cannot retain an old tunnel.
 tasks.configureEach { task ->
@@ -80,8 +79,8 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
-def appVersionCode = providers.gradleProperty("VERSION_CODE").getOrElse("2").toInteger()
-def appVersionName = providers.gradleProperty("VERSION_NAME").getOrElse("1.1.0")
+def appVersionCode = providers.gradleProperty("VERSION_CODE").getOrElse("5").toInteger()
+def appVersionName = providers.gradleProperty("VERSION_NAME").getOrElse("1.2.0")
 
 android {
     ndkVersion rootProject.ext.ndkVersion
