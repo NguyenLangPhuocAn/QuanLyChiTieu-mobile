@@ -59,4 +59,58 @@ describe('parseNaturalTransactionSearch', () => {
     expect(result.from).toBe('2026-10-12');
     expect(result.to).toBe('2026-10-18');
   });
+
+  it('understands yesterday and the previous week', () => {
+    expect(parseNaturalTransactionSearch('chi hôm qua', options)).toMatchObject(
+      {
+        type: 'EXPENSE',
+        from: '2026-10-16',
+        to: '2026-10-16',
+      },
+    );
+    expect(
+      parseNaturalTransactionSearch('Grab tuần trước', options),
+    ).toMatchObject({
+      from: '2026-10-05',
+      to: '2026-10-11',
+      q: 'grab',
+    });
+  });
+
+  it('understands a Vietnamese date range without treating dates as amounts', () => {
+    const result = parseNaturalTransactionSearch(
+      'ăn uống từ ngày 01/10 đến 15/10',
+      options,
+    );
+
+    expect(result).toMatchObject({
+      categoryId: 3,
+      from: '2026-10-01',
+      to: '2026-10-15',
+    });
+    expect(result.minAmount).toBeUndefined();
+    expect(result.maxAmount).toBeUndefined();
+  });
+
+  it('understands quarters and common amount synonyms', () => {
+    expect(
+      parseNaturalTransactionSearch('chi quý trước không quá 2 triệu', options),
+    ).toMatchObject({
+      type: 'EXPENSE',
+      from: '2026-07-01',
+      to: '2026-09-30',
+      maxAmount: 2_000_000,
+    });
+    expect(
+      parseNaturalTransactionSearch(
+        'hoàn tiền 7 ngày qua ít nhất 50k',
+        options,
+      ),
+    ).toMatchObject({
+      type: 'INCOME',
+      from: '2026-10-11',
+      to: '2026-10-17',
+      minAmount: 50_000,
+    });
+  });
 });
