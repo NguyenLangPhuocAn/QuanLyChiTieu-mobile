@@ -27,6 +27,7 @@ import {
   type PickedDocument,
 } from '../../native/documentPicker';
 import {
+  getVisibleReadyBackupRowNumbers,
   personalBackupService,
   type BackupPreview,
 } from '../../services/personalBackup';
@@ -43,6 +44,7 @@ const PersonalBackupScreen = () => {
   const [file, setFile] = useState<PickedDocument | null>(null);
   const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [visibleRowCount, setVisibleRowCount] = useState(200);
   const [busy, setBusy] = useState<'export' | 'preview' | 'restore' | null>(
     null,
   );
@@ -90,6 +92,7 @@ const PersonalBackupScreen = () => {
       setFile(picked);
       setPreview(null);
       setSelectedRows([]);
+      setVisibleRowCount(200);
     } catch (error) {
       Alert.alert(
         'Chưa chọn được file',
@@ -108,9 +111,8 @@ const PersonalBackupScreen = () => {
         importPassword,
       );
       setPreview(result);
-      setSelectedRows(
-        result.rows.filter(row => row.status === 'READY').map(row => row.row),
-      );
+      setSelectedRows([]);
+      setVisibleRowCount(200);
     } catch (error) {
       Alert.alert(
         'Không đọc được backup',
@@ -126,6 +128,13 @@ const PersonalBackupScreen = () => {
       current.includes(row)
         ? current.filter(value => value !== row)
         : [...current, row],
+    );
+  };
+
+  const selectVisibleReadyRows = () => {
+    if (!preview) return;
+    setSelectedRows(
+      getVisibleReadyBackupRowNumbers(preview.rows, visibleRowCount),
     );
   };
 
@@ -285,7 +294,27 @@ const PersonalBackupScreen = () => {
               {preview.summary.ready} sẵn sàng · {preview.summary.duplicate}{' '}
               trùng · {preview.summary.invalid} lỗi
             </Text>
-            {preview.rows.slice(0, 200).map(row => {
+            <Text style={styles.reviewHint}>
+              Không có dòng nào được chọn sẵn. Hãy kiểm tra rồi chọn từng dòng
+              hoặc chọn các dòng hợp lệ đang hiển thị.
+            </Text>
+            <View style={styles.selectionActions}>
+              <TouchableOpacity
+                style={styles.selectionButton}
+                onPress={selectVisibleReadyRows}
+              >
+                <Text style={styles.selectionButtonText}>
+                  Chọn dòng hợp lệ đang hiện
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.selectionButton}
+                onPress={() => setSelectedRows([])}
+              >
+                <Text style={styles.selectionButtonText}>Bỏ chọn</Text>
+              </TouchableOpacity>
+            </View>
+            {preview.rows.slice(0, visibleRowCount).map(row => {
               const selectable = row.status === 'READY';
               const selected = selectedRows.includes(row.row);
               return (
@@ -317,11 +346,19 @@ const PersonalBackupScreen = () => {
                 </TouchableOpacity>
               );
             })}
-            {preview.rows.length > 200 ? (
-              <Text style={styles.limitText}>
-                Đang hiển thị 200 dòng đầu. Bạn vẫn có thể khôi phục các dòng đã
-                chọn trong phần này.
-              </Text>
+            {preview.rows.length > visibleRowCount ? (
+              <TouchableOpacity
+                style={styles.loadMoreButton}
+                onPress={() =>
+                  setVisibleRowCount(current =>
+                    Math.min(current + 200, preview.rows.length),
+                  )
+                }
+              >
+                <Text style={styles.loadMoreText}>
+                  Hiển thị thêm ({visibleRowCount}/{preview.rows.length})
+                </Text>
+              </TouchableOpacity>
             ) : null}
             <TouchableOpacity
               style={[
@@ -463,12 +500,39 @@ const styles = StyleSheet.create({
   },
   rowTitle: { color: '#4A2B1A', fontWeight: '900', fontSize: 12 },
   rowMeta: { color: '#84644D', fontSize: 11, lineHeight: 16, marginTop: 2 },
-  limitText: {
-    color: '#9B621F',
-    fontSize: 11,
+  reviewHint: {
+    color: '#8B5A2B',
+    fontSize: 12,
     fontWeight: '700',
-    lineHeight: 16,
+    lineHeight: 18,
+    backgroundColor: '#FFF4DE',
+    borderRadius: 13,
+    padding: 10,
   },
+  selectionActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  selectionButton: {
+    minHeight: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E7B98E',
+    backgroundColor: '#FFF8F0',
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionButtonText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  loadMoreButton: {
+    minHeight: 42,
+    borderRadius: 13,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadMoreText: { color: Colors.primary, fontWeight: '900' },
 });
 
 export default PersonalBackupScreen;

@@ -4,7 +4,11 @@ jest.mock('./api', () => ({
 }));
 
 import { apiRequest, apiUploadRequest } from './api';
-import { personalBackupService } from './personalBackup';
+import {
+  getVisibleReadyBackupRowNumbers,
+  personalBackupService,
+  type BackupPreviewRow,
+} from './personalBackup';
 
 describe('personalBackupService', () => {
   it('sends the password as a multipart field instead of a URL query', () => {
@@ -38,5 +42,20 @@ describe('personalBackupService', () => {
       120000,
       { password: 'mat-khau-rat-manh' },
     );
+  });
+
+  it('only selects ready rows that the user can currently review', () => {
+    const rows = Array.from({ length: 205 }, (_, index) => ({
+      row: index + 1,
+      status: index === 1 ? 'DUPLICATE' : 'READY',
+    })) as BackupPreviewRow[];
+
+    const selected = getVisibleReadyBackupRowNumbers(rows, 200);
+
+    expect(selected).toHaveLength(199);
+    expect(selected).not.toContain(2);
+    expect(selected).not.toContain(201);
+    expect(selected[0]).toBe(1);
+    expect(selected.at(-1)).toBe(200);
   });
 });

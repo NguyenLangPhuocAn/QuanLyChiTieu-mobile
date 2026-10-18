@@ -19,6 +19,15 @@ export type BackupPreview = {
   rows: BackupPreviewRow[];
 };
 
+export const getVisibleReadyBackupRowNumbers = (
+  rows: BackupPreviewRow[],
+  visibleCount: number,
+) =>
+  rows
+    .slice(0, Math.max(0, visibleCount))
+    .filter(row => row.status === 'READY')
+    .map(row => row.row);
+
 type BackupExport = {
   filename: string;
   mimeType: string;
