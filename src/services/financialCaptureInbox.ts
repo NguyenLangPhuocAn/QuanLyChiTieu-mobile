@@ -55,6 +55,23 @@ const parseDrafts = (raw: string | null): FinancialCaptureDraft[] => {
 const save = (userId: number, drafts: FinancialCaptureDraft[]) =>
   AsyncStorage.setItem(storageKey(userId), JSON.stringify(drafts));
 
+const userOperations = new Map<number, Promise<unknown>>();
+
+const withUserLock = <T>(userId: number, operation: () => Promise<T>) => {
+  const previous = userOperations.get(userId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  const queued = current
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      if (userOperations.get(userId) === queued) userOperations.delete(userId);
+    });
+  userOperations.set(userId, queued);
+  return current;
+};
+
 const createId = (source: FinancialCaptureSource) =>
   `${source.toLowerCase()}_${Date.now().toString(36)}_${Math.random()
     .toString(36)
@@ -68,25 +85,29 @@ export const financialCaptureInbox = {
   },
 
   async enqueue(userId: number, input: FinancialCaptureInput) {
-    const drafts = await this.list(userId);
-    const existing = drafts.find(item => item.dedupeKey === input.dedupeKey);
-    const now = new Date().toISOString();
-    if (existing) {
-      const updated = { ...existing, ...input, updatedAt: now };
-      await save(
-        userId,
-        drafts.map(item => (item.id === existing.id ? updated : item)),
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
       );
-      return updated;
-    }
-    const draft: FinancialCaptureDraft = {
-      ...input,
-      id: createId(input.source),
-      createdAt: now,
-      updatedAt: now,
-    };
-    await save(userId, [draft, ...drafts]);
-    return draft;
+      const existing = drafts.find(item => item.dedupeKey === input.dedupeKey);
+      const now = new Date().toISOString();
+      if (existing) {
+        const updated = { ...existing, ...input, updatedAt: now };
+        await save(
+          userId,
+          drafts.map(item => (item.id === existing.id ? updated : item)),
+        );
+        return updated;
+      }
+      const draft: FinancialCaptureDraft = {
+        ...input,
+        id: createId(input.source),
+        createdAt: now,
+        updatedAt: now,
+      };
+      await save(userId, [draft, ...drafts]);
+      return draft;
+    });
   },
 
   async get(userId: number, id: string) {
@@ -94,10 +115,14 @@ export const financialCaptureInbox = {
   },
 
   async remove(userId: number, id: string) {
-    const drafts = await this.list(userId);
-    await save(
-      userId,
-      drafts.filter(item => item.id !== id),
-    );
+    return withUserLock(userId, async () => {
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      await save(
+        userId,
+        drafts.filter(item => item.id !== id),
+      );
+    });
   },
 };

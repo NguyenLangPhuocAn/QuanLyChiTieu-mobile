@@ -105,4 +105,27 @@ describe('financialCaptureInbox', () => {
       expect.objectContaining({ id: keep.id }),
     ]);
   });
+
+  it('keeps captures that arrive at the same time', async () => {
+    await Promise.all([
+      financialCaptureInbox.enqueue(7, {
+        source: 'OCR',
+        status: 'READY',
+        dedupeKey: 'ocr:concurrent-1',
+        title: 'Hóa đơn thứ nhất',
+      }),
+      financialCaptureInbox.enqueue(7, {
+        source: 'VOICE',
+        status: 'READY',
+        dedupeKey: 'voice:concurrent-2',
+        title: 'Ghi âm thứ hai',
+      }),
+    ]);
+
+    const drafts = await financialCaptureInbox.list(7);
+    expect(drafts).toHaveLength(2);
+    expect(drafts.map(item => item.dedupeKey)).toEqual(
+      expect.arrayContaining(['ocr:concurrent-1', 'voice:concurrent-2']),
+    );
+  });
 });
