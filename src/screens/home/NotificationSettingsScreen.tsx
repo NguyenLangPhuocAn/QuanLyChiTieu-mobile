@@ -21,10 +21,21 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
+import {
+  defaultFinancialReminderSettings,
+  financialReminder,
+  requestFinancialReminderPermission,
+  type FinancialReminderFrequency,
+  type FinancialReminderSettings,
+} from '../../native/financialReminder';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { notificationsService } from '../../services/notifications';
 import type { NotificationSettings } from '../../types/notification';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
+import {
+  formatReminderSchedule,
+  withReminderFrequency,
+} from '../../utils/financialReminder';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NotificationSettings'>;
 type SettingKey =
@@ -80,6 +91,9 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
+  const [reminderSettings, setReminderSettings] =
+    useState<FinancialReminderSettings>(defaultFinancialReminderSettings);
+  const [isSavingReminder, setIsSavingReminder] = useState(false);
 
   const loadSettings = useCallback(async () => {
     if (!token) {
@@ -89,8 +103,16 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
 
     try {
       setIsLoading(true);
-      const response = await notificationsService.getSettings(token);
+      const [response, localReminder] = await Promise.all([
+        notificationsService.getSettings(token),
+        financialReminder.isSupported
+          ? financialReminder
+              .getSettings()
+              .catch(() => defaultFinancialReminderSettings)
+          : Promise.resolve(defaultFinancialReminderSettings),
+      ]);
       setSettings(response);
+      setReminderSettings(localReminder);
     } catch (error) {
       Alert.alert(
         'Không thể tải cài đặt',
@@ -127,6 +149,66 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
       );
     } finally {
       setSavingKey(null);
+    }
+  };
+
+  const saveReminder = async (next: FinancialReminderSettings) => {
+    if (!financialReminder.isSupported) return;
+    const previous = reminderSettings;
+    setReminderSettings(next);
+    setIsSavingReminder(true);
+    try {
+      setReminderSettings(await financialReminder.saveSettings(next));
+    } catch (error) {
+      setReminderSettings(previous);
+      Alert.alert(
+        'Chưa lưu được lời nhắc',
+        getErrorMessage(error, 'Vui lòng thử lại.'),
+      );
+    } finally {
+      setIsSavingReminder(false);
+    }
+  };
+
+  const handleReminderToggle = async (enabled: boolean) => {
+    if (enabled && !(await requestFinancialReminderPermission())) {
+      Alert.alert(
+        'Chưa bật được thông báo',
+        'Hãy cho phép Sổ Thu Chi Nova gửi thông báo trong cài đặt Android.',
+      );
+      return;
+    }
+    await saveReminder({ ...reminderSettings, enabled });
+  };
+
+  const selectReminderFrequency = (frequency: FinancialReminderFrequency) => {
+    saveReminder(withReminderFrequency(reminderSettings, frequency)).catch(
+      () => undefined,
+    );
+  };
+
+  const selectReminderHour = (hour: number) => {
+    saveReminder({ ...reminderSettings, hour, minute: 0 }).catch(
+      () => undefined,
+    );
+  };
+
+  const showReminderPreview = async () => {
+    if (!(await requestFinancialReminderPermission())) {
+      Alert.alert(
+        'Chưa gửi được thông báo thử',
+        'Hãy cho phép thông báo trong cài đặt Android rồi thử lại.',
+      );
+      return;
+    }
+    const displayed = await financialReminder.showPreview(
+      reminderSettings.message,
+    );
+    if (!displayed) {
+      Alert.alert(
+        'Chưa gửi được thông báo thử',
+        'Quyền thông báo đang bị tắt trong cài đặt Android.',
+      );
     }
   };
 
@@ -184,6 +266,113 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
               </View>
             );
           })}
+
+          {financialReminder.isSupported ? (
+            <View style={styles.reminderCard}>
+              <View style={styles.reminderHeader}>
+                <View style={styles.settingIcon}>
+                  <BellRing size={20} color="#D87219" />
+                </View>
+                <View style={styles.settingCopy}>
+                  <Text style={styles.settingLabel}>
+                    Nhắc tài chính chủ động
+                  </Text>
+                  <Text style={styles.settingDescription}>
+                    Hiện ngoài ứng dụng kể cả khi Nova đang đóng.
+                  </Text>
+                </View>
+                {isSavingReminder ? (
+                  <ActivityIndicator color={Colors.primary} size="small" />
+                ) : (
+                  <Switch
+                    accessibilityLabel="Bật nhắc tài chính chủ động"
+                    value={reminderSettings.enabled}
+                    onValueChange={value =>
+                      handleReminderToggle(value).catch(() => undefined)
+                    }
+                    trackColor={{ false: '#E9D6C4', true: '#FFD9AC' }}
+                    thumbColor={
+                      reminderSettings.enabled ? Colors.primary : '#FFFFFF'
+                    }
+                  />
+                )}
+              </View>
+
+              <Text style={styles.reminderFieldLabel}>Tần suất</Text>
+              <View style={styles.chipRow}>
+                {(
+                  [
+                    ['DAILY', 'Hằng ngày'],
+                    ['WEEKLY', 'Hằng tuần'],
+                    ['MONTHLY', 'Ngày 25'],
+                  ] as const
+                ).map(([frequency, label]) => {
+                  const selected = reminderSettings.frequency === frequency;
+                  return (
+                    <TouchableOpacity
+                      key={frequency}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                      disabled={isSavingReminder}
+                      onPress={() => selectReminderFrequency(frequency)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          selected && styles.chipTextSelected,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.reminderFieldLabel}>Giờ nhắc</Text>
+              <View style={styles.chipRow}>
+                {[8, 12, 20].map(hour => {
+                  const selected = reminderSettings.hour === hour;
+                  return (
+                    <TouchableOpacity
+                      key={hour}
+                      style={[styles.timeChip, selected && styles.chipSelected]}
+                      disabled={isSavingReminder}
+                      onPress={() => selectReminderHour(hour)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          selected && styles.chipTextSelected,
+                        ]}
+                      >
+                        {String(hour).padStart(2, '0')}:00
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.previewBox}>
+                <Text style={styles.previewSchedule}>
+                  {formatReminderSchedule(reminderSettings)}
+                </Text>
+                <Text style={styles.previewMessage}>
+                  “{reminderSettings.message}”
+                </Text>
+                <Text style={styles.privacyNote}>
+                  Không hiện số dư hoặc số tiền trên màn hình khóa.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.testButton}
+                onPress={() => showReminderPreview().catch(() => undefined)}
+              >
+                <Bell size={18} color={Colors.primary} />
+                <Text style={styles.testButtonText}>Gửi thông báo thử</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -246,6 +435,69 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   switchWrap: { minWidth: 54, alignItems: 'center', gap: 6 },
+  reminderCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EDB982',
+    backgroundColor: '#FFFDFC',
+    padding: 14,
+    gap: 12,
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reminderFieldLabel: {
+    color: '#6D432B',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  chip: {
+    minHeight: 38,
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E9C8AA',
+    backgroundColor: '#FFF7EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeChip: {
+    minWidth: 76,
+    minHeight: 38,
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E9C8AA',
+    backgroundColor: '#FFF7EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipSelected: { borderColor: Colors.primary, backgroundColor: '#FFF0DE' },
+  chipText: { color: '#7E5C44', fontSize: 13, fontWeight: '700' },
+  chipTextSelected: { color: '#B85C16' },
+  previewBox: {
+    borderRadius: 10,
+    backgroundColor: '#FFF4E8',
+    padding: 12,
+    gap: 5,
+  },
+  previewSchedule: { color: '#B85C16', fontSize: 12, fontWeight: '900' },
+  previewMessage: { color: '#4A2B1A', fontSize: 14, lineHeight: 20 },
+  privacyNote: { color: '#8B6548', fontSize: 11, lineHeight: 16 },
+  testButton: {
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E7AA71',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  testButtonText: { color: Colors.primary, fontSize: 14, fontWeight: '900' },
 });
 
 export default NotificationSettingsScreen;

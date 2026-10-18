@@ -8,6 +8,7 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.mobile.banknotifications.BankNotificationPackage
 import com.mobile.documents.DocumentPickerPackage
+import com.mobile.reminders.FinancialReminderPackage
 import com.mobile.updates.AppUpdatePackage
 
 class MainApplication : Application(), ReactApplication {
@@ -19,6 +20,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           add(BankNotificationPackage())
           add(DocumentPickerPackage())
+          add(FinancialReminderPackage())
           add(AppUpdatePackage())
         },
     )
