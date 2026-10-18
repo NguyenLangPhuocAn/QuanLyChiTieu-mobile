@@ -154,6 +154,7 @@ describe('financialInsights', () => {
         transaction(2, 'EXPENSE', 100_000, '2026-02-25', 'Internet'),
       ],
       new Date('2026-03-20T00:00:00.000Z'),
+      { emergencyReserveMonths: 0 },
     );
 
     expect(result.source).toBe('BUDGET');
@@ -209,12 +210,73 @@ describe('financialInsights', () => {
             createdAt: '2026-03-01T00:00:00.000Z',
           },
         ],
+        emergencyReserveMonths: 0,
       },
     );
 
     expect(result.upcomingExpenses).toBe(100_000);
     expect(result.manualExpenses).toBe(500_000);
     expect(result.amount).toBeCloseTo(208_333.33, 2);
+  });
+
+  it('protects savings goals and an emergency reserve without returning a negative daily amount', () => {
+    const data = [
+      transaction(1, 'EXPENSE', 3_000_000, '2026-01-15', 'Thiết yếu'),
+      transaction(2, 'EXPENSE', 3_000_000, '2026-02-15', 'Thiết yếu'),
+      transaction(3, 'EXPENSE', 3_000_000, '2026-03-15', 'Thiết yếu'),
+    ];
+    const result = calculateSafeToSpendToday(
+      [
+        {
+          id: 1,
+          user_id: 7,
+          name: 'Tiền mặt',
+          wallet_type: 'CASH',
+          currency: 'VND',
+          balance: 5_000_000,
+          created_at: '2026-01-01',
+        },
+        {
+          id: 2,
+          user_id: 7,
+          name: 'Mục tiêu',
+          wallet_type: 'SAVINGS',
+          currency: 'VND',
+          balance: 20_000_000,
+          created_at: '2026-01-01',
+        },
+      ],
+      [],
+      data,
+      new Date('2026-04-20T00:00:00.000Z'),
+      {
+        currency: 'VND',
+        emergencyReserveMonths: 1,
+        savingsGoals: [
+          {
+            id: 1,
+            user_id: 7,
+            wallet_id: 2,
+            wallet_currency: 'VND',
+            wallet_balance: 20_000_000,
+            name: 'Du lịch',
+            target_amount: 30_000_000,
+            current_amount: 20_000_000,
+            remaining_amount: 10_000_000,
+            progress_percent: 66,
+            suggested_monthly: 3_000_000,
+            status: 'ACTIVE',
+            entries: [],
+          },
+        ],
+      },
+    );
+
+    expect(result.sourceAmount).toBe(5_000_000);
+    expect(result.goalCommitment).toBe(3_000_000);
+    expect(result.emergencyReserve).toBe(3_000_000);
+    expect(result.shortfall).toBe(1_000_000);
+    expect(result.amount).toBe(0);
   });
 
   it('reports duplicate, uncategorized and receipt total issues', () => {

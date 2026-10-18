@@ -2,6 +2,7 @@ import type { Budget } from '../types/budget';
 import type { ApiTransaction } from '../types/transaction';
 import type { Wallet } from '../types/wallet';
 import type { ManualMoneyPlan } from '../services/financialPlanning';
+import type { SavingsGoal } from '../types/savings';
 
 const DAY_MS = 86_400_000;
 
@@ -340,6 +341,9 @@ export const calculateSafeToSpendToday = (
   options?: {
     confirmedPatternKeys?: ReadonlySet<string>;
     manualPlans?: ManualMoneyPlan[];
+    savingsGoals?: SavingsGoal[];
+    emergencyReserveMonths?: number;
+    currency?: string;
   },
 ) => {
   const activeBudgetRemaining = budgets
@@ -388,14 +392,46 @@ export const calculateSafeToSpendToday = (
     .reduce((sum, plan) => sum + plan.amount, 0);
   const liquidBalance = wallets.reduce(
     (sum, wallet) =>
-      sum + Math.max(0, Number(wallet.display_balance ?? wallet.balance) || 0),
+      sum +
+      (wallet.wallet_type === 'SAVINGS'
+        ? 0
+        : Math.max(0, Number(wallet.display_balance ?? wallet.balance) || 0)),
     0,
   );
   const sourceAmount = activeBudgetRemaining || liquidBalance;
+  const goalCommitment = (options?.savingsGoals ?? [])
+    .filter(
+      goal =>
+        goal.status === 'ACTIVE' &&
+        (!options?.currency ||
+          goal.wallet_currency.toUpperCase() ===
+            options.currency.toUpperCase()),
+    )
+    .reduce((sum, goal) => sum + Math.max(0, goal.suggested_monthly), 0);
+  const emergencyReserveMonths = Math.max(
+    0,
+    Math.min(6, options?.emergencyReserveMonths ?? 1),
+  );
+  const essentialMonthlyExpense = calculateIrregularIncome(
+    transactions,
+    asOf,
+    3,
+  ).medianExpense;
+  const emergencyReserve = essentialMonthlyExpense * emergencyReserveMonths;
+  const totalCommitments =
+    upcomingExpenses + manualExpenses + goalCommitment + emergencyReserve;
   const availableAfterCommitments = Math.max(
     0,
-    sourceAmount - upcomingExpenses - manualExpenses,
+    sourceAmount - totalCommitments,
   );
+  const missingInputs = [
+    ...(sourceAmount <= 0
+      ? ['Chưa có ngân sách còn lại hoặc số dư dương.']
+      : []),
+    ...(emergencyReserveMonths > 0 && essentialMonthlyExpense <= 0
+      ? ['Chưa đủ lịch sử chi để tính phần quỹ an toàn.']
+      : []),
+  ];
 
   return {
     amount: availableAfterCommitments / daysRemaining,
@@ -403,6 +439,13 @@ export const calculateSafeToSpendToday = (
     sourceAmount,
     upcomingExpenses,
     manualExpenses,
+    goalCommitment,
+    emergencyReserve,
+    emergencyReserveMonths,
+    essentialMonthlyExpense,
+    totalCommitments,
+    shortfall: Math.max(0, totalCommitments - sourceAmount),
+    missingInputs,
     availableAfterCommitments,
     daysRemaining,
   };

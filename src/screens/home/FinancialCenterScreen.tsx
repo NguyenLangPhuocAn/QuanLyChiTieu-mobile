@@ -89,6 +89,7 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
   const [planType, setPlanType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [incomeHistoryMonths, setIncomeHistoryMonths] = useState(6);
   const [incomeReductionPercent, setIncomeReductionPercent] = useState(0);
+  const [safeReserveMonths, setSafeReserveMonths] = useState(1);
 
   useFocusEffect(
     useCallback(() => {
@@ -135,6 +136,10 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
     [cache?.transactions],
   );
   const budgets = useMemo(() => cache?.budgets ?? [], [cache?.budgets]);
+  const savingsGoals = useMemo(
+    () => cache?.savingsGoals ?? [],
+    [cache?.savingsGoals],
+  );
   const currency = user?.currency_default ?? 'VND';
   const recurringDecisionMap = useMemo(
     () =>
@@ -155,8 +160,20 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
       calculateSafeToSpendToday(wallets, budgets, transactions, new Date(), {
         confirmedPatternKeys,
         manualPlans,
+        savingsGoals,
+        emergencyReserveMonths: safeReserveMonths,
+        currency,
       }),
-    [budgets, confirmedPatternKeys, manualPlans, transactions, wallets],
+    [
+      budgets,
+      confirmedPatternKeys,
+      currency,
+      manualPlans,
+      safeReserveMonths,
+      savingsGoals,
+      transactions,
+      wallets,
+    ],
   );
   const emergency = useMemo(
     () => calculateEmergencyFund(wallets, transactions),
@@ -393,9 +410,40 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
               : 'Số dư dương'}{' '}
             {formatCurrency(safeSpend.sourceAmount, currency)} − khoản định kỳ{' '}
             {formatCurrency(safeSpend.upcomingExpenses, currency)} − lịch nhập
-            tay {formatCurrency(safeSpend.manualExpenses, currency)}, chia{' '}
+            tay {formatCurrency(safeSpend.manualExpenses, currency)} − mục tiêu{' '}
+            {formatCurrency(safeSpend.goalCommitment, currency)} − quỹ an toàn{' '}
+            {formatCurrency(safeSpend.emergencyReserve, currency)}, chia{' '}
             {safeSpend.daysRemaining} ngày còn lại.
           </Text>
+          {safeSpend.shortfall > 0 ? (
+            <Text style={styles.heroWarning}>
+              Các khoản cần giữ đang cao hơn nguồn có thể dùng{' '}
+              {formatCurrency(safeSpend.shortfall, currency)} nên kết quả được
+              chặn ở 0đ.
+            </Text>
+          ) : null}
+          {safeSpend.missingInputs.map(message => (
+            <Text key={message} style={styles.heroWarning}>
+              {message}
+            </Text>
+          ))}
+          <Text style={styles.heroOptionLabel}>Mức quỹ an toàn muốn giữ</Text>
+          <View style={styles.heroOptionRow}>
+            {[0, 1, 3].map(months => (
+              <TouchableOpacity
+                key={months}
+                style={[
+                  styles.heroOption,
+                  safeReserveMonths === months && styles.heroOptionActive,
+                ]}
+                onPress={() => setSafeReserveMonths(months)}
+              >
+                <Text style={styles.heroOptionText}>
+                  {months === 0 ? 'Không giữ' : `${months} tháng`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <View style={styles.sectionCard}>
@@ -950,6 +998,36 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   heroText: { color: '#FFE9D5', lineHeight: 20, marginTop: 8, fontSize: 12 },
+  heroWarning: {
+    color: '#FFD08C',
+    lineHeight: 18,
+    marginTop: 7,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  heroOptionLabel: {
+    color: '#FFDAB8',
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: 12,
+  },
+  heroOptionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 7,
+  },
+  heroOption: {
+    minHeight: 34,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#A97961',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  heroOptionActive: { backgroundColor: '#E8751A', borderColor: '#FF9D32' },
+  heroOptionText: { color: Colors.white, fontSize: 11, fontWeight: '900' },
   metricLabel: {
     color: '#7A5438',
     fontWeight: '800',
