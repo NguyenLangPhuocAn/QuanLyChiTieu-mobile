@@ -1,10 +1,16 @@
-# Sổ Thu Chi Nova — bản cập nhật kế tiếp
+# Sổ Thu Chi Nova 1.2.0
 
-**Trạng thái:** Đã chốt phiên bản 1.2.0, đang phát hành
+**Trạng thái:** Đã phát hành ngày 18/10/2026
 
 **Cập nhật nội dung:** 18/10/2026
 
 **Phiên bản:** 1.2.0 (`versionCode 5`)
+
+**Tải APK:** https://github.com/NguyenLangPhuocAn/QuanLyChiTieu-mobile/releases/download/v1.2.0/QuanLyChiTieu-1.2.0.apk
+
+**SHA-256:** `205FCDF1BB4162D564A5E91751C6B3AC1545843FDCA5F387B80BD195C2776129`
+
+**Dung lượng:** 49.543.898 byte (khoảng 47,3 MB)
 
 Bản cập nhật này tập trung vào việc thu nhận giao dịch an toàn, dự báo dòng tiền và giúp người dùng hiểu rõ tình hình tài chính. Mọi thao tác có thể làm thay đổi số dư đều yêu cầu xem trước hoặc xác nhận; dữ liệu nghi trùng không được tự động ghi hay tự động gộp.
 
