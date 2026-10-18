@@ -1,6 +1,7 @@
 import type { ApiTransaction } from '../../types/transaction';
 import {
   buildUpcomingMoneyCalendar,
+  buildRecurringDueReminders,
   buildProjectedCashFlow,
   calculateEmergencyFund,
   calculateEmergencyIncomeShock,
@@ -124,6 +125,29 @@ describe('financialInsights', () => {
     });
     expect(calendar).toHaveLength(1);
     expect(calendar[0].nextDate.slice(0, 10)).toBe('2026-04-05');
+  });
+
+  it('advances an old confirmed subscription and reminds before the next cycle', () => {
+    const data = [
+      transaction(1, 'EXPENSE', 79_000, '2026-01-05', 'Netflix'),
+      transaction(2, 'EXPENSE', 79_000, '2026-02-05', 'Netflix'),
+      transaction(3, 'EXPENSE', 79_000, '2026-03-05', 'Netflix'),
+    ];
+    const [pattern] = detectRecurringMoney(data);
+    const reminders = buildRecurringDueReminders(
+      data,
+      new Set([pattern.key]),
+      new Date('2026-05-01T00:00:00.000Z'),
+      7,
+    );
+
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]).toMatchObject({
+      label: 'Netflix',
+      daysUntil: 4,
+      dueStatus: 'SOON',
+    });
+    expect(reminders[0].nextDate.slice(0, 10)).toBe('2026-05-05');
   });
 
   it('subtracts upcoming recurring expenses from the current budget', () => {

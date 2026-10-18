@@ -17,6 +17,13 @@ const dateOf = (transaction: ApiTransaction) => {
 const monthKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
+const addUtcCalendarMonth = (date: Date) => {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), lastDay)));
+};
+
 const previousMonthKeys = (asOf: Date, count: number) =>
   Array.from({ length: count }, (_, index) => {
     const date = new Date(asOf.getFullYear(), asOf.getMonth() - index - 1, 1);
@@ -222,13 +229,7 @@ export const detectRecurringMoney = (transactions: ApiTransaction[]) => {
     }
     const intervalDays = Math.round(median(intervals));
     const last = sorted[sorted.length - 1];
-    const next = new Date(
-      Date.UTC(
-        last.date.getUTCFullYear(),
-        last.date.getUTCMonth() + 1,
-        last.date.getUTCDate(),
-      ),
-    );
+    const next = addUtcCalendarMonth(last.date);
     patterns.push({
       key,
       label: last.item.note?.trim() || 'Khoản định kỳ',
@@ -255,14 +256,48 @@ export const buildUpcomingMoneyCalendar = (
   confirmedPatternKeys?: ReadonlySet<string>,
 ) => {
   const end = asOf.getTime() + days * DAY_MS;
-  return detectRecurringMoney(transactions).filter(pattern => {
+  return detectRecurringMoney(transactions).flatMap(pattern => {
     if (confirmedPatternKeys && !confirmedPatternKeys.has(pattern.key)) {
-      return false;
+      return [];
     }
-    const next = new Date(pattern.nextDate).getTime();
-    return next >= asOf.getTime() - DAY_MS && next <= end;
+    let next = new Date(pattern.nextDate);
+    let guard = 0;
+    while (next.getTime() < asOf.getTime() - DAY_MS && guard < 120) {
+      next = addUtcCalendarMonth(next);
+      guard += 1;
+    }
+    return next.getTime() <= end
+      ? [{ ...pattern, nextDate: next.toISOString() }]
+      : [];
   });
 };
+
+export type RecurringDueReminder = RecurringMoneyPattern & {
+  daysUntil: number;
+  dueStatus: 'OVERDUE' | 'TODAY' | 'SOON';
+};
+
+export const buildRecurringDueReminders = (
+  transactions: ApiTransaction[],
+  confirmedPatternKeys: ReadonlySet<string>,
+  asOf = new Date(),
+  leadDays = 7,
+): RecurringDueReminder[] =>
+  buildUpcomingMoneyCalendar(
+    transactions,
+    asOf,
+    Math.max(0, leadDays),
+    confirmedPatternKeys,
+  ).map(pattern => {
+    const daysUntil = Math.ceil(
+      (new Date(pattern.nextDate).getTime() - asOf.getTime()) / DAY_MS,
+    );
+    return {
+      ...pattern,
+      daysUntil,
+      dueStatus: daysUntil < 0 ? 'OVERDUE' : daysUntil === 0 ? 'TODAY' : 'SOON',
+    };
+  });
 
 export const buildProjectedCashFlow = (
   wallets: Wallet[],

@@ -45,6 +45,7 @@ import { formatCurrency, formatShortDate } from '../../utils/format';
 import {
   buildUpcomingMoneyCalendar,
   buildProjectedCashFlow,
+  buildRecurringDueReminders,
   calculateEmergencyFund,
   calculateEmergencyIncomeShock,
   calculateIrregularIncome,
@@ -206,6 +207,16 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
         new Date(),
         60,
         confirmedPatternKeys,
+      ),
+    [confirmedPatternKeys, transactions],
+  );
+  const dueReminders = useMemo(
+    () =>
+      buildRecurringDueReminders(
+        transactions,
+        confirmedPatternKeys,
+        new Date(),
+        7,
       ),
     [confirmedPatternKeys, transactions],
   );
@@ -609,6 +620,41 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
               </Text>
             </View>
           </View>
+          {dueReminders.length > 0 ? (
+            <View style={styles.reminderBox}>
+              <Text style={styles.filterTitle}>Nhắc trước kỳ tới</Text>
+              {dueReminders.map(item => (
+                <View key={`reminder-${item.key}`} style={styles.reminderRow}>
+                  <View style={styles.sectionCopy}>
+                    <Text style={styles.listTitle} numberOfLines={1}>
+                      {item.label}
+                    </Text>
+                    <Text style={styles.listMeta}>
+                      {item.dueStatus === 'OVERDUE'
+                        ? `Đã qua ${Math.abs(item.daysUntil)} ngày`
+                        : item.dueStatus === 'TODAY'
+                        ? 'Dự kiến hôm nay'
+                        : `Còn ${item.daysUntil} ngày`}{' '}
+                      · {item.occurrences} kỳ đã nhận diện ·{' '}
+                      {formatCurrency(item.averageAmount, currency)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Bỏ theo dõi ${item.label}`}
+                    style={styles.rejectButton}
+                    onPress={() => setRecurringDecision(item.key, 'IGNORED')}
+                  >
+                    <Text style={styles.rejectButtonText}>Bỏ theo dõi</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <Text style={styles.helperText}>
+                Đây chỉ là lời nhắc từ lịch sử. Ứng dụng không tự tạo giao dịch
+                hoặc trừ tiền.
+              </Text>
+            </View>
+          ) : null}
           {upcoming.slice(0, 4).map(item => (
             <View key={item.key} style={styles.listRow}>
               <View style={styles.sectionCopy}>
@@ -1266,6 +1312,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3FAF7',
     padding: 12,
     gap: 8,
+  },
+  reminderBox: {
+    borderRadius: 16,
+    backgroundColor: '#FFF3D8',
+    padding: 12,
+    gap: 9,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F2D7A3',
+    paddingTop: 9,
   },
   projectionRow: {
     flexDirection: 'row',
