@@ -285,6 +285,37 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     }
   };
 
+  const confirmCreate = (event: BankNotificationEvent) => {
+    const parsed = parseBankNotification(event);
+    if (
+      parsed.status !== 'READY' ||
+      !parsed.type ||
+      !parsed.amount ||
+      !parsed.currency
+    ) {
+      Alert.alert(
+        'Cần kiểm tra lại',
+        parsed.reason ?? 'Thông báo chưa đủ dữ liệu để tạo giao dịch.',
+      );
+      return;
+    }
+    const direction = parsed.type === 'INCOME' ? 'Tiền vào +' : 'Tiền ra -';
+    Alert.alert(
+      'Xác nhận thêm giao dịch',
+      `${direction} ${formatCurrency(
+        Number(parsed.amount),
+        parsed.currency,
+      )}\nNgày ${parsed.transactionDate}\n\n${parsed.note}`,
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          onPress: () => handleCreate(event).catch(() => undefined),
+        },
+      ],
+    );
+  };
+
   const dismissEvent = async (eventId: string) => {
     if (!user) return;
     await bankNotificationReader.dismissEvent(user.id, eventId);
@@ -322,6 +353,27 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     } finally {
       setBusyEventId(null);
     }
+  };
+
+  const confirmMergeEvidence = (
+    event: BankNotificationEvent,
+    transaction: ApiTransaction,
+  ) => {
+    const parsed = parseBankNotification(event);
+    Alert.alert(
+      'Xác nhận ghép bằng chứng',
+      `Thông báo ngân hàng sẽ được nối vào giao dịch “${
+        transaction.note || 'Giao dịch có hóa đơn'
+      }”. Ảnh hóa đơn và chi tiết món vẫn được giữ nguyên.\n\n${parsed.note}`,
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Xác nhận ghép',
+          onPress: () =>
+            handleMergeEvidence(event, transaction).catch(() => undefined),
+        },
+      ],
+    );
   };
 
   if (isLoading) {
@@ -430,30 +482,11 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
                 <View style={styles.ruleBody}>
                   <Text style={styles.fieldLabel}>Cách xử lý</Text>
                   <View style={styles.modeRow}>
-                    {(
-                      [
-                        ['REVIEW', 'Duyệt trước'],
-                        ['AUTO', 'Tự động'],
-                      ] as const
-                    ).map(([mode, label]) => (
-                      <TouchableOpacity
-                        key={mode}
-                        style={[
-                          styles.modeChip,
-                          rule?.mode === mode && styles.selectedChip,
-                        ]}
-                        onPress={() => updateRule(app, { mode })}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            rule?.mode === mode && styles.selectedChipText,
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    <View style={[styles.modeChip, styles.selectedChip]}>
+                      <Text style={[styles.chipText, styles.selectedChipText]}>
+                        Luôn duyệt trước
+                      </Text>
+                    </View>
                   </View>
 
                   <RuleSelector
@@ -487,12 +520,10 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
                       updateRule(app, { expenseCategoryId })
                     }
                   />
-                  {rule?.mode === 'AUTO' ? (
-                    <Text style={styles.autoWarning}>
-                      Tự động chỉ chạy khi nhận rõ số tiền, thu/chi, đúng tiền
-                      tệ và đã chọn đủ ba mục trên.
-                    </Text>
-                  ) : null}
+                  <Text style={styles.autoWarning}>
+                    App tự đọc và chuẩn bị bản xem trước; chỉ ghi tiền sau khi
+                    bạn nhấn xác nhận.
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -601,10 +632,7 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
                     style={styles.mergeButton}
                     disabled={busyEventId === event.id}
                     onPress={() =>
-                      handleMergeEvidence(
-                        event,
-                        evidenceMatch.transaction,
-                      ).catch(() => undefined)
+                      confirmMergeEvidence(event, evidenceMatch.transaction)
                     }
                   >
                     <Text style={styles.mergeButtonText}>
@@ -619,7 +647,7 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
                   parsed.status !== 'READY' && styles.disabledButton,
                 ]}
                 disabled={parsed.status !== 'READY' || busyEventId === event.id}
-                onPress={() => handleCreate(event).catch(() => undefined)}
+                onPress={() => confirmCreate(event)}
               >
                 {busyEventId === event.id ? (
                   <ActivityIndicator color={Colors.white} />

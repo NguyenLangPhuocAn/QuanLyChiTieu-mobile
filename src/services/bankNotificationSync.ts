@@ -1,12 +1,13 @@
 import { bankNotificationReader } from '../native/bankNotificationReader';
-import type { BankAppRule, BankNotificationEvent } from '../types/bankNotification';
+import type {
+  BankAppRule,
+  BankNotificationEvent,
+} from '../types/bankNotification';
 import type { Category } from '../types/category';
 import type { Wallet } from '../types/wallet';
 import { parseBankNotification } from '../utils/bankNotificationParser';
 import { bankNotificationSettings } from './bankNotificationSettings';
-import { categoriesService } from './categories';
 import { transactionsService } from './transactions';
-import { walletsService } from './wallets';
 
 export type BankNotificationSyncResult = {
   created: number;
@@ -25,9 +26,7 @@ const resolveMapping = (
   const parsed = parseBankNotification(event);
   const wallet = wallets.find(item => item.id === rule.walletId);
   const categoryId =
-    parsed.type === 'INCOME'
-      ? rule.incomeCategoryId
-      : rule.expenseCategoryId;
+    parsed.type === 'INCOME' ? rule.incomeCategoryId : rule.expenseCategoryId;
   const category = categories.find(item => item.id === categoryId);
   const isValid =
     parsed.status === 'READY' &&
@@ -74,10 +73,7 @@ export const createTransactionFromBankEvent = async (options: {
   return transaction;
 };
 
-const runSync = async (
-  token: string,
-  userId: number,
-): Promise<BankNotificationSyncResult> => {
+const runSync = async (userId: number): Promise<BankNotificationSyncResult> => {
   if (!bankNotificationReader.isSupported) {
     return { created: 0, pending: 0, ignored: 0 };
   }
@@ -89,14 +85,10 @@ const runSync = async (
   );
   const events = await bankNotificationReader.getPendingEvents(userId);
   if (!events.length) return { created: 0, pending: 0, ignored: 0 };
-  const [wallets, categories] = await Promise.all([
-    walletsService.getAll(token),
-    categoriesService.getAll(token),
-  ]);
   const enabledRules = new Map(
     rules.filter(rule => rule.enabled).map(rule => [rule.packageName, rule]),
   );
-  let created = 0;
+  const created = 0;
   let ignored = 0;
   let pending = 0;
 
@@ -112,32 +104,17 @@ const runSync = async (
       ignored += 1;
       continue;
     }
-    if (rule.mode !== 'AUTO') {
-      pending += 1;
-      continue;
-    }
-
-    try {
-      await createTransactionFromBankEvent({
-        token,
-        userId,
-        event,
-        rule,
-        wallets,
-        categories,
-      });
-      created += 1;
-    } catch {
-      pending += 1;
-    }
+    // Thông báo chỉ được chuẩn bị để người dùng xem trước. Kể cả cấu hình AUTO
+    // từ phiên bản cũ cũng không được ghi tiền khi chưa có xác nhận trực tiếp.
+    pending += 1;
   }
 
   return { created, pending, ignored };
 };
 
-export const syncBankNotifications = (token: string, userId: number) => {
+export const syncBankNotifications = (_token: string, userId: number) => {
   if (!activeSync) {
-    activeSync = runSync(token, userId).finally(() => {
+    activeSync = runSync(userId).finally(() => {
       activeSync = null;
     });
   }
