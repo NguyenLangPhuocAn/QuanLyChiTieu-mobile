@@ -29,13 +29,11 @@ import type {
   NativeStackScreenProps,
 } from '@react-navigation/native-stack';
 import {
-  AlertTriangle,
   ArrowLeft,
   CalendarDays,
   ChartColumnBig,
   ChevronDown,
   ChevronUp,
-  ClipboardList,
   History,
   ImagePlus,
   MessageCircleMore,
@@ -1943,17 +1941,14 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     accessibilityRole="button"
                     accessibilityLabel="Chi tiết hóa đơn"
                   >
-                    <View style={styles.receiptSectionIcon}>
-                      <ClipboardList size={19} color={Colors.primary} />
-                    </View>
                     <View style={styles.receiptSectionCopy}>
                       <Text style={styles.receiptSectionTitle}>
                         Chi tiết hóa đơn
                       </Text>
                       <Text style={styles.receiptSectionMeta}>
                         {receiptItems.length > 0
-                          ? `${receiptItems.length} món · có thể chỉnh sửa`
-                          : 'Có thể nhập từng món bằng tay'}
+                          ? `${receiptItems.length} món`
+                          : 'Nhập từng món nếu cần'}
                       </Text>
                     </View>
                     {isReceiptItemsExpanded ? (
@@ -1965,22 +1960,19 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
                   {isReceiptItemsExpanded ? (
                     <View style={styles.receiptDetailsCard}>
-                      <Text style={styles.receiptHelperText}>
-                        Nhập tên và thành tiền của từng món. Bạn có thể sửa,
-                        thêm hoặc xóa trước khi lưu giao dịch.
-                      </Text>
-
                       {receiptOcrWarnings.map(warning => (
                         <View key={warning} style={styles.ocrWarningRow}>
-                          <AlertTriangle size={15} color="#A15C00" />
-                          <Text style={styles.ocrWarningText}>{warning}</Text>
+                          <Text style={styles.ocrWarningText}>
+                            {warning.replace(
+                              /^Hóa đơn là hóa đơn /i,
+                              'Hóa đơn ',
+                            )}
+                          </Text>
                         </View>
                       ))}
 
                       <View style={styles.receiptItemsHeader}>
-                        <Text style={styles.receiptItemsTitle}>
-                          Chi tiết từng món
-                        </Text>
+                        <Text style={styles.receiptItemsTitle}>Các món</Text>
                         <Text style={styles.receiptItemCount}>
                           {receiptItems.length} món
                         </Text>
@@ -1991,10 +1983,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                           style={styles.receiptItemRow}
                           key={`receipt-item-${index}`}
                         >
-                          <View style={styles.receiptItemIndex}>
-                            <Text style={styles.receiptItemIndexText}>
-                              {index + 1}
+                          <View style={styles.receiptItemHeader}>
+                            <Text style={styles.receiptItemLabel}>
+                              Món {index + 1}
                             </Text>
+                            <TouchableOpacity
+                              style={styles.removeReceiptItemButton}
+                              onPress={() =>
+                                setReceiptItems(current =>
+                                  current.filter(
+                                    (_, currentIndex) => currentIndex !== index,
+                                  ),
+                                )
+                              }
+                              accessibilityLabel={`Xóa món ${index + 1}`}
+                            >
+                              <Text style={styles.removeReceiptItemText}>
+                                Xóa
+                              </Text>
+                            </TouchableOpacity>
                           </View>
                           <View style={styles.receiptItemFields}>
                             <TextInput
@@ -2041,19 +2048,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                               accessibilityLabel={`Thành tiền món ${index + 1}`}
                             />
                           </View>
-                          <TouchableOpacity
-                            style={styles.removeReceiptItemButton}
-                            onPress={() =>
-                              setReceiptItems(current =>
-                                current.filter(
-                                  (_, currentIndex) => currentIndex !== index,
-                                ),
-                              )
-                            }
-                            accessibilityLabel={`Xóa món ${index + 1}`}
-                          >
-                            <X size={16} color="#B84A3A" />
-                          </TouchableOpacity>
                         </View>
                       ))}
 
@@ -2068,7 +2062,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                           }
                           accessibilityLabel="Thêm món hóa đơn"
                         >
-                          <Plus size={16} color={Colors.primary} />
                           <Text style={styles.addReceiptItemText}>
                             Thêm món
                           </Text>
@@ -2080,7 +2073,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                             accessibilityLabel="Xóa toàn bộ chi tiết hóa đơn"
                           >
                             <Text style={styles.clearReceiptDetailsText}>
-                              Xóa chi tiết
+                              Xóa tất cả
                             </Text>
                           </TouchableOpacity>
                         ) : null}
@@ -2115,7 +2108,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                           </Text>
                         ) : enteredTransactionTotal > 0 ? (
                           <View style={styles.receiptDifferenceRow}>
-                            <AlertTriangle size={15} color="#A15C00" />
                             <Text style={styles.receiptDifferenceText}>
                               Chênh lệch{' '}
                               {formatCurrency(
@@ -2799,6 +2791,10 @@ const styles = StyleSheet.create({
   },
   receiptItemsSectionHeader: {
     marginTop: 10,
+    minHeight: 64,
+    borderColor: '#E6DED7',
+    backgroundColor: Colors.white,
+    paddingHorizontal: 16,
   },
   receiptSectionIcon: {
     width: 40,
@@ -2817,20 +2813,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   receiptDetailsCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#F2D9C0',
-    backgroundColor: '#FFFDFC',
-    padding: 13,
-    gap: 10,
-    marginTop: -3,
-  },
-  receiptHelperText: {
-    color: '#7A5438',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '700',
+    borderRadius: 18,
+    backgroundColor: '#F7F5F3',
+    padding: 12,
+    gap: 12,
+    marginTop: 8,
   },
   receiptPickerButton: {
     minHeight: 54,
@@ -2923,16 +2910,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   ocrWarningRow: {
-    borderRadius: 13,
-    backgroundColor: '#FFF3D8',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    padding: 10,
+    borderRadius: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: '#D9A441',
+    backgroundColor: '#FFF9EA',
+    paddingHorizontal: 11,
+    paddingVertical: 9,
   },
   ocrWarningText: {
-    flex: 1,
-    color: '#8B5700',
+    color: '#785621',
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '700',
@@ -2947,36 +2933,27 @@ const styles = StyleSheet.create({
   receiptItemsTitle: { color: '#4C2A18', fontWeight: '900' },
   receiptItemCount: { color: '#8A623F', fontSize: 12, fontWeight: '900' },
   receiptItemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    borderRadius: 16,
+    gap: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#EDC596',
-    backgroundColor: '#FFF8F1',
-    padding: 10,
+    borderColor: '#E5DED8',
+    backgroundColor: Colors.white,
+    padding: 12,
   },
-  receiptItemIndex: {
-    width: 27,
-    height: 27,
-    borderRadius: 10,
-    backgroundColor: '#FFF0DF',
+  receiptItemHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 5,
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  receiptItemIndexText: {
-    color: '#A94F18',
-    fontSize: 11,
-    fontWeight: '900',
-  },
+  receiptItemLabel: { color: '#6E5A4B', fontSize: 12, fontWeight: '800' },
   receiptItemFields: { flex: 1, minWidth: 0, gap: 8 },
   receiptItemNameInput: {
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#F0D1B3',
-    backgroundColor: Colors.white,
+    borderColor: '#E6DFD9',
+    backgroundColor: '#FAF9F8',
     color: '#4C2A18',
     fontWeight: '800',
     fontSize: 14,
@@ -2986,11 +2963,11 @@ const styles = StyleSheet.create({
   },
   receiptItemAmountInput: {
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#F2D1A4',
-    backgroundColor: '#FFF0DF',
-    color: '#9A4D00',
+    borderColor: '#E6DFD9',
+    backgroundColor: '#FAF9F8',
+    color: '#4C2A18',
     fontWeight: '900',
     fontSize: 14,
     paddingHorizontal: 12,
@@ -2998,32 +2975,27 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   removeReceiptItemButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: '#FFF2EE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
   },
+  removeReceiptItemText: { color: '#B84A3A', fontSize: 12, fontWeight: '800' },
   receiptDetailActions: { flexDirection: 'row', gap: 8 },
   addReceiptItemButton: {
     minHeight: 42,
-    borderRadius: 13,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E8B680',
-    backgroundColor: '#FFF6EF',
+    borderColor: '#DDD5CE',
+    backgroundColor: Colors.white,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
     flex: 1,
   },
-  addReceiptItemText: { color: Colors.primary, fontWeight: '900' },
+  addReceiptItemText: { color: '#5D493B', fontWeight: '900' },
   clearReceiptDetailsButton: {
     minHeight: 42,
-    borderRadius: 13,
-    backgroundColor: '#FFF2EE',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 13,
@@ -3034,8 +3006,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   receiptSummary: {
-    borderRadius: 15,
-    backgroundColor: '#FFF6EF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5DED8',
+    backgroundColor: Colors.white,
     padding: 12,
     gap: 7,
   },
@@ -3048,11 +3022,8 @@ const styles = StyleSheet.create({
   receiptSummaryLabel: { color: '#7A5438', fontWeight: '800' },
   receiptSummaryValue: { color: '#4C2A18', fontWeight: '900' },
   receiptDifferenceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
     borderTopWidth: 1,
-    borderTopColor: '#F0D4BA',
+    borderTopColor: '#E9E2DC',
     paddingTop: 8,
   },
   receiptDifferenceText: {
