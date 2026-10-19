@@ -1,13 +1,10 @@
 import { bankNotificationReader } from '../native/bankNotificationReader';
 import type {
-  BankAppRule,
   BankNotificationEvent,
+  BankTransactionDraft,
 } from '../types/bankNotification';
-import type { Category } from '../types/category';
-import type { Wallet } from '../types/wallet';
 import { parseBankNotification } from '../utils/bankNotificationParser';
 import { bankNotificationSettings } from './bankNotificationSettings';
-import { transactionsService } from './transactions';
 
 export type BankNotificationSyncResult = {
   created: number;
@@ -17,60 +14,29 @@ export type BankNotificationSyncResult = {
 
 let activeSync: Promise<BankNotificationSyncResult> | null = null;
 
-const resolveMapping = (
+export const buildBankTransactionDraft = (
   event: BankNotificationEvent,
-  rule: BankAppRule,
-  wallets: Wallet[],
-  categories: Category[],
-) => {
+): BankTransactionDraft => {
   const parsed = parseBankNotification(event);
-  const wallet = wallets.find(item => item.id === rule.walletId);
-  const categoryId =
-    parsed.type === 'INCOME' ? rule.incomeCategoryId : rule.expenseCategoryId;
-  const category = categories.find(item => item.id === categoryId);
-  const isValid =
-    parsed.status === 'READY' &&
-    wallet &&
-    category &&
-    category.type === parsed.type &&
-    (category.cash_flow_group ?? 'NORMAL') === 'NORMAL' &&
-    wallet.currency.toUpperCase() === parsed.currency;
-
-  return { parsed, wallet, category, isValid: Boolean(isValid) };
-};
-
-export const createTransactionFromBankEvent = async (options: {
-  token: string;
-  userId: number;
-  event: BankNotificationEvent;
-  rule: BankAppRule;
-  wallets: Wallet[];
-  categories: Category[];
-}) => {
-  const { parsed, wallet, category, isValid } = resolveMapping(
-    options.event,
-    options.rule,
-    options.wallets,
-    options.categories,
-  );
-  if (!isValid || !wallet || !category || !parsed.type || !parsed.amount) {
+  if (
+    parsed.status !== 'READY' ||
+    !parsed.type ||
+    !parsed.amount ||
+    !parsed.currency
+  ) {
     throw new Error(
-      parsed.reason ?? 'Hãy chọn đúng ví và danh mục trước khi lưu.',
+      parsed.reason ?? 'Thông báo chưa đủ dữ liệu để tạo giao dịch.',
     );
   }
 
-  const transaction = await transactionsService.create(options.token, {
-    wallet_id: wallet.id,
-    category_id: category.id,
+  return {
+    eventId: event.id,
     amount: parsed.amount,
     type: parsed.type,
+    currency: parsed.currency,
     note: parsed.note,
-    transaction_date: parsed.transactionDate,
-    source: 'BANK_NOTIFICATION',
-    source_ref: options.event.id,
-  });
-  await bankNotificationReader.markProcessed(options.userId, options.event.id);
-  return transaction;
+    transactionDate: parsed.transactionDate,
+  };
 };
 
 const runSync = async (userId: number): Promise<BankNotificationSyncResult> => {

@@ -45,6 +45,7 @@ import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
+import type { BankTransactionDraft } from '../types/bankNotification';
 import { useAuth } from '../context/AuthContext';
 import { Colors } from '../constants/Colors';
 
@@ -71,7 +72,11 @@ export type RootStackParamList = {
     returnTo: 'CurrencySetup' | 'Profile' | 'Wallets';
   };
   Main:
-    | { financialDraftId?: string; editTransaction?: TransactionItem }
+    | {
+        financialDraftId?: string;
+        editTransaction?: TransactionItem;
+        bankTransactionDraft?: BankTransactionDraft;
+      }
     | undefined;
   Wallets:
     | {

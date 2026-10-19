@@ -58,7 +58,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
-import { transactionsService } from '../../services/transactions';
+import {
+  transactionsService,
+  type CreateTransactionPayload,
+} from '../../services/transactions';
 import {
   createClientRequestId,
   isRetryableOfflineTransactionError,
@@ -105,6 +108,7 @@ import type { ReceiptItem, ReceiptOcrResult } from '../../types/transaction';
 import type { SavingsGoal } from '../../types/savings';
 import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
+import type { BankTransactionDraft } from '../../types/bankNotification';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -264,6 +268,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [activeFinancialDraftId, setActiveFinancialDraftId] = useState<
     string | null
   >(null);
+  const [activeBankNotificationEventId, setActiveBankNotificationEventId] =
+    useState<string | null>(null);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -712,6 +718,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const resetTransactionForm = () => {
     receiptRequestVersion.current += 1;
     setIsChatDraft(false);
+    setActiveBankNotificationEventId(null);
     setChatDraftCurrency(null);
     setTransactionAmount('');
     setTransactionDate(new Date());
@@ -1058,6 +1065,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setIsModalVisible(true);
   };
 
+  const applyBankTransactionDraft = (draft: BankTransactionDraft) => {
+    resetTransactionForm();
+    setIsChatDraft(true);
+    setActiveBankNotificationEventId(draft.eventId);
+    setChatDraftCurrency(draft.currency);
+    setTransactionEntryType(draft.type);
+    setTransactionAmount(draft.amount);
+    setTransactionNote(draft.note);
+    setTransactionDate(parseDateKey(draft.transactionDate));
+    setSelectedWalletId(null);
+    setSelectedTransactionCategory(null);
+    setIsModalVisible(true);
+  };
+
+  const applyBankTransactionDraftRef = useRef<
+    (draft: BankTransactionDraft) => void
+  >(() => undefined);
+  applyBankTransactionDraftRef.current = applyBankTransactionDraft;
+
   const applyCapturedTransactionDraftRef = useRef<
     (draft: ChatTransactionDraft) => void
   >(() => undefined);
@@ -1108,6 +1134,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setActiveTab('history');
     navigation.setParams({ editTransaction: undefined });
   }, [navigation, route?.params?.editTransaction]);
+
+  useEffect(() => {
+    const draft = route?.params?.bankTransactionDraft;
+    if (!draft) return;
+    applyBankTransactionDraftRef.current(draft);
+    navigation.setParams({ bankTransactionDraft: undefined });
+  }, [navigation, route?.params?.bankTransactionDraft]);
 
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
@@ -1259,7 +1292,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       const transactionType =
         selectedTransactionCategory.type === 'INCOME' ? 'income' : 'expense';
       const clientRequestId = createClientRequestId();
-      const createPayload = {
+      const createPayload: CreateTransactionPayload = {
         wallet_id: selectedWallet.id,
         category_id: selectedTransactionCategory.id,
         amount: normalizedAmount,
@@ -1269,6 +1302,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
         transaction_date: toDateKey(transactionDate),
         tags: parseTagsInput(transactionTags),
+        source: activeBankNotificationEventId
+          ? 'BANK_NOTIFICATION'
+          : undefined,
+        source_ref: activeBankNotificationEventId ?? undefined,
         client_request_id: clientRequestId,
       };
       let createdTransaction;
@@ -1280,6 +1317,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
           await offlineTransactionQueue.enqueue(user.id, createPayload);
+          if (activeBankNotificationEventId) {
+            await bankNotificationReader
+              .markProcessed(user.id, activeBankNotificationEventId)
+              .catch(() => undefined);
+          }
           if (activeFinancialDraftId) {
             await financialCaptureInbox
               .remove(user.id, activeFinancialDraftId)
@@ -1321,6 +1363,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         } catch {
           receiptUploadFailed = true;
         }
+      }
+
+      if (activeBankNotificationEventId && user?.id) {
+        await bankNotificationReader
+          .markProcessed(user.id, activeBankNotificationEventId)
+          .catch(() => undefined);
       }
 
       await fetchDashboardData();
@@ -1465,7 +1513,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
               </View>
               <Text style={styles.modalDescription}>
-                {isChatDraft
+                {activeBankNotificationEventId
+                  ? `Từ thông báo ngân hàng${
+                      chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
+                    }. Hãy chọn ví và danh mục rồi kiểm tra trước khi lưu.`
+                  : isChatDraft
                   ? `Bản nháp từ chatbot${
                       chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
                     }. Kiểm tra thông tin rồi bấm Lưu.`

@@ -1,6 +1,9 @@
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import { bankNotificationSettings } from '../bankNotificationSettings';
-import { syncBankNotifications } from '../bankNotificationSync';
+import {
+  buildBankTransactionDraft,
+  syncBankNotifications,
+} from '../bankNotificationSync';
 import { transactionsService } from '../transactions';
 
 jest.mock('../../native/bankNotificationReader', () => ({
@@ -71,6 +74,26 @@ describe('syncBankNotifications', () => {
     });
     expect(create).not.toHaveBeenCalled();
     expect(bankNotificationReader.markProcessed).not.toHaveBeenCalled();
+  });
+
+  it('builds a normal transaction draft without choosing a wallet', () => {
+    const draft = buildBankTransactionDraft({
+      id: 'bank-event-draft',
+      packageName: 'vn.bank.app',
+      appName: 'Ngân hàng',
+      title: 'Biến động số dư',
+      text: 'Tài khoản ghi nợ -125.000 VND tại GRAB. Số dư 3.450.000 VND',
+      postedAt: new Date('2026-10-20T03:00:00.000Z').getTime(),
+    });
+
+    expect(draft).toMatchObject({
+      eventId: 'bank-event-draft',
+      type: 'EXPENSE',
+      amount: '125000',
+      currency: 'VND',
+    });
+    expect(draft).not.toHaveProperty('walletId');
+    expect(draft).not.toHaveProperty('categoryId');
   });
 
   it('dismisses OTP notifications without creating a transaction', async () => {

@@ -34,3 +34,12 @@ export type ParsedBankNotification = {
   note: string;
   reason?: string;
 };
+
+export type BankTransactionDraft = {
+  eventId: string;
+  type: 'INCOME' | 'EXPENSE';
+  amount: string;
+  currency: string;
+  note: string;
+  transactionDate: string;
+};

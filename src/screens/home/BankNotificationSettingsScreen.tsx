@@ -26,18 +26,14 @@ import { useAuth } from '../../context/AuthContext';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { bankNotificationSettings } from '../../services/bankNotificationSettings';
-import { createTransactionFromBankEvent } from '../../services/bankNotificationSync';
-import { categoriesService } from '../../services/categories';
+import { buildBankTransactionDraft } from '../../services/bankNotificationSync';
 import { transactionsService } from '../../services/transactions';
-import { walletsService } from '../../services/wallets';
 import type {
   BankAppRule,
   BankNotificationEvent,
   LaunchableAndroidApp,
 } from '../../types/bankNotification';
-import type { Category } from '../../types/category';
 import type { ApiTransaction } from '../../types/transaction';
-import type { Wallet } from '../../types/wallet';
 import { parseBankNotification } from '../../utils/bankNotificationParser';
 import {
   findBestEvidenceMatch,
@@ -78,8 +74,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [apps, setApps] = useState<LaunchableAndroidApp[]>([]);
   const [rules, setRules] = useState<BankAppRule[]>([]);
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [pendingEvents, setPendingEvents] = useState<BankNotificationEvent[]>(
     [],
   );
@@ -97,8 +91,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         access,
         installedApps,
         storedRules,
-        nextWallets,
-        nextCategories,
         events,
         storedShakeEnabled,
         recentResponse,
@@ -106,8 +98,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         bankNotificationReader.isNotificationAccessGranted(),
         bankNotificationReader.getLaunchableApps(),
         bankNotificationSettings.getRules(user.id),
-        walletsService.getAll(token),
-        categoriesService.getAll(token),
         bankNotificationReader.getPendingEvents(user.id),
         bankNotificationSettings.getShakeEnabled(user.id),
         transactionsService.getPage(token, {
@@ -121,14 +111,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
       setPermissionGranted(access);
       setApps(installedApps);
       setRules(storedRules);
-      setWallets(
-        nextWallets.filter(wallet => wallet.wallet_type !== 'SAVINGS'),
-      );
-      setCategories(
-        nextCategories.filter(
-          category => (category.cash_flow_group ?? 'NORMAL') === 'NORMAL',
-        ),
-      );
       setPendingEvents(events.sort((a, b) => b.postedAt - a.postedAt));
       setShakeEnabled(storedShakeEnabled);
       setRecentTransactions(recentResponse.data);
@@ -250,70 +232,20 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     }
   };
 
-  const handleCreate = async (event: BankNotificationEvent) => {
-    if (!token || !user) return;
-    const rule = rules.find(item => item.packageName === event.packageName);
-    if (!rule) {
-      Alert.alert(
-        'Chưa có cấu hình',
-        'Hãy bật app ngân hàng và chọn ví, danh mục.',
-      );
-      return;
-    }
-    setBusyEventId(event.id);
+  const openTransactionDraft = (event: BankNotificationEvent) => {
     try {
-      await createTransactionFromBankEvent({
-        token,
-        userId: user.id,
-        event,
-        rule,
-        wallets,
-        categories,
+      navigation.navigate('Main', {
+        bankTransactionDraft: buildBankTransactionDraft(event),
       });
-      setPendingEvents(current => current.filter(item => item.id !== event.id));
-      Alert.alert('Đã thêm giao dịch', 'Số dư và lịch sử đã được cập nhật.');
     } catch (error) {
       Alert.alert(
         'Cần kiểm tra lại',
         getUserFriendlyErrorMessage(
           error,
-          'Thông báo chưa đủ rõ hoặc cấu hình ví, danh mục chưa phù hợp.',
+          'Thông báo chưa đủ rõ để điền vào giao dịch.',
         ),
       );
-    } finally {
-      setBusyEventId(null);
     }
-  };
-
-  const confirmCreate = (event: BankNotificationEvent) => {
-    const parsed = parseBankNotification(event);
-    if (
-      parsed.status !== 'READY' ||
-      !parsed.type ||
-      !parsed.amount ||
-      !parsed.currency
-    ) {
-      Alert.alert(
-        'Cần kiểm tra lại',
-        parsed.reason ?? 'Thông báo chưa đủ dữ liệu để tạo giao dịch.',
-      );
-      return;
-    }
-    const direction = parsed.type === 'INCOME' ? 'Tiền vào +' : 'Tiền ra -';
-    Alert.alert(
-      'Xác nhận thêm giao dịch',
-      `${direction} ${formatCurrency(
-        Number(parsed.amount),
-        parsed.currency,
-      )}\nNgày ${parsed.transactionDate}\n\n${parsed.note}`,
-      [
-        { text: 'Quay lại', style: 'cancel' },
-        {
-          text: 'Xác nhận',
-          onPress: () => handleCreate(event).catch(() => undefined),
-        },
-      ],
-    );
   };
 
   const dismissEvent = async (eventId: string) => {
@@ -455,12 +387,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
         {visibleApps.map(app => {
           const rule = rules.find(item => item.packageName === app.packageName);
           const enabled = Boolean(rule?.enabled);
-          const incomeCategories = categories.filter(
-            item => item.type === 'INCOME',
-          );
-          const expenseCategories = categories.filter(
-            item => item.type === 'EXPENSE',
-          );
           return (
             <View style={styles.appCard} key={app.packageName}>
               <View style={styles.appHeader}>
@@ -480,49 +406,9 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
 
               {enabled ? (
                 <View style={styles.ruleBody}>
-                  <Text style={styles.fieldLabel}>Cách xử lý</Text>
-                  <View style={styles.modeRow}>
-                    <View style={[styles.modeChip, styles.selectedChip]}>
-                      <Text style={[styles.chipText, styles.selectedChipText]}>
-                        Luôn duyệt trước
-                      </Text>
-                    </View>
-                  </View>
-
-                  <RuleSelector
-                    label="Ghi vào ví"
-                    items={wallets.map(wallet => ({
-                      id: wallet.id,
-                      label: `${wallet.name} · ${wallet.currency}`,
-                    }))}
-                    selectedId={rule?.walletId}
-                    onSelect={walletId => updateRule(app, { walletId })}
-                  />
-                  <RuleSelector
-                    label="Danh mục tiền vào"
-                    items={incomeCategories.map(category => ({
-                      id: category.id,
-                      label: category.name,
-                    }))}
-                    selectedId={rule?.incomeCategoryId}
-                    onSelect={incomeCategoryId =>
-                      updateRule(app, { incomeCategoryId })
-                    }
-                  />
-                  <RuleSelector
-                    label="Danh mục tiền ra"
-                    items={expenseCategories.map(category => ({
-                      id: category.id,
-                      label: category.name,
-                    }))}
-                    selectedId={rule?.expenseCategoryId}
-                    onSelect={expenseCategoryId =>
-                      updateRule(app, { expenseCategoryId })
-                    }
-                  />
                   <Text style={styles.autoWarning}>
-                    App tự đọc và chuẩn bị bản xem trước; chỉ ghi tiền sau khi
-                    bạn nhấn xác nhận.
+                    Nova chỉ điền thu/chi, số tiền và nội dung. Ví và danh mục
+                    được chọn trong màn tạo giao dịch trước khi lưu.
                   </Text>
                 </View>
               ) : null}
@@ -647,12 +533,12 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
                   parsed.status !== 'READY' && styles.disabledButton,
                 ]}
                 disabled={parsed.status !== 'READY' || busyEventId === event.id}
-                onPress={() => confirmCreate(event)}
+                onPress={() => openTransactionDraft(event)}
               >
                 {busyEventId === event.id ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.createButtonText}>Thêm vào lịch sử</Text>
+                  <Text style={styles.createButtonText}>Tạo giao dịch</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -662,47 +548,6 @@ const BankNotificationSettingsScreen = ({ navigation }: Props) => {
     </SafeAreaView>
   );
 };
-
-const RuleSelector = ({
-  label,
-  items,
-  selectedId,
-  onSelect,
-}: {
-  label: string;
-  items: Array<{ id: number; label: string }>;
-  selectedId?: number;
-  onSelect: (id: number) => void;
-}) => (
-  <View style={styles.selectorWrap}>
-    <Text style={styles.fieldLabel}>{label}</Text>
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipScroll}
-    >
-      {items.map(item => (
-        <TouchableOpacity
-          key={item.id}
-          style={[
-            styles.optionChip,
-            selectedId === item.id && styles.selectedChip,
-          ]}
-          onPress={() => onSelect(item.id)}
-        >
-          <Text
-            style={[
-              styles.chipText,
-              selectedId === item.id && styles.selectedChipText,
-            ]}
-          >
-            {item.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF3E8' },
@@ -805,37 +650,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#F0D7C1',
     marginTop: 12,
     paddingTop: 12,
-  },
-  fieldLabel: {
-    color: '#70482E',
-    fontWeight: '900',
-    fontSize: 12,
-    marginBottom: 7,
-  },
-  modeRow: { flexDirection: 'row', gap: 8 },
-  modeChip: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: '#DFC1A4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF9F3',
-  },
-  selectedChip: { backgroundColor: '#C76708', borderColor: '#C76708' },
-  selectedChipText: { color: '#FFFFFF' },
-  chipText: { color: '#70482E', fontWeight: '800', fontSize: 12 },
-  selectorWrap: { marginTop: 14 },
-  chipScroll: { gap: 8, paddingRight: 10 },
-  optionChip: {
-    minHeight: 39,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: '#DFC1A4',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    backgroundColor: '#FFF9F3',
   },
   autoWarning: {
     color: '#9A4D00',
