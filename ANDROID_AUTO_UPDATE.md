@@ -31,3 +31,9 @@ ký, tạo `update.json`, kiểm tra chữ ký và đưa cả hai file lên GitH
 
 Không bật **Bắt buộc cập nhật** trừ khi phiên bản cũ không còn an toàn hoặc không
 tương thích với máy chủ.
+
+## Quy ước phát hành của dự án
+
+- Khi phát hành APK mới, chỉ cập nhật GitHub Release và manifest tự cập nhật của ứng dụng.
+- Không sửa hoặc triển khai lại trang tải APK công khai nếu người dùng chưa yêu cầu riêng việc cập nhật trang web.
+- Bản Android local trên máy phát triển phải được build và cài lại riêng; phát hành GitHub không tự thay APK đang chạy trong máy ảo.
