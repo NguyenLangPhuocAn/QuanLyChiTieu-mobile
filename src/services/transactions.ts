@@ -138,6 +138,8 @@ export const transactionsService = {
       `/transactions/${id}/receipt`,
       token,
       file,
+      'POST',
+      60_000,
     );
   },
 
@@ -154,7 +156,7 @@ export const transactionsService = {
       token,
       file,
       'POST',
-      45_000,
+      90_000,
     );
   },
 };

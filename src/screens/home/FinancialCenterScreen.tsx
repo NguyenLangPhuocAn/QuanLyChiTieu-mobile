@@ -565,7 +565,9 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
           </Text>
           <Text style={styles.helperText}>
             {incomeReductionPercent === 0
-              ? emergency.gap > 0
+              ? emergency.essentialMonthlyExpense <= 0
+                ? 'Chưa đủ lịch sử chi để đánh giá quỹ khẩn cấp.'
+                : emergency.gap > 0
                 ? `Còn thiếu ${formatCurrency(emergency.gap, currency)} để đủ ${
                     emergency.targetMonths
                   } tháng chi thiết yếu.`

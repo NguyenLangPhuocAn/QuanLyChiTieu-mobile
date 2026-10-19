@@ -1,4 +1,5 @@
 import {
+  buildFinancialHealthActions,
   calculateFinancialHealthBreakdown,
   calculateFinancialHealthScore,
 } from '../src/screens/home/OverviewScreen';
@@ -56,5 +57,18 @@ describe('calculateFinancialHealthScore', () => {
     expect(result.reserveMonths).toBeCloseTo(1.5);
     expect(result.reserveTarget).toBe(12_000_000);
     expect(result.reserveGap).toBe(6_000_000);
+  });
+
+  it('does not claim the emergency reserve is complete before expense history exists', () => {
+    const result = calculateFinancialHealthBreakdown({
+      income: 0,
+      expense: 0,
+      totalBalance: 0,
+      budgetPercents: [],
+    });
+
+    expect(buildFinancialHealthActions(result, 0, 'VND')[1]).toContain(
+      'Ghi nhận chi tiêu',
+    );
   });
 });

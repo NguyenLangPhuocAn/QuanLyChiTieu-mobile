@@ -53,7 +53,25 @@ describe('receipt transaction service', () => {
       'token-123',
       file,
       'POST',
-      45_000,
+      90_000,
+    );
+  });
+
+  it('allows a slow phone connection to finish uploading a receipt image', () => {
+    const file = {
+      uri: 'file:///receipt.jpg',
+      name: 'receipt.jpg',
+      type: 'image/jpeg',
+    };
+
+    transactionsService.uploadReceipt('token-123', 42, file);
+
+    expect(mockedUpload).toHaveBeenCalledWith(
+      '/transactions/42/receipt',
+      'token-123',
+      file,
+      'POST',
+      60_000,
     );
   });
 });

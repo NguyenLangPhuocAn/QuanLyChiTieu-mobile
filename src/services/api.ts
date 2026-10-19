@@ -151,9 +151,15 @@ const sanitizeErrorMessage = (message: string) => {
   return trimmed;
 };
 
-const getFriendlyErrorMessage = (status: number, payload: unknown) => {
+const getFriendlyErrorMessage = (
+  status: number,
+  payload: unknown,
+  publicRequest = false,
+) => {
   if (status === 401) {
-    return SESSION_EXPIRED_MESSAGE;
+    return publicRequest
+      ? sanitizeErrorMessage(parseErrorMessage(payload))
+      : SESSION_EXPIRED_MESSAGE;
   }
   if (status === 403) return FORBIDDEN_MESSAGE;
 
@@ -424,7 +430,11 @@ export const apiRequest = async <T>(
         }
 
         throw new ApiError(
-          getFriendlyErrorMessage(response.status, payload),
+          getFriendlyErrorMessage(
+            response.status,
+            payload,
+            authMode === 'none',
+          ),
           response.status,
           parseErrorCode(payload),
         );

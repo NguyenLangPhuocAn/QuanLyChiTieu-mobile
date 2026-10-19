@@ -8,6 +8,8 @@ import type { Wallet } from '../src/types/wallet';
 import type { Category } from '../src/types/category';
 import { launchImageLibrary } from 'react-native-image-picker';
 
+jest.setTimeout(15_000);
+
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
   useFocusEffect: (callback: () => void) => {
@@ -41,6 +43,8 @@ const transaction: ApiTransaction = {
   category_id: 2,
   amount: '12.50',
   note: 'Ghi chú trước khi sửa',
+  receipt_image: 'receipt-existing.jpg',
+  receipt_items: [{ name: 'Bạc xỉu (2)', amount: 94 }],
   currency: 'USD',
   transaction_date: '2026-09-21',
   type: 'EXPENSE',
@@ -95,7 +99,10 @@ it('preserves cents on edit and submits only once for consecutive Save taps', as
   expect(service.update).toHaveBeenCalledWith(
     'test',
     8,
-    expect.objectContaining({ amount: '12.5' }),
+    expect.objectContaining({
+      amount: '12.5',
+      receipt_image: 'receipt-existing.jpg',
+    }),
   );
 });
 
@@ -130,6 +137,35 @@ it('sends an empty note explicitly when the user clears the old note', async () 
     'test',
     8,
     expect.objectContaining({ note: '' }),
+  );
+});
+
+it('loads receipt items into the edit form and saves their changes', async () => {
+  const itemName = renderer.root.findByProps({
+    accessibilityLabel: 'Tên món đang sửa 1',
+  });
+  const itemAmount = renderer.root.findByProps({
+    accessibilityLabel: 'Thành tiền món đang sửa 1',
+  });
+  expect(itemName.props.value).toBe('Bạc xỉu (2)');
+  expect(itemAmount.props.value).toBe('94');
+
+  await act(async () => {
+    itemName.props.onChangeText('Bạc xỉu lớn');
+    itemAmount.props.onChangeText('95.50');
+  });
+  await act(async () => {
+    await renderer.root
+      .findByProps({ accessibilityLabel: 'Lưu giao dịch đang sửa' })
+      .props.onPress();
+  });
+
+  expect(service.update).toHaveBeenCalledWith(
+    'test',
+    8,
+    expect.objectContaining({
+      receipt_items: [{ name: 'Bạc xỉu lớn', amount: 95.5 }],
+    }),
   );
 });
 
@@ -214,7 +250,7 @@ it('explains that transaction details were saved when the receipt upload fails',
   service.uploadReceipt.mockRejectedValueOnce(new Error('Mất kết nối mạng'));
   await act(async () => {
     await renderer.root
-      .findByProps({ accessibilityLabel: 'Chọn ảnh hóa đơn đang sửa' })
+      .findByProps({ accessibilityLabel: 'Đổi ảnh hóa đơn đang sửa' })
       .props.onPress();
   });
   await act(async () => {

@@ -138,6 +138,36 @@ export const calculateFinancialHealthScore = (input: FinancialHealthInput) => {
   return { score, label };
 };
 
+export const buildFinancialHealthActions = (
+  financialHealth: ReturnType<typeof calculateFinancialHealthBreakdown>,
+  income: number,
+  preferredCurrency: string,
+) => [
+  income <= 0
+    ? 'Ghi nhận thu nhập trong kỳ để đánh giá dòng tiền chính xác hơn.'
+    : financialHealth.savingTargetGap > 0
+      ? `Giữ lại thêm ${formatCurrency(
+          financialHealth.savingTargetGap,
+          preferredCurrency,
+        )} để đạt mức dư 20% thu nhập.`
+      : 'Dòng tiền đã đạt mức dư tối thiểu 20% thu nhập.',
+  financialHealth.expenseBaseline <= 0
+    ? 'Ghi nhận chi tiêu trong vài tháng để tính mục tiêu quỹ dự phòng.'
+    : financialHealth.reserveGap > 0
+      ? `Quỹ dự phòng còn thiếu ${formatCurrency(
+          financialHealth.reserveGap,
+          preferredCurrency,
+        )} để đủ 3 tháng chi tiêu theo mức trung bình gần đây.`
+      : 'Quỹ dự phòng đã đủ ít nhất 3 tháng chi tiêu trung bình.',
+  financialHealth.averageBudgetPercent === null
+    ? 'Tạo ít nhất một ngân sách để điểm phản ánh khả năng kiểm soát chi tiêu.'
+    : financialHealth.averageBudgetPercent > 1
+      ? 'Ngân sách đang vượt hạn mức; ưu tiên giảm các nhóm đã dùng quá 100%.'
+      : financialHealth.averageBudgetPercent > 0.8
+        ? 'Ngân sách đã dùng trên 80%; hạn chế khoản không thiết yếu đến cuối kỳ.'
+        : 'Mức dùng ngân sách hiện nằm trong ngưỡng an toàn dưới 80%.',
+];
+
 const MONTHS = Array.from({ length: 12 }, (_, index) => index);
 
 const getTotalByType = (
@@ -500,29 +530,11 @@ const OverviewScreen = ({
     budgetPercents: budgetRows.map(row => row.percent),
     monthlyExpenseBaseline: lastThreeAverageExpense,
   });
-  const financialHealthActions = [
-    income <= 0
-      ? 'Ghi nhận thu nhập trong kỳ để đánh giá dòng tiền chính xác hơn.'
-      : financialHealth.savingTargetGap > 0
-        ? `Giữ lại thêm ${formatCurrency(
-            financialHealth.savingTargetGap,
-            preferredCurrency,
-          )} để đạt mức dư 20% thu nhập.`
-        : 'Dòng tiền đã đạt mức dư tối thiểu 20% thu nhập.',
-    financialHealth.reserveGap > 0
-      ? `Quỹ dự phòng còn thiếu ${formatCurrency(
-          financialHealth.reserveGap,
-          preferredCurrency,
-        )} để đủ 3 tháng chi tiêu theo mức trung bình gần đây.`
-      : 'Quỹ dự phòng đã đủ ít nhất 3 tháng chi tiêu trung bình.',
-    financialHealth.averageBudgetPercent === null
-      ? 'Tạo ít nhất một ngân sách để điểm phản ánh khả năng kiểm soát chi tiêu.'
-      : financialHealth.averageBudgetPercent > 1
-        ? 'Ngân sách đang vượt hạn mức; ưu tiên giảm các nhóm đã dùng quá 100%.'
-        : financialHealth.averageBudgetPercent > 0.8
-          ? 'Ngân sách đã dùng trên 80%; hạn chế khoản không thiết yếu đến cuối kỳ.'
-          : 'Mức dùng ngân sách hiện nằm trong ngưỡng an toàn dưới 80%.',
-  ];
+  const financialHealthActions = buildFinancialHealthActions(
+    financialHealth,
+    income,
+    preferredCurrency,
+  );
 
   const moveMonth = (amount: number) => {
     setSelectedMonth(

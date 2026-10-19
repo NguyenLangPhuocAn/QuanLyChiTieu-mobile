@@ -923,9 +923,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     try {
       const options = {
         mediaType: 'photo',
-        maxWidth: 1600,
-        maxHeight: 2400,
-        quality: 0.7,
+        maxWidth: 1280,
+        maxHeight: 1920,
+        quality: 0.6,
         ...(source === 'library' ? { selectionLimit: 1 as const } : {}),
       } as const;
       result =

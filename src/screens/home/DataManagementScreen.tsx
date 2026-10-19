@@ -348,6 +348,14 @@ const DataManagementScreen = () => {
     user?.currency_default ??
     'VND';
 
+  const formatPreviewDate = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleDateString('vi-VN');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -358,17 +366,25 @@ const DataManagementScreen = () => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
 
+        <Text style={styles.title}>Dữ liệu và xuất nhập</Text>
+        <View style={styles.headerButton} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
         {excelPreview ? (
           <View style={styles.previewCard}>
             <View style={styles.previewHeader}>
               <View style={styles.actionCopy}>
-                <Text style={styles.cardTitle}>Chọn dòng sẽ nhập</Text>
+                <Text style={styles.previewTitle}>Xem trước dữ liệu nhập</Text>
                 <Text style={styles.cardText}>
                   {excelPreview.result.totalRows} dòng · sẵn sàng{' '}
                   {excelPreview.result.ready} · trùng{' '}
                   {excelPreview.result.duplicates} · lỗi{' '}
                   {excelPreview.result.invalid} · không hỗ trợ{' '}
-                  {excelPreview.result.unsupported}. Chưa ghi dữ liệu.
+                  {excelPreview.result.unsupported}
+                </Text>
+                <Text style={styles.previewNotice}>
+                  Chưa có dữ liệu nào được ghi. Dòng trùng và dòng lỗi không thể chọn.
                 </Text>
               </View>
               <TouchableOpacity
@@ -377,44 +393,73 @@ const DataManagementScreen = () => {
                 style={styles.previewClose}
                 onPress={closeExcelPreview}
               >
-                <Text style={styles.previewCloseText}>Hủy</Text>
+                <Text style={styles.previewCloseText}>Đóng</Text>
               </TouchableOpacity>
             </View>
-            {excelPreview.result.rows
-              .filter(row => row.status === 'READY')
-              .map(row => {
-                const selected = excelPreview.selectedRows.includes(row.row);
-                return (
-                  <TouchableOpacity
-                    key={row.row}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected }}
-                    style={styles.previewRow}
-                    onPress={() => toggleExcelRow(row.row)}
-                  >
+            {excelPreview.result.rows.map(row => {
+              const isReady = row.status === 'READY';
+              const selected = excelPreview.selectedRows.includes(row.row);
+              const statusLabel =
+                row.status === 'READY'
+                  ? 'Sẵn sàng'
+                  : row.status === 'DUPLICATE'
+                  ? 'Đã có trong dữ liệu'
+                  : row.status === 'INVALID'
+                  ? 'Dữ liệu không hợp lệ'
+                  : 'Chưa hỗ trợ';
+              return (
+                <TouchableOpacity
+                  key={row.row}
+                  accessibilityRole={isReady ? 'checkbox' : 'text'}
+                  accessibilityState={isReady ? { checked: selected } : undefined}
+                  disabled={!isReady}
+                  style={[styles.previewRow, !isReady && styles.previewRowMuted]}
+                  onPress={() => toggleExcelRow(row.row)}
+                >
+                  {isReady ? (
                     <View
                       style={[
                         styles.previewCheckbox,
                         selected && styles.previewCheckboxSelected,
                       ]}
                     >
-                      {selected ? (
-                        <Text style={styles.previewCheck}>✓</Text>
-                      ) : null}
+                      {selected ? <Text style={styles.previewCheck}>✓</Text> : null}
                     </View>
-                    <View style={styles.actionCopy}>
+                  ) : (
+                    <View style={styles.previewStatusIcon}>
+                      <Text style={styles.previewStatusIconText}>!</Text>
+                    </View>
+                  )}
+                  <View style={styles.actionCopy}>
+                    <View style={styles.previewRowHeader}>
                       <Text style={styles.previewAmount}>
                         Dòng {row.row} · {row.type === 'INCOME' ? 'Thu' : 'Chi'}{' '}
                         {formatCurrency(row.amount ?? 0, 'VND')}
                       </Text>
-                      <Text style={styles.draftMeta} numberOfLines={2}>
-                        {row.wallet} · {row.category || 'Chưa có danh mục'}
-                        {row.note ? ` · ${row.note}` : ''}
+                      <Text
+                        style={[
+                          styles.previewStatus,
+                          isReady
+                            ? styles.previewStatusReady
+                            : styles.previewStatusBlocked,
+                        ]}
+                      >
+                        {statusLabel}
                       </Text>
                     </View>
-                  </TouchableOpacity>
-                );
-              })}
+                    <Text style={styles.draftMeta} numberOfLines={3}>
+                      {row.date ? `${formatPreviewDate(row.date)} · ` : ''}
+                      {row.wallet || 'Chưa có ví'} ·{' '}
+                      {row.category || 'Chưa có danh mục'}
+                      {row.note ? ` · ${row.note}` : ''}
+                    </Text>
+                    {row.reason ? (
+                      <Text style={styles.previewReason}>{row.reason}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             <TouchableOpacity
               accessibilityRole="button"
               style={[
@@ -434,11 +479,6 @@ const DataManagementScreen = () => {
             </TouchableOpacity>
           </View>
         ) : null}
-        <Text style={styles.title}>Dữ liệu và xuất nhập</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.localCard}>
           <View style={styles.localIcon}>
             <Database size={23} color={Colors.primary} />
@@ -923,6 +963,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   previewHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  previewTitle: { color: '#4A2B1A', fontSize: 16, fontWeight: '900' },
+  previewNotice: {
+    color: '#8B6B55',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    marginTop: 7,
+  },
   previewClose: { paddingHorizontal: 10, paddingVertical: 7 },
   previewCloseText: { color: '#A45118', fontWeight: '900', fontSize: 12 },
   previewRow: {
@@ -932,6 +980,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F5E3D3',
     paddingTop: 10,
+  },
+  previewRowMuted: { backgroundColor: '#FFF3E8', borderRadius: 14, padding: 10 },
+  previewRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   previewCheckbox: {
     width: 24,
@@ -945,7 +1000,33 @@ const styles = StyleSheet.create({
   },
   previewCheckboxSelected: { backgroundColor: Colors.primary },
   previewCheck: { color: Colors.white, fontWeight: '900' },
+  previewStatusIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: '#F4D7BC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewStatusIconText: { color: '#A45118', fontWeight: '900' },
   previewAmount: { color: '#4A2B1A', fontWeight: '900', fontSize: 12 },
+  previewStatus: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 10,
+    fontWeight: '900',
+    overflow: 'hidden',
+  },
+  previewStatusReady: { color: '#176B3A', backgroundColor: '#DDF4E5' },
+  previewStatusBlocked: { color: '#93470F', backgroundColor: '#F7DEC7' },
+  previewReason: {
+    color: '#93470F',
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    marginTop: 5,
+  },
   importButton: {
     minHeight: 46,
     borderRadius: 15,

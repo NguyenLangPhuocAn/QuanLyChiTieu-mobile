@@ -22,10 +22,12 @@ import {
   View,
 } from 'react-native';
 import {
+  AlertTriangle,
   ArrowLeft,
   Image as ImageIcon,
   ImagePlus,
   MoreHorizontal,
+  Plus,
   Search,
   WalletCards,
   X,
@@ -105,6 +107,10 @@ type ReceiptUploadFile = {
   uri: string;
   name: string;
   type: string;
+};
+type ReceiptItemDraft = {
+  name: string;
+  amount: string;
 };
 
 const getMonthEndDate = (monthKey: string) => {
@@ -230,6 +236,9 @@ const HistoryScreen = ({
   const [isTagModalVisible, setIsTagModalVisible] = useState(false);
   const [editReceiptFile, setEditReceiptFile] =
     useState<ReceiptUploadFile | null>(null);
+  const [editReceiptItems, setEditReceiptItems] = useState<ReceiptItemDraft[]>(
+    [],
+  );
   const [shouldRemoveReceipt, setShouldRemoveReceipt] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [datePickerTarget, setDatePickerTarget] =
@@ -436,6 +445,23 @@ const HistoryScreen = ({
   );
   const selectedEditWallet =
     wallets.find(wallet => wallet.id === editWalletId) ?? null;
+  const editReceiptCurrency =
+    selectedEditWallet?.currency ??
+    selectedTransaction?.currency ??
+    preferredCurrency ??
+    'VND';
+  const editReceiptItemTotal = useMemo(
+    () =>
+      editReceiptItems.reduce((sum, item) => {
+        const amount = parsePositiveMoneyInput(item.amount);
+        return sum + (amount ? Number(amount) : 0);
+      }, 0),
+    [editReceiptItems],
+  );
+  const editTransactionTotal = Number(
+    parsePositiveMoneyInput(editAmount) ?? 0,
+  );
+  const editReceiptDifference = editTransactionTotal - editReceiptItemTotal;
   const currentEditTags = useMemo(() => parseTagsInput(editTags), [editTags]);
   const recentHashtags = useMemo(() => {
     const usedTags = serverTransactions
@@ -503,6 +529,12 @@ const HistoryScreen = ({
         nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'),
       );
       setEditReceiptFile(null);
+      setEditReceiptItems(
+        (item.receiptItems ?? []).map(receiptItem => ({
+          name: receiptItem.name,
+          amount: String(receiptItem.amount),
+        })),
+      );
       setShouldRemoveReceipt(false);
     },
     [categories, navigation, wallets],
@@ -518,6 +550,7 @@ const HistoryScreen = ({
     setSelectedTransaction(null);
     setEditAmount('');
     setEditNote('');
+    setEditReceiptItems([]);
     setEditTags('');
     setEditDate(defaultDay);
     setEditWalletId(null);
@@ -591,9 +624,9 @@ const HistoryScreen = ({
     try {
       result = await launchImageLibrary({
         mediaType: 'photo',
-        maxWidth: 1600,
-        maxHeight: 2400,
-        quality: 0.7,
+        maxWidth: 1280,
+        maxHeight: 1920,
+        quality: 0.6,
         selectionLimit: 1,
       });
     } catch {
@@ -667,6 +700,24 @@ const HistoryScreen = ({
       const transactionId = Number(selectedTransaction.id);
       const category = categories.find(item => item.id === editCategoryId);
 
+      const normalizedReceiptItems = [] as Array<{
+        name: string;
+        amount: number;
+      }>;
+      for (const [index, item] of editReceiptItems.entries()) {
+        const name = item.name.trim();
+        const itemAmount = parsePositiveMoneyInput(item.amount);
+        if (!name && !item.amount.trim()) continue;
+        if (!name || !itemAmount) {
+          Alert.alert(
+            'Chi tiết hóa đơn chưa hợp lệ',
+            `Kiểm tra tên và thành tiền của món thứ ${index + 1}.`,
+          );
+          return;
+        }
+        normalizedReceiptItems.push({ name, amount: Number(itemAmount) });
+      }
+
       if (!Number.isFinite(transactionId) || !category) {
         Alert.alert(
           'Thông báo',
@@ -691,8 +742,11 @@ const HistoryScreen = ({
           amount: plainAmount,
           type: category.type,
           note: editNote.trim(),
+          receipt_items: normalizedReceiptItems,
           receipt_image:
-            shouldRemoveReceipt && !editReceiptFile ? null : undefined,
+            shouldRemoveReceipt && !editReceiptFile
+              ? null
+              : selectedTransaction.receiptImage || undefined,
           transaction_date: editDate,
           tags: parseTagsInput(editTags),
         });
@@ -1185,6 +1239,7 @@ const HistoryScreen = ({
                     <TouchableOpacity
                       style={styles.secondaryReceiptButton}
                       onPress={handlePickEditReceipt}
+                      accessibilityLabel="Đổi ảnh hóa đơn đang sửa"
                     >
                       <ImagePlus size={15} color={Colors.primary} />
                       <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
@@ -1213,6 +1268,7 @@ const HistoryScreen = ({
                     <TouchableOpacity
                       style={styles.secondaryReceiptButton}
                       onPress={handlePickEditReceipt}
+                      accessibilityLabel="Đổi ảnh hóa đơn đang sửa"
                     >
                       <ImagePlus size={15} color={Colors.primary} />
                       <Text style={styles.secondaryReceiptText}>Đổi ảnh</Text>
@@ -1240,6 +1296,157 @@ const HistoryScreen = ({
                   <Text style={styles.receiptPickerText}>Chọn ảnh</Text>
                 </TouchableOpacity>
               )}
+
+              <View style={styles.receiptDetailsCard}>
+                <View style={styles.receiptItemsHeader}>
+                  <View>
+                    <Text style={styles.receiptItemsTitle}>
+                      Chi tiết từng món
+                    </Text>
+                    <Text style={styles.receiptItemsHint}>
+                      Có thể sửa, thêm hoặc xóa trước khi lưu
+                    </Text>
+                  </View>
+                  <Text style={styles.receiptItemCount}>
+                    {editReceiptItems.length} món
+                  </Text>
+                </View>
+
+                {editReceiptItems.map((item, index) => (
+                  <View
+                    style={styles.receiptItemRow}
+                    key={`edit-receipt-item-${index}`}
+                  >
+                    <View style={styles.receiptItemIndex}>
+                      <Text style={styles.receiptItemIndexText}>{index + 1}</Text>
+                    </View>
+                    <View style={styles.receiptItemFields}>
+                      <TextInput
+                        style={styles.receiptItemNameInput}
+                        value={item.name}
+                        onChangeText={name =>
+                          setEditReceiptItems(current =>
+                            current.map((currentItem, currentIndex) =>
+                              currentIndex === index
+                                ? { ...currentItem, name }
+                                : currentItem,
+                            ),
+                          )
+                        }
+                        placeholder="Tên món"
+                        placeholderTextColor="#A17B5D"
+                        accessibilityLabel={`Tên món đang sửa ${index + 1}`}
+                      />
+                      <TextInput
+                        style={styles.receiptItemAmountInput}
+                        value={formatMoneyInputForCurrency(
+                          item.amount,
+                          editReceiptCurrency,
+                        )}
+                        onChangeText={amount =>
+                          setEditReceiptItems(current =>
+                            current.map((currentItem, currentIndex) =>
+                              currentIndex === index
+                                ? {
+                                    ...currentItem,
+                                    amount: normalizeMoneyInputForCurrency(
+                                      amount,
+                                      editReceiptCurrency,
+                                    ),
+                                  }
+                                : currentItem,
+                            ),
+                          )
+                        }
+                        placeholder="Thành tiền"
+                        placeholderTextColor="#B58A68"
+                        keyboardType="decimal-pad"
+                        accessibilityLabel={`Thành tiền món đang sửa ${
+                          index + 1
+                        }`}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.removeReceiptItemButton}
+                      onPress={() =>
+                        setEditReceiptItems(current =>
+                          current.filter(
+                            (_, currentIndex) => currentIndex !== index,
+                          ),
+                        )
+                      }
+                      accessibilityLabel={`Xóa món đang sửa ${index + 1}`}
+                    >
+                      <X size={16} color="#B84A3A" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                <View style={styles.receiptDetailActions}>
+                  <TouchableOpacity
+                    style={styles.addReceiptItemButton}
+                    onPress={() =>
+                      setEditReceiptItems(current => [
+                        ...current,
+                        { name: '', amount: '' },
+                      ])
+                    }
+                    accessibilityLabel="Thêm món khi sửa giao dịch"
+                  >
+                    <Plus size={16} color={Colors.primary} />
+                    <Text style={styles.addReceiptItemText}>Thêm món</Text>
+                  </TouchableOpacity>
+                  {editReceiptItems.length > 0 ? (
+                    <TouchableOpacity
+                      style={styles.clearReceiptDetailsButton}
+                      onPress={() => setEditReceiptItems([])}
+                      accessibilityLabel="Xóa toàn bộ món đang sửa"
+                    >
+                      <Text style={styles.clearReceiptDetailsText}>
+                        Xóa chi tiết
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                <View style={styles.receiptSummary}>
+                  <View style={styles.receiptSummaryRow}>
+                    <Text style={styles.receiptSummaryLabel}>Tổng các món</Text>
+                    <Text style={styles.receiptSummaryValue}>
+                      {formatCurrency(
+                        editReceiptItemTotal,
+                        editReceiptCurrency,
+                      )}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptSummaryRow}>
+                    <Text style={styles.receiptSummaryLabel}>
+                      Tổng thanh toán
+                    </Text>
+                    <Text style={styles.receiptSummaryValue}>
+                      {formatCurrency(editTransactionTotal, editReceiptCurrency)}
+                    </Text>
+                  </View>
+                  {editTransactionTotal > 0 &&
+                  Math.abs(editReceiptDifference) <= 0.01 ? (
+                    <Text style={styles.receiptMatchedText}>
+                      Tổng các món khớp tổng thanh toán.
+                    </Text>
+                  ) : editTransactionTotal > 0 ? (
+                    <View style={styles.receiptDifferenceRow}>
+                      <AlertTriangle size={15} color="#A15C00" />
+                      <Text style={styles.receiptDifferenceText}>
+                        Chênh lệch{' '}
+                        {formatCurrency(
+                          Math.abs(editReceiptDifference),
+                          editReceiptCurrency,
+                        )}
+                        . Kiểm tra thuế, phí, giảm giá hoặc món bị thiếu.
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
@@ -1728,6 +1935,153 @@ const styles = StyleSheet.create({
     color: '#8A623F',
     fontWeight: '700',
     lineHeight: 20,
+  },
+  receiptDetailsCard: {
+    marginTop: 14,
+    borderRadius: 18,
+    borderWidth: 1.2,
+    borderColor: '#E8B680',
+    backgroundColor: Colors.white,
+    padding: 12,
+    gap: 10,
+  },
+  receiptItemsHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  receiptItemsTitle: { color: '#4C2A18', fontWeight: '900' },
+  receiptItemsHint: {
+    color: '#8A623F',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  receiptItemCount: { color: '#8A623F', fontSize: 12, fontWeight: '900' },
+  receiptItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EDC596',
+    backgroundColor: '#FFF8F1',
+    padding: 10,
+  },
+  receiptItemIndex: {
+    width: 27,
+    height: 27,
+    borderRadius: 10,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 5,
+  },
+  receiptItemIndexText: {
+    color: '#A94F18',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  receiptItemFields: { flex: 1, minWidth: 0, gap: 8 },
+  receiptItemNameInput: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0D1B3',
+    backgroundColor: Colors.white,
+    color: '#4C2A18',
+    fontWeight: '800',
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    textAlignVertical: 'center',
+  },
+  receiptItemAmountInput: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F2D1A4',
+    backgroundColor: '#FFF0DF',
+    color: '#9A4D00',
+    fontWeight: '900',
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    textAlignVertical: 'center',
+  },
+  removeReceiptItemButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFF2EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  receiptDetailActions: { flexDirection: 'row', gap: 8 },
+  addReceiptItemButton: {
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#E8B680',
+    backgroundColor: '#FFF6EF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  addReceiptItemText: { color: Colors.primary, fontWeight: '900' },
+  clearReceiptDetailsButton: {
+    minHeight: 42,
+    borderRadius: 13,
+    backgroundColor: '#FFF2EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 13,
+  },
+  clearReceiptDetailsText: {
+    color: '#B84A3A',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  receiptSummary: {
+    borderRadius: 15,
+    backgroundColor: '#FFF6EF',
+    padding: 12,
+    gap: 7,
+  },
+  receiptSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  receiptSummaryLabel: { color: '#7A5438', fontWeight: '800' },
+  receiptSummaryValue: { color: '#4C2A18', fontWeight: '900' },
+  receiptDifferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    borderTopWidth: 1,
+    borderTopColor: '#F0D4BA',
+    paddingTop: 8,
+  },
+  receiptDifferenceText: {
+    flex: 1,
+    color: '#8B5700',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  receiptMatchedText: {
+    color: '#2F7A45',
+    fontSize: 12,
+    fontWeight: '800',
+    borderTopWidth: 1,
+    borderTopColor: '#D3E8D7',
+    paddingTop: 8,
   },
   modalBackdrop: {
     flex: 1,

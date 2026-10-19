@@ -46,6 +46,15 @@ const SignUpScreen = ({ navigation }: Props) => {
 
     if (!password) {
       nextErrors.password = 'Vui lòng nhập mật khẩu.';
+    } else if (
+      password.length < 8 ||
+      !/[a-z]/.test(password) ||
+      !/[A-Z]/.test(password) ||
+      !/\d/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password)
+    ) {
+      nextErrors.password =
+        'Mật khẩu từ 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.';
     }
 
     if (!confirmPassword) {

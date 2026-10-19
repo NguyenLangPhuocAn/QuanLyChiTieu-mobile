@@ -149,7 +149,7 @@ const AppNavigator = () => {
   const {
     isAuthenticated,
     isCurrencySetupRequired,
-    isLoading,
+    isRestoringSession,
     user,
     sessionRestoreError,
     retryRestoreSession,
@@ -157,7 +157,7 @@ const AppNavigator = () => {
   } = useAuth();
   const mustChangePassword = Boolean(user?.must_change_password);
 
-  if (isLoading) {
+  if (isRestoringSession) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color={Colors.primary} size="large" />

@@ -112,6 +112,21 @@ describe('apiRequest', () => {
     ).toBeUndefined();
   });
 
+  it('keeps the server login message for a rejected public login', async () => {
+    (globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce(healthy())
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () =>
+          JSON.stringify({ message: 'Email hoặc mật khẩu không đúng' }),
+      });
+
+    await expect(
+      apiRequest('/users/login', { authMode: 'none', method: 'POST' }),
+    ).rejects.toThrow('Email hoặc mật khẩu không đúng');
+  });
+
   it('discovers a reachable server with GET and does not replay an uncertain write', async () => {
     (globalThis.fetch as jest.Mock)
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))

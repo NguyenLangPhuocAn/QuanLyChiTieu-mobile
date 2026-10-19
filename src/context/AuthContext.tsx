@@ -23,6 +23,7 @@ import { bankNotificationReader } from '../native/bankNotificationReader';
 type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
+  isRestoringSession: boolean;
   user: AuthUser | null;
   token: string | null;
   refreshToken: string | null;
@@ -74,6 +75,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [isCurrencySetupRequired, setIsCurrencySetupRequired] = useState(false);
   const [sessionRestoreError, setSessionRestoreError] = useState<string | null>(
     null,
@@ -213,7 +215,10 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
             );
         }
       } finally {
-        if (isCurrentSession(version)) setIsLoading(false);
+        if (isCurrentSession(version)) {
+          setIsLoading(false);
+          setIsRestoringSession(false);
+        }
       }
     };
 
@@ -519,6 +524,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       value={{
         isAuthenticated: Boolean(user && token),
         isLoading,
+        isRestoringSession,
         user,
         token,
         refreshToken,
