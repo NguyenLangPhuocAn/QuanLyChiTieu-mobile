@@ -14,7 +14,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ArrowLeft,
   Check,
-  Sparkles,
   Trash2,
 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
@@ -166,12 +165,11 @@ const SmartRulesScreen = () => {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.introCard}>
-          <Sparkles size={22} color={Colors.primary} />
           <View style={styles.introCopy}>
             <Text style={styles.introTitle}>Tự chọn danh mục theo ghi chú</Text>
             <Text style={styles.introText}>
-              Ví dụ: ghi chú có “Grab” thì tự chọn danh mục “Di chuyển”. Không
-              phân biệt chữ hoa hay chữ thường.
+              Ví dụ: “Grab” → “Di chuyển”. Không phân biệt chữ hoa hay chữ
+              thường.
             </Text>
           </View>
         </View>
@@ -324,15 +322,13 @@ const styles = StyleSheet.create({
   title: { color: '#4A2B1A', fontSize: 20, fontWeight: '900' },
   content: { padding: 16, gap: 14, paddingBottom: 40 },
   introCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
     borderRadius: 20,
     backgroundColor: '#FFF0DF',
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
   },
   introCopy: { flex: 1 },
-  introTitle: { color: '#4A2B1A', fontWeight: '900' },
+  introTitle: { color: '#4A2B1A', fontSize: 15, fontWeight: '900' },
   introText: {
     color: '#7A5438',
     fontSize: 12,
