@@ -6,6 +6,10 @@
 
 **Tải APK:** https://github.com/NguyenLangPhuocAn/QuanLyChiTieu-mobile/releases/download/v1.2.1/QuanLyChiTieu-1.2.1.apk
 
+**SHA-256:** `C43B25FE437B18F3B685000AA0F25B91C8D3FF99555D3C159A83C35E4B1F8B63`
+
+**Dung lượng:** 49.550.426 byte (khoảng 47,3 MB)
+
 ## Hóa đơn và giao dịch
 
 - Màn sửa giao dịch giữ lại ảnh hóa đơn hiện có khi người dùng chỉ sửa nội dung.
