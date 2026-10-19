@@ -15,6 +15,9 @@ describe('findMatchingSmartRule', () => {
     expect(findMatchingSmartRule('Đi GRAB về nhà', rules)?.categoryName).toBe(
       'Di chuyển',
     );
+    expect(findMatchingSmartRule('đặt grab về nhà', rules)?.categoryName).toBe(
+      'Di chuyển',
+    );
   });
 
   it('ignores disabled rules', () => {

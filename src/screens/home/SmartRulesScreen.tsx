@@ -170,7 +170,8 @@ const SmartRulesScreen = () => {
           <View style={styles.introCopy}>
             <Text style={styles.introTitle}>Tự chọn danh mục theo ghi chú</Text>
             <Text style={styles.introText}>
-              Ví dụ: ghi chú có “Grab” thì tự chọn danh mục “Di chuyển”.
+              Ví dụ: ghi chú có “Grab” thì tự chọn danh mục “Di chuyển”. Không
+              phân biệt chữ hoa hay chữ thường.
             </Text>
           </View>
         </View>

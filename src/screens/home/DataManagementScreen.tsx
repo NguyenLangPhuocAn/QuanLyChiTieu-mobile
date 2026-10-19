@@ -759,13 +759,6 @@ const DataManagementScreen = () => {
           </View>
         </TouchableOpacity>
 
-        <View style={styles.noticeCard}>
-          <Text style={styles.noticeTitle}>Khi nhập file</Text>
-          <Text style={styles.noticeText}>
-            Tên ví và danh mục trong file cần tồn tại trong tài khoản hiện tại.
-            Giao dịch vay/nợ và chuyển ví được bỏ qua để tránh làm sai số dư.
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -941,19 +934,6 @@ const styles = StyleSheet.create({
   },
   saveDraftButtonText: { color: Colors.white, fontWeight: '900' },
   editorHint: { color: '#8B6B55', fontSize: 11, lineHeight: 16 },
-  noticeCard: {
-    borderRadius: 18,
-    backgroundColor: '#FFF3D8',
-    padding: 14,
-  },
-  noticeTitle: { color: '#7A4B00', fontWeight: '900' },
-  noticeText: {
-    color: '#8B5700',
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '700',
-    marginTop: 5,
-  },
   previewCard: {
     borderRadius: 20,
     borderWidth: 1,
