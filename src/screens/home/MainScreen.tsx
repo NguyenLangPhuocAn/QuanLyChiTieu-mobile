@@ -1985,7 +1985,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                         >
                           <View style={styles.receiptItemHeader}>
                             <Text style={styles.receiptItemLabel}>
-                              Món {index + 1}
+                              Món {String(index + 1).padStart(2, '0')}
                             </Text>
                             <TouchableOpacity
                               style={styles.removeReceiptItemButton}
@@ -2042,7 +2042,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                                   ),
                                 )
                               }
-                              placeholder="Thành tiền"
+                              placeholder="Số tiền"
                               placeholderTextColor="#B58A68"
                               keyboardType="decimal-pad"
                               accessibilityLabel={`Thành tiền món ${index + 1}`}
@@ -2949,8 +2949,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   receiptItemLabel: { color: '#7A5438', fontSize: 12, fontWeight: '800' },
-  receiptItemFields: { flex: 1, minWidth: 0, gap: 8 },
+  receiptItemFields: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   receiptItemNameInput: {
+    flex: 1,
+    minWidth: 0,
     minHeight: 44,
     borderRadius: 10,
     borderWidth: 1,
@@ -2964,6 +2972,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   receiptItemAmountInput: {
+    width: 112,
     minHeight: 44,
     borderRadius: 10,
     borderWidth: 1,
