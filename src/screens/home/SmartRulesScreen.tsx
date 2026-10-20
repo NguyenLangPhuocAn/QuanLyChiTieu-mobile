@@ -11,11 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  ArrowLeft,
-  Check,
-  Trash2,
-} from 'lucide-react-native';
+import { ArrowLeft, Check, Trash2 } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
@@ -35,12 +31,14 @@ const SmartRulesScreen = () => {
   const [rules, setRules] = useState<SmartRule[]>([]);
   const [keyword, setKeyword] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
-  const expenseCategories = useMemo(
-    () =>
-      filterNormalCashFlowCategories(categories).filter(
-        category => category.type === 'EXPENSE',
-      ),
+  const [ruleType, setRuleType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
+  const cashFlowCategories = useMemo(
+    () => filterNormalCashFlowCategories(categories),
     [categories],
+  );
+  const visibleCategories = useMemo(
+    () => cashFlowCategories.filter(category => category.type === ruleType),
+    [cashFlowCategories, ruleType],
   );
 
   const persist = useCallback(
@@ -60,8 +58,10 @@ const SmartRulesScreen = () => {
         return;
       }
 
-      const movementCategory = expenseCategories.find(category =>
-        /di chuyển|đi lại|giao thông/i.test(category.name),
+      const movementCategory = cashFlowCategories.find(
+        category =>
+          category.type === 'EXPENSE' &&
+          /di chuyển|đi lại|giao thông/i.test(category.name),
       );
       if (!movementCategory) return;
 
@@ -75,11 +75,11 @@ const SmartRulesScreen = () => {
         },
       ]);
     });
-  }, [expenseCategories, persist, user?.id]);
+  }, [cashFlowCategories, persist, user?.id]);
 
   const addRule = async () => {
     const normalizedKeyword = keyword.trim();
-    const category = expenseCategories.find(item => item.id === categoryId);
+    const category = visibleCategories.find(item => item.id === categoryId);
 
     if (!normalizedKeyword || !category) {
       Alert.alert(
@@ -168,8 +168,8 @@ const SmartRulesScreen = () => {
           <View style={styles.introCopy}>
             <Text style={styles.introTitle}>Tự chọn danh mục theo ghi chú</Text>
             <Text style={styles.introText}>
-              Ví dụ: “Grab” → “Di chuyển”. Không phân biệt chữ hoa hay chữ
-              thường.
+              Ví dụ: “Grab” → “Di chuyển”, “lương” → “Lương”. Không phân biệt
+              chữ hoa hay chữ thường.
             </Text>
           </View>
         </View>
@@ -184,9 +184,39 @@ const SmartRulesScreen = () => {
             placeholder="Ví dụ: Grab"
             placeholderTextColor="#A98A73"
           />
-          <Text style={styles.label}>Tự chọn danh mục</Text>
+          <Text style={styles.label}>Loại giao dịch</Text>
+          <View style={styles.typeSegment}>
+            {(['EXPENSE', 'INCOME'] as const).map(type => {
+              const selected = type === ruleType;
+              return (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeSegmentButton,
+                    selected && styles.typeSegmentButtonSelected,
+                  ]}
+                  onPress={() => {
+                    setRuleType(type);
+                    setCategoryId(null);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.typeSegmentText,
+                      selected && styles.typeSegmentTextSelected,
+                    ]}
+                  >
+                    {type === 'EXPENSE' ? 'Chi' : 'Thu'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.label}>
+            Danh mục {ruleType === 'EXPENSE' ? 'chi' : 'thu'}
+          </Text>
           <View style={styles.categoryWrap}>
-            {expenseCategories.map(category => {
+            {visibleCategories.map(category => {
               const selected = category.id === categoryId;
               return (
                 <TouchableOpacity
@@ -207,6 +237,11 @@ const SmartRulesScreen = () => {
               );
             })}
           </View>
+          {visibleCategories.length === 0 ? (
+            <Text style={styles.categoryEmpty}>
+              Chưa có danh mục {ruleType === 'EXPENSE' ? 'chi' : 'thu'} để chọn.
+            </Text>
+          ) : null}
           <TouchableOpacity style={styles.saveButton} onPress={addRule}>
             <Text style={styles.saveButtonText}>Lưu quy tắc</Text>
           </TouchableOpacity>
@@ -218,81 +253,87 @@ const SmartRulesScreen = () => {
             <Text style={styles.emptyText}>Chưa có quy tắc nào.</Text>
           </View>
         ) : (
-          rules.map(rule => (
-            <View key={rule.id} style={styles.ruleCard}>
-              <View style={styles.ruleTopRow}>
-                <View style={styles.ruleCopy}>
-                  <Text style={styles.ruleKeyword}>{rule.keyword}</Text>
-                  <Text style={styles.ruleCategory}>
-                    Tự chọn danh mục: {rule.categoryName}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() =>
-                    persist(rules.filter(item => item.id !== rule.id))
-                  }
-                  accessibilityLabel={`Xóa quy tắc ${rule.keyword}`}
-                >
-                  <Trash2 size={17} color="#B84A3A" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.ruleDivider} />
-              <View style={styles.ruleFooter}>
-                <View style={styles.ruleStatus}>
-                  <View
-                    style={[
-                      styles.ruleStatusDot,
-                      rule.enabled
-                        ? styles.ruleStatusDotEnabled
-                        : styles.ruleStatusDotDisabled,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.ruleStatusText,
-                      rule.enabled
-                        ? styles.ruleStatusTextEnabled
-                        : styles.ruleStatusTextDisabled,
-                    ]}
+          rules.map(rule => {
+            const category = cashFlowCategories.find(
+              item => item.id === rule.categoryId,
+            );
+            const typeLabel = category?.type === 'INCOME' ? 'Thu' : 'Chi';
+            return (
+              <View key={rule.id} style={styles.ruleCard}>
+                <View style={styles.ruleTopRow}>
+                  <View style={styles.ruleCopy}>
+                    <Text style={styles.ruleKeyword}>{rule.keyword}</Text>
+                    <Text style={styles.ruleCategory}>
+                      {typeLabel} · {rule.categoryName}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() =>
+                      persist(rules.filter(item => item.id !== rule.id))
+                    }
+                    accessibilityLabel={`Xóa quy tắc ${rule.keyword}`}
                   >
-                    {rule.enabled ? 'Đang bật' : 'Đã tắt'}
-                  </Text>
+                    <Trash2 size={17} color="#B84A3A" />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.ruleToggle,
-                    rule.enabled
-                      ? styles.ruleToggleEnabled
-                      : styles.ruleToggleDisabled,
-                  ]}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: rule.enabled }}
-                  accessibilityLabel={
-                    rule.enabled ? 'Tắt quy tắc' : 'Bật quy tắc'
-                  }
-                  onPress={() =>
-                    persist(
-                      rules.map(item =>
-                        item.id === rule.id
-                          ? { ...item, enabled: !item.enabled }
-                          : item,
-                      ),
-                    )
-                  }
-                >
-                  <View
+                <View style={styles.ruleDivider} />
+                <View style={styles.ruleFooter}>
+                  <View style={styles.ruleStatus}>
+                    <View
+                      style={[
+                        styles.ruleStatusDot,
+                        rule.enabled
+                          ? styles.ruleStatusDotEnabled
+                          : styles.ruleStatusDotDisabled,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.ruleStatusText,
+                        rule.enabled
+                          ? styles.ruleStatusTextEnabled
+                          : styles.ruleStatusTextDisabled,
+                      ]}
+                    >
+                      {rule.enabled ? 'Đang bật' : 'Đã tắt'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
                     style={[
-                      styles.ruleToggleKnob,
+                      styles.ruleToggle,
                       rule.enabled
-                        ? styles.ruleToggleKnobEnabled
-                        : styles.ruleToggleKnobDisabled,
+                        ? styles.ruleToggleEnabled
+                        : styles.ruleToggleDisabled,
                     ]}
-                  />
-                </TouchableOpacity>
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: rule.enabled }}
+                    accessibilityLabel={
+                      rule.enabled ? 'Tắt quy tắc' : 'Bật quy tắc'
+                    }
+                    onPress={() =>
+                      persist(
+                        rules.map(item =>
+                          item.id === rule.id
+                            ? { ...item, enabled: !item.enabled }
+                            : item,
+                        ),
+                      )
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.ruleToggleKnob,
+                        rule.enabled
+                          ? styles.ruleToggleKnobEnabled
+                          : styles.ruleToggleKnobDisabled,
+                      ]}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -356,6 +397,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     fontWeight: '800',
   },
+  typeSegment: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EFC9A6',
+    backgroundColor: '#FFF8F1',
+    padding: 4,
+    gap: 4,
+  },
+  typeSegmentButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeSegmentButtonSelected: { backgroundColor: Colors.primary },
+  typeSegmentText: { color: '#7A5438', fontWeight: '900' },
+  typeSegmentTextSelected: { color: Colors.white },
   categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   categoryChip: {
     width: '23%',
@@ -381,6 +441,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   categoryTextSelected: { color: Colors.white },
+  categoryEmpty: {
+    color: '#8B6548',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingVertical: 8,
+  },
   saveButton: {
     minHeight: 50,
     borderRadius: 16,

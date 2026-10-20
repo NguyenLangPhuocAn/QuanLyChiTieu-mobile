@@ -11,7 +11,8 @@ class BankNotificationListenerService : NotificationListenerService() {
     val notification = statusBarNotification ?: return
     if (notification.packageName == packageName) return
     val activeUser = BankNotificationStore.getActiveUser(this) ?: return
-    if (!BankNotificationStore.getEnabledPackages(this).contains(notification.packageName)) return
+    val enabledPackages = BankNotificationStore.getEnabledPackages(this)
+    if (enabledPackages.isNotEmpty() && !enabledPackages.contains(notification.packageName)) return
 
     val extras = notification.notification.extras
     val title = clean(extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())

@@ -13,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ArrowLeft,
-  Building2,
   CloudOff,
   FileSpreadsheet,
   Inbox,
@@ -24,7 +23,6 @@ import {
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { bankNotificationReader } from '../../native/bankNotificationReader';
 import {
   financialCaptureInbox,
   type FinancialCaptureDraft,
@@ -34,12 +32,10 @@ import {
   offlineTransactionQueue,
   type OfflineTransactionDraft,
 } from '../../services/offlineTransactionQueue';
-import type { BankNotificationEvent } from '../../types/bankNotification';
-import { parseBankNotification } from '../../utils/bankNotificationParser';
 import { formatCurrency, formatShortDate } from '../../utils/format';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FinancialInbox'>;
-type SourceFilter = 'ALL' | FinancialCaptureSource | 'OFFLINE' | 'BANK';
+type SourceFilter = 'ALL' | FinancialCaptureSource | 'OFFLINE';
 type StatusFilter = 'ALL' | 'READY' | 'REVIEW';
 
 type InboxItem = {
@@ -54,7 +50,6 @@ type InboxItem = {
   date: string;
   capture?: FinancialCaptureDraft;
   offline?: OfflineTransactionDraft;
-  bank?: BankNotificationEvent;
 };
 
 const sourceLabels: Record<SourceFilter, string> = {
@@ -63,14 +58,12 @@ const sourceLabels: Record<SourceFilter, string> = {
   VOICE: 'Giọng nói',
   EXCEL: 'Excel',
   OFFLINE: 'Ngoại tuyến',
-  BANK: 'Ngân hàng',
 };
 
 const FinancialInboxScreen = ({ navigation }: Props) => {
   const { user } = useAuth();
   const [captures, setCaptures] = useState<FinancialCaptureDraft[]>([]);
   const [offline, setOffline] = useState<OfflineTransactionDraft[]>([]);
-  const [bankEvents, setBankEvents] = useState<BankNotificationEvent[]>([]);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [loading, setLoading] = useState(true);
@@ -79,16 +72,12 @@ const FinancialInboxScreen = ({ navigation }: Props) => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const [nextCaptures, nextOffline, nextBank] = await Promise.all([
+      const [nextCaptures, nextOffline] = await Promise.all([
         financialCaptureInbox.list(user.id),
         offlineTransactionQueue.list(user.id),
-        bankNotificationReader.isSupported
-          ? bankNotificationReader.getPendingEvents(user.id).catch(() => [])
-          : Promise.resolve([]),
       ]);
       setCaptures(nextCaptures);
       setOffline(nextOffline);
-      setBankEvents(nextBank);
     } finally {
       setLoading(false);
     }
@@ -134,25 +123,10 @@ const FinancialInboxScreen = ({ navigation }: Props) => {
       date: item.createdAt,
       offline: item,
     }));
-    const bankItems: InboxItem[] = bankEvents.map(event => {
-      const parsed = parseBankNotification(event);
-      return {
-        id: event.id,
-        source: 'BANK',
-        status: parsed.status === 'READY' ? 'READY' : 'REVIEW',
-        title: event.appName || event.title || 'Thông báo ngân hàng',
-        detail: parsed.note || parsed.reason || event.text,
-        amount: parsed.amount ? Number(parsed.amount) : undefined,
-        type: parsed.type,
-        currency: parsed.currency ?? 'VND',
-        date: parsed.transactionDate,
-        bank: event,
-      };
-    });
-    return [...captureItems, ...offlineItems, ...bankItems].sort(
-      (left, right) => right.date.localeCompare(left.date),
+    return [...captureItems, ...offlineItems].sort((left, right) =>
+      right.date.localeCompare(left.date),
     );
-  }, [bankEvents, captures, offline, user?.currency_default]);
+  }, [captures, offline, user?.currency_default]);
 
   const filtered = items.filter(
     item =>
@@ -161,10 +135,6 @@ const FinancialInboxScreen = ({ navigation }: Props) => {
   );
 
   const openItem = (item: InboxItem) => {
-    if (item.source === 'BANK') {
-      navigation.navigate('BankNotifications');
-      return;
-    }
     if (item.source === 'OFFLINE') {
       navigation.navigate('DataManagement');
       return;
@@ -206,7 +176,7 @@ const FinancialInboxScreen = ({ navigation }: Props) => {
       return <FileSpreadsheet size={19} color={Colors.primary} />;
     if (source === 'OFFLINE')
       return <CloudOff size={19} color={Colors.primary} />;
-    return <Building2 size={19} color={Colors.primary} />;
+    return <Inbox size={19} color={Colors.primary} />;
   };
 
   return (
@@ -332,9 +302,7 @@ const FinancialInboxScreen = ({ navigation }: Props) => {
                   style={styles.reviewButton}
                   onPress={() => openItem(item)}
                 >
-                  <Text style={styles.reviewText}>
-                    {item.source === 'BANK' ? 'Duyệt hoặc ghép' : 'Mở kiểm tra'}
-                  </Text>
+                  <Text style={styles.reviewText}>Mở kiểm tra</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -37,7 +37,6 @@ import LoanDebtFormScreen from '../screens/home/LoanDebtFormScreen';
 import LoanDebtDetailScreen from '../screens/home/LoanDebtDetailScreen';
 import SavingsGoalsScreen from '../screens/home/SavingsGoalsScreen';
 import FinancialPlanScreen from '../screens/home/FinancialPlanScreen';
-import BankNotificationSettingsScreen from '../screens/home/BankNotificationSettingsScreen';
 import SmartRulesScreen from '../screens/home/SmartRulesScreen';
 import DataManagementScreen from '../screens/home/DataManagementScreen';
 import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
@@ -45,7 +44,6 @@ import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
-import type { BankTransactionDraft } from '../types/bankNotification';
 import { useAuth } from '../context/AuthContext';
 import { Colors } from '../constants/Colors';
 
@@ -75,7 +73,6 @@ export type RootStackParamList = {
     | {
         financialDraftId?: string;
         editTransaction?: TransactionItem;
-        bankTransactionDraft?: BankTransactionDraft;
       }
     | undefined;
   Wallets:
@@ -114,7 +111,6 @@ export type RootStackParamList = {
   BudgetDetail: { budgetId: number };
   Notifications: undefined;
   NotificationSettings: undefined;
-  BankNotifications: undefined;
   SmartRules: undefined;
   DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
   FinancialInbox: undefined;
@@ -231,10 +227,6 @@ const AppNavigator = () => {
           <Stack.Screen
             name="NotificationSettings"
             component={NotificationSettingsScreen}
-          />
-          <Stack.Screen
-            name="BankNotifications"
-            component={BankNotificationSettingsScreen}
           />
           <Stack.Screen name="SmartRules" component={SmartRulesScreen} />
           <Stack.Screen

@@ -1,10 +1,8 @@
 import { bankNotificationReader } from '../../native/bankNotificationReader';
-import { bankNotificationSettings } from '../bankNotificationSettings';
 import {
   buildBankTransactionDraft,
   syncBankNotifications,
 } from '../bankNotificationSync';
-import { transactionsService } from '../transactions';
 
 jest.mock('../../native/bankNotificationReader', () => ({
   bankNotificationReader: {
@@ -16,43 +14,14 @@ jest.mock('../../native/bankNotificationReader', () => ({
   },
 }));
 
-jest.mock('../bankNotificationSettings', () => ({
-  bankNotificationSettings: {
-    getRules: jest.fn(),
-  },
-}));
-
-jest.mock('../transactions', () => ({
-  transactionsService: {
-    create: jest.fn(),
-  },
-}));
-
-const getRules = bankNotificationSettings.getRules as jest.MockedFunction<
-  typeof bankNotificationSettings.getRules
->;
 const getPendingEvents =
   bankNotificationReader.getPendingEvents as jest.MockedFunction<
     typeof bankNotificationReader.getPendingEvents
   >;
-const create = transactionsService.create as jest.MockedFunction<
-  typeof transactionsService.create
->;
 
 describe('syncBankNotifications', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    getRules.mockResolvedValue([
-      {
-        packageName: 'vn.bank.app',
-        appName: 'Ngân hàng',
-        enabled: true,
-        mode: 'AUTO',
-        walletId: 1,
-        incomeCategoryId: 2,
-        expenseCategoryId: 3,
-      },
-    ]);
   });
 
   it('keeps a legacy AUTO event pending until the user confirms', async () => {
@@ -72,7 +41,7 @@ describe('syncBankNotifications', () => {
       pending: 1,
       ignored: 0,
     });
-    expect(create).not.toHaveBeenCalled();
+    expect(bankNotificationReader.setConfiguration).toHaveBeenCalledWith(7, []);
     expect(bankNotificationReader.markProcessed).not.toHaveBeenCalled();
   });
 
@@ -117,6 +86,5 @@ describe('syncBankNotifications', () => {
       7,
       'otp-event-1',
     );
-    expect(create).not.toHaveBeenCalled();
   });
 });

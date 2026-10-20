@@ -30,6 +30,7 @@ import type {
 } from '@react-navigation/native-stack';
 import {
   ArrowLeft,
+  Bell,
   CalendarDays,
   ChartColumnBig,
   ChevronDown,
@@ -37,6 +38,7 @@ import {
   History,
   ImagePlus,
   MessageCircleMore,
+  Mic,
   Plus,
   ScanLine,
   UserRound,
@@ -85,7 +87,6 @@ import {
   buildBankTransactionDraft,
   syncBankNotifications,
 } from '../../services/bankNotificationSync';
-import { bankNotificationSettings } from '../../services/bankNotificationSettings';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
@@ -244,7 +245,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [isReceiptItemsExpanded, setIsReceiptItemsExpanded] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const receiptRequestVersion = useRef(0);
-  const shakeShortcutBusy = useRef(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () =>
@@ -459,71 +459,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     transactionEntryType,
     transactionNote,
   ]);
-
-  const handleBankNotificationShake = useCallback(async () => {
-    if (!token || !user?.id || shakeShortcutBusy.current) return;
-    shakeShortcutBusy.current = true;
-    try {
-      const granted =
-        await bankNotificationReader.isNotificationAccessGranted();
-      if (!granted) {
-        Alert.alert(
-          'Chưa có quyền đọc thông báo',
-          'Mở cài đặt giao dịch ngân hàng để cấp quyền trước khi dùng thao tác lắc.',
-          [
-            { text: 'Để sau', style: 'cancel' },
-            {
-              text: 'Thiết lập',
-              onPress: () => navigation.navigate('BankNotifications'),
-            },
-          ],
-        );
-        return;
-      }
-
-      const events = await bankNotificationReader.getPendingEvents(user.id);
-      if (!events.length) {
-        Alert.alert(
-          'Chưa có giao dịch mới',
-          'Nova vẫn tự nhận thông báo mới từ các ứng dụng ngân hàng đã bật. Hiện không có giao dịch nào đang chờ duyệt.',
-        );
-        return;
-      }
-      navigation.navigate('BankNotifications');
-    } catch (error) {
-      Alert.alert(
-        'Chưa đọc được thông báo',
-        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
-      );
-    } finally {
-      shakeShortcutBusy.current = false;
-    }
-  }, [navigation, token, user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!user?.id || !bankNotificationReader.isSupported) return undefined;
-
-      let disposed = false;
-      let shakeSubscription: { remove: () => void } | null = null;
-      bankNotificationSettings
-        .getShakeEnabled(user.id)
-        .then(enabled => {
-          if (!enabled || disposed) return;
-          shakeSubscription = bankNotificationReader.onShake(() => {
-            handleBankNotificationShake().catch(() => undefined);
-          });
-          bankNotificationReader.startShakeDetection().catch(() => undefined);
-        })
-        .catch(() => undefined);
-
-      return () => {
-        disposed = true;
-        shakeSubscription?.remove();
-        bankNotificationReader.stopShakeDetection().catch(() => undefined);
-      };
-    }, [handleBankNotificationShake, user?.id]),
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -1089,12 +1024,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   >(() => undefined);
   applyBankTransactionDraftRef.current = applyBankTransactionDraft;
 
-  const openBankNotificationsFromForm = () => {
-    shouldReopenTransactionForm.current = true;
-    setIsModalVisible(false);
-    navigation.navigate('BankNotifications');
-  };
-
   const handleReadBankNotificationFromForm = async () => {
     if (!user?.id || isReadingBankNotification) return;
 
@@ -1108,7 +1037,14 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           'Cấp quyền cho Sổ Thu Chi Nova để đọc thông báo từ ứng dụng ngân hàng.',
           [
             { text: 'Để sau', style: 'cancel' },
-            { text: 'Thiết lập', onPress: openBankNotificationsFromForm },
+            {
+              text: 'Cấp quyền',
+              onPress: () => {
+                bankNotificationReader
+                  .openNotificationAccessSettings()
+                  .catch(() => undefined);
+              },
+            },
           ],
         );
         return;
@@ -1133,12 +1069,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         return;
       }
 
-      if (drafts.length === 1) {
-        applyBankTransactionDraftRef.current(drafts[0]);
-        return;
-      }
-
-      openBankNotificationsFromForm();
+      applyBankTransactionDraftRef.current(drafts[0]);
     } catch (error) {
       Alert.alert(
         'Chưa đọc được thông báo',
@@ -1199,13 +1130,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setActiveTab('history');
     navigation.setParams({ editTransaction: undefined });
   }, [navigation, route?.params?.editTransaction]);
-
-  useEffect(() => {
-    const draft = route?.params?.bankTransactionDraft;
-    if (!draft) return;
-    applyBankTransactionDraftRef.current(draft);
-    navigation.setParams({ bankTransactionDraft: undefined });
-  }, [navigation, route?.params?.bankTransactionDraft]);
 
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
@@ -1367,9 +1291,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
         transaction_date: toDateKey(transactionDate),
         tags: parseTagsInput(transactionTags),
-        source: activeBankNotificationEventId
-          ? 'BANK_NOTIFICATION'
-          : undefined,
+        source: activeBankNotificationEventId ? 'BANK_NOTIFICATION' : undefined,
         source_ref: activeBankNotificationEventId ?? undefined,
         client_request_id: clientRequestId,
       };
@@ -1576,23 +1498,41 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   <ArrowLeft size={18} color="#7A4A28" />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
-                <TouchableOpacity
-                  style={styles.bankReadButton}
-                  accessibilityRole="button"
-                  accessibilityLabel="Đọc thông báo ngân hàng"
-                  disabled={savingTransaction || isReadingBankNotification}
-                  onPress={() =>
-                    handleReadBankNotificationFromForm().catch(
-                      () => undefined,
-                    )
-                  }
-                >
-                  {isReadingBankNotification ? (
-                    <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : (
-                    <Text style={styles.bankReadButtonText}>Đọc tin NH</Text>
-                  )}
-                </TouchableOpacity>
+                <View style={styles.transactionQuickActions}>
+                  <TouchableOpacity
+                    style={styles.transactionQuickAction}
+                    accessibilityRole="button"
+                    accessibilityLabel="Đọc thông báo giao dịch"
+                    disabled={savingTransaction || isReadingBankNotification}
+                    onPress={() =>
+                      handleReadBankNotificationFromForm().catch(
+                        () => undefined,
+                      )
+                    }
+                  >
+                    {isReadingBankNotification ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Bell size={18} color={Colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.transactionQuickAction,
+                      styles.transactionQuickActionUpcoming,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Nhập giao dịch bằng giọng nói, sắp có"
+                    onPress={() =>
+                      Alert.alert(
+                        'Nhập bằng giọng nói',
+                        'Nút mic đã được chuẩn bị. Chức năng nhập trực tiếp sẽ được bổ sung sau.',
+                      )
+                    }
+                  >
+                    <Mic size={18} color="#9B806B" />
+                  </TouchableOpacity>
+                </View>
               </View>
               <Text style={styles.modalDescription}>
                 {activeBankNotificationEventId
@@ -2549,21 +2489,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backFormButtonText: { color: Colors.primary, fontWeight: '900' },
-  bankReadButton: {
-    minHeight: 36,
-    minWidth: 78,
-    paddingHorizontal: 9,
-    borderRadius: 13,
+  transactionQuickActions: {
+    gap: 7,
+  },
+  transactionQuickAction: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#F0B979',
     backgroundColor: '#FFF4E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bankReadButtonText: {
-    color: Colors.primary,
-    fontSize: 10,
-    fontWeight: '900',
+  transactionQuickActionUpcoming: {
+    borderColor: '#E2D2C4',
+    backgroundColor: '#F7F1EC',
   },
   modalDescription: {
     color: '#8A623F',

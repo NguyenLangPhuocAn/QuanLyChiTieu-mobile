@@ -423,12 +423,6 @@ const AccountScreen = ({
             action: () => navigation.navigate('Notifications'),
           },
           {
-            title: 'Giao dịch từ ngân hàng',
-            subtitle: 'Đọc biến động số dư từ app ngân hàng',
-            Icon: Bell,
-            action: () => navigation.navigate('BankNotifications'),
-          },
-          {
             title: 'Quy tắc thông minh',
             subtitle: 'Từ khóa tự chọn danh mục, ví dụ Grab → Di chuyển',
             Icon: Sparkles,

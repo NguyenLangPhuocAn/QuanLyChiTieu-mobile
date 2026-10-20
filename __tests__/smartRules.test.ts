@@ -48,4 +48,18 @@ describe('findMatchingSmartRule', () => {
       ])?.categoryName,
     ).toBe('Ăn uống');
   });
+
+  it('matches an income category rule with the same engine', () => {
+    expect(
+      findMatchingSmartRule('Đã nhận LƯƠNG tháng 10', [
+        {
+          id: 'salary',
+          keyword: 'lương',
+          categoryId: 21,
+          categoryName: 'Tiền lương',
+          enabled: true,
+        },
+      ])?.categoryName,
+    ).toBe('Tiền lương');
+  });
 });

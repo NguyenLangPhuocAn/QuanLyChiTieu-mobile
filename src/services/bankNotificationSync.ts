@@ -4,7 +4,6 @@ import type {
   BankTransactionDraft,
 } from '../types/bankNotification';
 import { parseBankNotification } from '../utils/bankNotificationParser';
-import { bankNotificationSettings } from './bankNotificationSettings';
 
 export type BankNotificationSyncResult = {
   created: number;
@@ -44,26 +43,16 @@ const runSync = async (userId: number): Promise<BankNotificationSyncResult> => {
     return { created: 0, pending: 0, ignored: 0 };
   }
 
-  const rules = await bankNotificationSettings.getRules(userId);
-  await bankNotificationReader.setConfiguration(
-    userId,
-    rules.filter(rule => rule.enabled).map(rule => rule.packageName),
-  );
+  // Danh sách rỗng nghĩa là đọc mọi ứng dụng sau khi người dùng cấp quyền
+  // Notification Access. Bộ lọc native chỉ giữ thông báo có dạng giao dịch.
+  await bankNotificationReader.setConfiguration(userId, []);
   const events = await bankNotificationReader.getPendingEvents(userId);
   if (!events.length) return { created: 0, pending: 0, ignored: 0 };
-  const enabledRules = new Map(
-    rules.filter(rule => rule.enabled).map(rule => [rule.packageName, rule]),
-  );
   const created = 0;
   let ignored = 0;
   let pending = 0;
 
   for (const event of events) {
-    const rule = enabledRules.get(event.packageName);
-    if (!rule) {
-      pending += 1;
-      continue;
-    }
     const parsed = parseBankNotification(event);
     if (parsed.status === 'IGNORED') {
       await bankNotificationReader.dismissEvent(userId, event.id);
