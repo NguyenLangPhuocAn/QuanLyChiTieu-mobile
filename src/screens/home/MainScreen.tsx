@@ -84,7 +84,7 @@ import {
   smartRulesService,
 } from '../../services/smartRules';
 import {
-  buildBankTransactionDraft,
+  buildBankTransactionDrafts,
   syncBankNotifications,
 } from '../../services/bankNotificationSync';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
@@ -274,6 +274,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [activeBankNotificationEventId, setActiveBankNotificationEventId] =
     useState<string | null>(null);
   const [isReadingBankNotification, setIsReadingBankNotification] =
+    useState(false);
+  const [pendingBankDrafts, setPendingBankDrafts] = useState<
+    BankTransactionDraft[]
+  >([]);
+  const [isBankNotificationPickerVisible, setIsBankNotificationPickerVisible] =
     useState(false);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
@@ -1051,15 +1056,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
 
       const events = await bankNotificationReader.getPendingEvents(user.id);
-      const drafts = events
-        .sort((left, right) => right.postedAt - left.postedAt)
-        .flatMap(event => {
-          try {
-            return [buildBankTransactionDraft(event)];
-          } catch {
-            return [];
-          }
-        });
+      const drafts = buildBankTransactionDrafts(events);
 
       if (!drafts.length) {
         Alert.alert(
@@ -1069,7 +1066,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         return;
       }
 
-      applyBankTransactionDraftRef.current(drafts[0]);
+      if (drafts.length === 1) {
+        applyBankTransactionDraftRef.current(drafts[0]);
+        return;
+      }
+
+      setPendingBankDrafts(drafts);
+      setIsBankNotificationPickerVisible(true);
     } catch (error) {
       Alert.alert(
         'Chưa đọc được thông báo',
@@ -2222,6 +2225,84 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         </KeyboardAvoidingView>
       ) : null}
 
+      {isBankNotificationPickerVisible ? (
+        <View style={[styles.modalBackdrop, styles.bankPickerLayer]}>
+          <Pressable
+            style={styles.backdropPressable}
+            onPress={() => setIsBankNotificationPickerVisible(false)}
+          />
+          <View style={styles.bankPickerCard}>
+            <View style={styles.bankPickerHeader}>
+              <View style={styles.bankPickerHeaderCopy}>
+                <Text style={styles.bankPickerTitle}>Chọn thông báo</Text>
+                <Text style={styles.bankPickerDescription}>
+                  {pendingBankDrafts.length} giao dịch đang chờ. Chọn một dòng
+                  để kiểm tra trước khi lưu.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.bankPickerClose}
+                accessibilityLabel="Đóng danh sách thông báo"
+                onPress={() => setIsBankNotificationPickerVisible(false)}
+              >
+                <X size={18} color="#7A4A28" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.bankPickerList}
+              contentContainerStyle={styles.bankPickerListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {pendingBankDrafts.map(draft => {
+                const postedAt = new Date(draft.postedAt);
+                const postedLabel = postedAt.toLocaleString('vi-VN', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <TouchableOpacity
+                    key={draft.eventId}
+                    style={styles.bankPickerItem}
+                    accessibilityLabel={`Chọn giao dịch ${
+                      draft.type === 'INCOME' ? 'thu' : 'chi'
+                    } ${draft.amount}`}
+                    onPress={() => {
+                      setIsBankNotificationPickerVisible(false);
+                      setPendingBankDrafts([]);
+                      applyBankTransactionDraftRef.current(draft);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.bankPickerType,
+                        draft.type === 'INCOME'
+                          ? styles.bankPickerIncome
+                          : styles.bankPickerExpense,
+                      ]}
+                    >
+                      <Text style={styles.bankPickerTypeText}>
+                        {draft.type === 'INCOME' ? 'Thu' : 'Chi'}
+                      </Text>
+                    </View>
+                    <View style={styles.bankPickerItemCopy}>
+                      <Text style={styles.bankPickerAmount}>
+                        {formatCurrency(Number(draft.amount), draft.currency)}
+                      </Text>
+                      <Text style={styles.bankPickerMeta} numberOfLines={1}>
+                        {draft.sourceApp} · {postedLabel}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+
       <Modal transparent visible={isTagModalVisible} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -2394,6 +2475,97 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 60,
     elevation: 60,
+  },
+  bankPickerLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 90,
+    elevation: 90,
+  },
+  bankPickerCard: {
+    maxHeight: '72%',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    backgroundColor: '#FFFDFB',
+    padding: 18,
+    shadowColor: '#7A3E12',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  bankPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  bankPickerHeaderCopy: {
+    flex: 1,
+  },
+  bankPickerTitle: {
+    color: '#4C2A18',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  bankPickerDescription: {
+    color: '#8A623F',
+    lineHeight: 20,
+    marginTop: 5,
+  },
+  bankPickerClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#FFF0DF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankPickerList: {
+    marginTop: 14,
+  },
+  bankPickerListContent: {
+    gap: 10,
+    paddingBottom: 2,
+  },
+  bankPickerItem: {
+    minHeight: 76,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F0D6C1',
+    backgroundColor: '#FFF7EF',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bankPickerType: {
+    width: 52,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankPickerIncome: {
+    backgroundColor: '#E6F6EC',
+  },
+  bankPickerExpense: {
+    backgroundColor: '#FFE9DF',
+  },
+  bankPickerTypeText: {
+    color: '#70452A',
+    fontWeight: '900',
+  },
+  bankPickerItemCopy: {
+    flex: 1,
+  },
+  bankPickerAmount: {
+    color: '#4C2A18',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  bankPickerMeta: {
+    color: '#936D50',
+    fontSize: 12,
+    marginTop: 5,
   },
   receiptScanBackdrop: {
     backgroundColor: 'rgba(42, 24, 12, 0.38)',

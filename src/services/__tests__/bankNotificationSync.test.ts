@@ -1,6 +1,7 @@
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import {
   buildBankTransactionDraft,
+  buildBankTransactionDrafts,
   syncBankNotifications,
 } from '../bankNotificationSync';
 
@@ -57,6 +58,8 @@ describe('syncBankNotifications', () => {
 
     expect(draft).toMatchObject({
       eventId: 'bank-event-draft',
+      sourceApp: 'Ngân hàng',
+      postedAt: new Date('2026-10-20T03:00:00.000Z').getTime(),
       type: 'EXPENSE',
       amount: '125000',
       currency: 'VND',
@@ -86,5 +89,31 @@ describe('syncBankNotifications', () => {
       7,
       'otp-event-1',
     );
+  });
+
+  it('orders valid drafts from the oldest notification to the newest', () => {
+    const events = [
+      {
+        id: 'newer',
+        packageName: 'vn.bank.app',
+        appName: 'Ngân hàng',
+        title: 'Biến động số dư',
+        text: 'Tiền vào +200.000 VND',
+        postedAt: 200,
+      },
+      {
+        id: 'older',
+        packageName: 'vn.bank.app',
+        appName: 'Ngân hàng',
+        title: 'Biến động số dư',
+        text: 'Tiền vào +100.000 VND',
+        postedAt: 100,
+      },
+    ];
+
+    expect(buildBankTransactionDrafts(events).map(draft => draft.eventId)).toEqual([
+      'older',
+      'newer',
+    ]);
   });
 });

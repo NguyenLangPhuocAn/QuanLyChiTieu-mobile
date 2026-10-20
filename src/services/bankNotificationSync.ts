@@ -30,6 +30,8 @@ export const buildBankTransactionDraft = (
 
   return {
     eventId: event.id,
+    sourceApp: event.appName,
+    postedAt: event.postedAt,
     amount: parsed.amount,
     type: parsed.type,
     currency: parsed.currency,
@@ -37,6 +39,19 @@ export const buildBankTransactionDraft = (
     transactionDate: parsed.transactionDate,
   };
 };
+
+export const buildBankTransactionDrafts = (
+  events: BankNotificationEvent[],
+): BankTransactionDraft[] =>
+  [...events]
+    .sort((left, right) => left.postedAt - right.postedAt)
+    .flatMap(event => {
+      try {
+        return [buildBankTransactionDraft(event)];
+      } catch {
+        return [];
+      }
+    });
 
 const runSync = async (userId: number): Promise<BankNotificationSyncResult> => {
   if (!bankNotificationReader.isSupported) {

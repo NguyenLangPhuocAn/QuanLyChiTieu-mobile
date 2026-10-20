@@ -37,6 +37,8 @@ export type ParsedBankNotification = {
 
 export type BankTransactionDraft = {
   eventId: string;
+  sourceApp: string;
+  postedAt: number;
   type: 'INCOME' | 'EXPENSE';
   amount: string;
   currency: string;
