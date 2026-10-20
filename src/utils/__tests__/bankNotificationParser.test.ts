@@ -46,6 +46,21 @@ describe('parseBankNotification', () => {
     });
   });
 
+  it('reads an ACB incoming notification with currency before the amount', () => {
+    const event = makeEvent(
+      'ACB: TK 23664527(VND) + 752,790 luc 07:22 20/10/2026. So du 14,533,072. GD: HSP41313637408790',
+    );
+    event.appName = 'ACB ONE';
+    event.title = 'Thong bao thay doi so du tai khoan';
+
+    expect(parseBankNotification(event)).toMatchObject({
+      status: 'READY',
+      type: 'INCOME',
+      amount: '752790',
+      currency: 'VND',
+    });
+  });
+
   it('requires review when two transaction amounts are equally likely', () => {
     const result = parseBankNotification(
       makeEvent('Giao dịch ghi nợ 50.000 VND, phí 5.000 VND'),

@@ -61,7 +61,7 @@ const ignoredTerms = [
 ];
 
 const amountPattern =
-  /([+-]?\s*\d[\d.,\s]{0,18})\s*(vnd|vnđ|đ|₫|usd)(?=\s|$|[).,;])|\b(vnd|vnđ|₫|usd)\s*([+-]?\s*\d[\d.,\s]{0,18})/giu;
+  /([+-]?\s*\d[\d.,\s]{0,18})\s*(vnd|vnđ|đ|₫|usd)(?=\s|$|[).,;])|(?:\(\s*)?\b(vnd|vnđ|₫|usd)\b\s*\)?\s*([+-]?\s*\d[\d.,\s]{0,18})/giu;
 
 const parseNumericAmount = (raw: string, currency: string) => {
   const compact = raw.replace(/\s/g, '').replace(/^\+/, '');

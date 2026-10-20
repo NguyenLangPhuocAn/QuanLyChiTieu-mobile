@@ -7,8 +7,31 @@ import java.security.MessageDigest
 import org.json.JSONObject
 
 class BankNotificationListenerService : NotificationListenerService() {
+  override fun onListenerConnected() {
+    super.onListenerConnected()
+    activeInstance = this
+    captureActiveNotifications()
+  }
+
+  override fun onListenerDisconnected() {
+    if (activeInstance === this) activeInstance = null
+    super.onListenerDisconnected()
+  }
+
   override fun onNotificationPosted(statusBarNotification: StatusBarNotification?) {
     val notification = statusBarNotification ?: return
+    captureNotification(notification)
+  }
+
+  private fun captureActiveNotifications() {
+    try {
+      activeNotifications?.forEach(::captureNotification)
+    } catch (_: SecurityException) {
+      // Android có thể đang thu hồi quyền trong lúc người dùng rời màn cài đặt.
+    }
+  }
+
+  private fun captureNotification(notification: StatusBarNotification) {
     if (notification.packageName == packageName) return
     val activeUser = BankNotificationStore.getActiveUser(this) ?: return
     val enabledPackages = BankNotificationStore.getEnabledPackages(this)
@@ -71,9 +94,16 @@ class BankNotificationListenerService : NotificationListenerService() {
       .joinToString("") { byte -> "%02x".format(byte) }
 
   companion object {
+    @Volatile
+    private var activeInstance: BankNotificationListenerService? = null
+
+    fun refreshActiveNotifications() {
+      activeInstance?.captureActiveNotifications()
+    }
+
     private const val maximumTitleLength = 160
     private const val maximumTextLength = 800
-    private val amountPattern = Regex("(?:[+-]\\s*)?\\d[\\d.,\\s]{1,18}\\s*(?:vnd|vnđ|đ|₫|usd)|(?:vnd|vnđ|₫|usd)\\s*\\d[\\d.,\\s]{1,18}", RegexOption.IGNORE_CASE)
+    private val amountPattern = Regex("(?:[+-]\\s*)?\\d[\\d.,\\s]{1,18}\\s*(?:vnd|vnđ|đ|₫|usd)|\\(?\\s*(?:vnd|vnđ|₫|usd)\\s*\\)?\\s*[+-]?\\s*\\d[\\d.,\\s]{1,18}", RegexOption.IGNORE_CASE)
     private val otpPattern = Regex("(?:otp|mã xác thực|ma xac thuc|verification code|smart otp)[^0-9]{0,20}\\d{4,8}", RegexOption.IGNORE_CASE)
     private val sensitiveTerms = listOf("mã otp", "ma otp", "mật khẩu", "mat khau", "password", "pin code")
     private val transactionTerms = listOf(

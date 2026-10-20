@@ -91,6 +91,7 @@ class BankNotificationModule(
 
   @ReactMethod
   fun getPendingEventsJson(activeUser: String, promise: Promise) {
+    BankNotificationListenerService.refreshActiveNotifications()
     promise.resolve(
       BankNotificationStore.getPendingEvents(reactContext, activeUser).toString(),
     )
