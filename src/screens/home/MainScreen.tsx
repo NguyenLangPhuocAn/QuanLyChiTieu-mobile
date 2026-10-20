@@ -81,7 +81,10 @@ import {
   findMatchingSmartRule,
   smartRulesService,
 } from '../../services/smartRules';
-import { syncBankNotifications } from '../../services/bankNotificationSync';
+import {
+  buildBankTransactionDraft,
+  syncBankNotifications,
+} from '../../services/bankNotificationSync';
 import { bankNotificationSettings } from '../../services/bankNotificationSettings';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import { loanDebtsService } from '../../services/loanDebts';
@@ -270,6 +273,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   >(null);
   const [activeBankNotificationEventId, setActiveBankNotificationEventId] =
     useState<string | null>(null);
+  const [isReadingBankNotification, setIsReadingBankNotification] =
+    useState(false);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -1084,6 +1089,66 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   >(() => undefined);
   applyBankTransactionDraftRef.current = applyBankTransactionDraft;
 
+  const openBankNotificationsFromForm = () => {
+    shouldReopenTransactionForm.current = true;
+    setIsModalVisible(false);
+    navigation.navigate('BankNotifications');
+  };
+
+  const handleReadBankNotificationFromForm = async () => {
+    if (!user?.id || isReadingBankNotification) return;
+
+    setIsReadingBankNotification(true);
+    try {
+      const granted =
+        await bankNotificationReader.isNotificationAccessGranted();
+      if (!granted) {
+        Alert.alert(
+          'Chưa có quyền đọc thông báo',
+          'Cấp quyền cho Sổ Thu Chi Nova để đọc thông báo từ ứng dụng ngân hàng.',
+          [
+            { text: 'Để sau', style: 'cancel' },
+            { text: 'Thiết lập', onPress: openBankNotificationsFromForm },
+          ],
+        );
+        return;
+      }
+
+      const events = await bankNotificationReader.getPendingEvents(user.id);
+      const drafts = events
+        .sort((left, right) => right.postedAt - left.postedAt)
+        .flatMap(event => {
+          try {
+            return [buildBankTransactionDraft(event)];
+          } catch {
+            return [];
+          }
+        });
+
+      if (!drafts.length) {
+        Alert.alert(
+          'Chưa có giao dịch mới',
+          'Không có thông báo ngân hàng đủ thông tin để điền vào giao dịch.',
+        );
+        return;
+      }
+
+      if (drafts.length === 1) {
+        applyBankTransactionDraftRef.current(drafts[0]);
+        return;
+      }
+
+      openBankNotificationsFromForm();
+    } catch (error) {
+      Alert.alert(
+        'Chưa đọc được thông báo',
+        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+      );
+    } finally {
+      setIsReadingBankNotification(false);
+    }
+  };
+
   const applyCapturedTransactionDraftRef = useRef<
     (draft: ChatTransactionDraft) => void
   >(() => undefined);
@@ -1511,6 +1576,23 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   <ArrowLeft size={18} color="#7A4A28" />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
+                <TouchableOpacity
+                  style={styles.bankReadButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Đọc thông báo ngân hàng"
+                  disabled={savingTransaction || isReadingBankNotification}
+                  onPress={() =>
+                    handleReadBankNotificationFromForm().catch(
+                      () => undefined,
+                    )
+                  }
+                >
+                  {isReadingBankNotification ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.bankReadButtonText}>Đọc tin NH</Text>
+                  )}
+                </TouchableOpacity>
               </View>
               <Text style={styles.modalDescription}>
                 {activeBankNotificationEventId
@@ -2453,6 +2535,7 @@ const styles = StyleSheet.create({
     color: '#4C2A18',
     fontSize: 22,
     fontWeight: '800',
+    flex: 1,
   },
   modalTitleRow: {
     flexDirection: 'row',
@@ -2466,6 +2549,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   backFormButtonText: { color: Colors.primary, fontWeight: '900' },
+  bankReadButton: {
+    minHeight: 36,
+    minWidth: 78,
+    paddingHorizontal: 9,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#F0B979',
+    backgroundColor: '#FFF4E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankReadButtonText: {
+    color: Colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+  },
   modalDescription: {
     color: '#8A623F',
     marginTop: 8,
