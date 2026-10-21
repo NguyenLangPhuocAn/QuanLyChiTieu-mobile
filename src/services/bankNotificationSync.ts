@@ -1,5 +1,6 @@
 import { bankNotificationReader } from '../native/bankNotificationReader';
 import type {
+  BankNotificationItem,
   BankNotificationEvent,
   BankTransactionDraft,
 } from '../types/bankNotification';
@@ -51,6 +52,24 @@ export const buildBankTransactionDrafts = (
       } catch {
         return [];
       }
+    });
+
+export const buildBankNotificationItems = (
+  events: BankNotificationEvent[],
+): BankNotificationItem[] =>
+  [...events]
+    .sort((left, right) => left.postedAt - right.postedAt)
+    .map(event => {
+      const parsed = parseBankNotification(event);
+      let draft: BankTransactionDraft | null = null;
+      if (parsed.status === 'READY') {
+        try {
+          draft = buildBankTransactionDraft(event);
+        } catch {
+          // Keep the notification visible for manual review if parsing is incomplete.
+        }
+      }
+      return { event, parsed, draft };
     });
 
 const runSync = async (userId: number): Promise<BankNotificationSyncResult> => {

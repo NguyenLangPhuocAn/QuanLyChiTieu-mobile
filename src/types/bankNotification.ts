@@ -45,3 +45,9 @@ export type BankTransactionDraft = {
   note: string;
   transactionDate: string;
 };
+
+export type BankNotificationItem = {
+  event: BankNotificationEvent;
+  parsed: ParsedBankNotification;
+  draft: BankTransactionDraft | null;
+};

@@ -84,7 +84,7 @@ import {
   smartRulesService,
 } from '../../services/smartRules';
 import {
-  buildBankTransactionDrafts,
+  buildBankNotificationItems,
   syncBankNotifications,
 } from '../../services/bankNotificationSync';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
@@ -112,7 +112,10 @@ import type { ReceiptItem, ReceiptOcrResult } from '../../types/transaction';
 import type { SavingsGoal } from '../../types/savings';
 import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
-import type { BankTransactionDraft } from '../../types/bankNotification';
+import type {
+  BankNotificationItem,
+  BankTransactionDraft,
+} from '../../types/bankNotification';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -273,10 +276,18 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   >(null);
   const [activeBankNotificationEventId, setActiveBankNotificationEventId] =
     useState<string | null>(null);
+  const [
+    activeBankNotificationReviewReason,
+    setActiveBankNotificationReviewReason,
+  ] = useState<string | null>(null);
+  const [
+    requiresBankDirectionConfirmation,
+    setRequiresBankDirectionConfirmation,
+  ] = useState(false);
   const [isReadingBankNotification, setIsReadingBankNotification] =
     useState(false);
   const [pendingBankDrafts, setPendingBankDrafts] = useState<
-    BankTransactionDraft[]
+    BankNotificationItem[]
   >([]);
   const [isBankNotificationPickerVisible, setIsBankNotificationPickerVisible] =
     useState(false);
@@ -607,6 +618,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   const handleSelectTransactionType = (type: TransactionEntryType) => {
     setTransactionEntryType(type);
+    if (activeBankNotificationEventId) {
+      setRequiresBankDirectionConfirmation(false);
+    }
 
     if (type === 'LOAN_DEBT') {
       return;
@@ -664,6 +678,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     receiptRequestVersion.current += 1;
     setIsChatDraft(false);
     setActiveBankNotificationEventId(null);
+    setActiveBankNotificationReviewReason(null);
+    setRequiresBankDirectionConfirmation(false);
     setChatDraftCurrency(null);
     setTransactionAmount('');
     setTransactionDate(new Date());
@@ -1014,6 +1030,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     resetTransactionForm();
     setIsChatDraft(true);
     setActiveBankNotificationEventId(draft.eventId);
+    setActiveBankNotificationReviewReason(null);
     setChatDraftCurrency(draft.currency);
     setTransactionEntryType(draft.type);
     setTransactionAmount(draft.amount);
@@ -1028,6 +1045,26 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     (draft: BankTransactionDraft) => void
   >(() => undefined);
   applyBankTransactionDraftRef.current = applyBankTransactionDraft;
+
+  const applyBankNotificationReview = (item: BankNotificationItem) => {
+    const { event, parsed } = item;
+    resetTransactionForm();
+    setIsChatDraft(true);
+    setActiveBankNotificationEventId(event.id);
+    setActiveBankNotificationReviewReason(parsed.reason ?? null);
+    setRequiresBankDirectionConfirmation(!parsed.type);
+    setChatDraftCurrency(parsed.currency ?? null);
+    setTransactionEntryType(parsed.type ?? 'EXPENSE');
+    setTransactionAmount(parsed.amount ?? '');
+    setTransactionNote(parsed.note);
+    setTransactionDate(parseDateKey(parsed.transactionDate));
+    setSelectedWalletId(null);
+    setSelectedTransactionCategory(null);
+    setIsModalVisible(true);
+  };
+
+  const applyBankNotificationReviewRef = useRef(applyBankNotificationReview);
+  applyBankNotificationReviewRef.current = applyBankNotificationReview;
 
   const handleReadBankNotificationFromForm = async () => {
     if (!user?.id || isReadingBankNotification) return;
@@ -1056,7 +1093,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
 
       const events = await bankNotificationReader.getPendingEvents(user.id);
-      const drafts = buildBankTransactionDrafts(events);
+      const drafts = buildBankNotificationItems(events).filter(
+        item => item.parsed.status !== 'IGNORED',
+      );
 
       if (!drafts.length) {
         Alert.alert(
@@ -1067,7 +1106,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
 
       if (drafts.length === 1) {
-        applyBankTransactionDraftRef.current(drafts[0]);
+        const [item] = drafts;
+        if (item.draft) {
+          applyBankTransactionDraftRef.current(item.draft);
+        } else {
+          applyBankNotificationReviewRef.current(item);
+        }
         return;
       }
 
@@ -1193,6 +1237,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const handleSaveTransaction = () =>
     runSaveTransaction(async () => {
       if (!token || isOcrLoading) return;
+      if (activeBankNotificationEventId && requiresBankDirectionConfirmation) {
+        Alert.alert(
+          'Chưa xác định thu hay chi',
+          'Chọn Chi hoặc Thu theo đúng nội dung thông báo trước khi lưu.',
+        );
+        return;
+      }
       const normalizedAmount = parsePositiveMoneyInput(transactionAmount);
 
       if (!normalizedAmount) {
@@ -1283,7 +1334,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
       const transactionType =
         selectedTransactionCategory.type === 'INCOME' ? 'income' : 'expense';
-      const clientRequestId = createClientRequestId();
+      const isBankNotification = Boolean(activeBankNotificationEventId);
       const createPayload: CreateTransactionPayload = {
         wallet_id: selectedWallet.id,
         category_id: selectedTransactionCategory.id,
@@ -1294,9 +1345,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           normalizedReceiptItems.length > 0 ? normalizedReceiptItems : null,
         transaction_date: toDateKey(transactionDate),
         tags: parseTagsInput(transactionTags),
-        source: activeBankNotificationEventId ? 'BANK_NOTIFICATION' : undefined,
-        source_ref: activeBankNotificationEventId ?? undefined,
-        client_request_id: clientRequestId,
+        ...(isBankNotification
+          ? {
+              source: 'BANK_NOTIFICATION' as const,
+              source_ref: activeBankNotificationEventId!,
+            }
+          : { client_request_id: createClientRequestId() }),
       };
       let createdTransaction;
       try {
@@ -1539,9 +1593,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               </View>
               <Text style={styles.modalDescription}>
                 {activeBankNotificationEventId
-                  ? `Từ thông báo ngân hàng${
-                      chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
-                    }. Hãy chọn ví và danh mục rồi kiểm tra trước khi lưu.`
+                  ? activeBankNotificationReviewReason
+                    ? `${activeBankNotificationReviewReason} Nhập hoặc sửa số tiền, xác nhận loại thu/chi, chọn ví và danh mục rồi mới lưu.`
+                    : `Từ thông báo ngân hàng${
+                        chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
+                      }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
                   : isChatDraft
                   ? `Bản nháp từ chatbot${
                       chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
@@ -1549,7 +1605,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
               <View style={styles.typeSegment}>
-                {(['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const).map(type => {
+                {(activeBankNotificationEventId
+                  ? (['EXPENSE', 'INCOME'] as const)
+                  : (['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const)
+                ).map(type => {
                   const active = selectedTransactionType === type;
 
                   return (
@@ -2253,8 +2312,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               contentContainerStyle={styles.bankPickerListContent}
               showsVerticalScrollIndicator={false}
             >
-              {pendingBankDrafts.map(draft => {
-                const postedAt = new Date(draft.postedAt);
+              {pendingBankDrafts.map(item => {
+                const { event, parsed, draft } = item;
+                const postedAt = new Date(event.postedAt);
                 const postedLabel = postedAt.toLocaleString('vi-VN', {
                   day: '2-digit',
                   month: '2-digit',
@@ -2264,36 +2324,63 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
                 return (
                   <TouchableOpacity
-                    key={draft.eventId}
+                    key={event.id}
                     style={styles.bankPickerItem}
-                    accessibilityLabel={`Chọn giao dịch ${
-                      draft.type === 'INCOME' ? 'thu' : 'chi'
-                    } ${draft.amount}`}
+                    accessibilityLabel={
+                      draft
+                        ? `Chọn giao dịch ${
+                            draft.type === 'INCOME' ? 'thu' : 'chi'
+                          } ${draft.amount}`
+                        : `Kiểm tra thông báo ${event.appName}`
+                    }
                     onPress={() => {
                       setIsBankNotificationPickerVisible(false);
                       setPendingBankDrafts([]);
-                      applyBankTransactionDraftRef.current(draft);
+                      if (draft) {
+                        applyBankTransactionDraftRef.current(draft);
+                      } else {
+                        applyBankNotificationReviewRef.current(item);
+                      }
                     }}
                   >
                     <View
                       style={[
                         styles.bankPickerType,
-                        draft.type === 'INCOME'
+                        parsed.type === 'INCOME'
                           ? styles.bankPickerIncome
                           : styles.bankPickerExpense,
                       ]}
                     >
                       <Text style={styles.bankPickerTypeText}>
-                        {draft.type === 'INCOME' ? 'Thu' : 'Chi'}
+                        {parsed.type === 'INCOME'
+                          ? 'Thu'
+                          : parsed.type === 'EXPENSE'
+                          ? 'Chi'
+                          : 'Xem'}
                       </Text>
                     </View>
                     <View style={styles.bankPickerItemCopy}>
-                      <Text style={styles.bankPickerAmount}>
-                        {formatCurrency(Number(draft.amount), draft.currency)}
+                      <Text
+                        style={[
+                          styles.bankPickerAmount,
+                          !draft && styles.bankPickerReviewAmount,
+                        ]}
+                      >
+                        {draft
+                          ? formatCurrency(Number(draft.amount), draft.currency)
+                          : 'Cần kiểm tra'}
                       </Text>
                       <Text style={styles.bankPickerMeta} numberOfLines={1}>
-                        {draft.sourceApp} · {postedLabel}
+                        {event.appName} · {postedLabel}
                       </Text>
+                      {!draft && parsed.reason ? (
+                        <Text
+                          style={styles.bankPickerReviewReason}
+                          numberOfLines={2}
+                        >
+                          {parsed.reason}
+                        </Text>
+                      ) : null}
                     </View>
                   </TouchableOpacity>
                 );
@@ -2561,6 +2648,13 @@ const styles = StyleSheet.create({
     color: '#4C2A18',
     fontSize: 17,
     fontWeight: '900',
+  },
+  bankPickerReviewAmount: { color: '#9A5A25' },
+  bankPickerReviewReason: {
+    color: '#8A684D',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3,
   },
   bankPickerMeta: {
     color: '#936D50',

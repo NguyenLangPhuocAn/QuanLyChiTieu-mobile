@@ -6,13 +6,16 @@ import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
+import { bankNotificationReader } from '../src/native/bankNotificationReader';
+
+let mockUser: { id: number; currency_default: string } | null = null;
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
   useFocusEffect: () => undefined,
 }));
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-token', user: null }),
+  useAuth: () => ({ token: 'test-token', user: mockUser }),
 }));
 jest.mock('../src/context/FinanceContext', () => {
   const stable = {
@@ -90,6 +93,20 @@ jest.mock('../src/services/notifications', () => ({
     getUnreadCount: jest.fn().mockResolvedValue({ count: 0 }),
   },
 }));
+jest.mock('../src/native/bankNotificationReader', () => ({
+  bankNotificationReader: {
+    isSupported: true,
+    isNotificationAccessGranted: jest.fn().mockResolvedValue(true),
+    openNotificationAccessSettings: jest.fn().mockResolvedValue(true),
+    getPendingEvents: jest.fn().mockResolvedValue([]),
+    setConfiguration: jest.fn().mockResolvedValue(true),
+    markProcessed: jest.fn().mockResolvedValue(true),
+    dismissEvent: jest.fn().mockResolvedValue(true),
+    startShakeDetection: jest.fn().mockResolvedValue(true),
+    stopShakeDetection: jest.fn().mockResolvedValue(true),
+    onShake: jest.fn(() => ({ remove: jest.fn() })),
+  },
+}));
 
 let tree: TestRenderer.ReactTestRenderer;
 const draft = {
@@ -114,6 +131,7 @@ const button = (label: string) =>
       node.findAllByType(Text).some(text => text.props.children === label),
     )!;
 beforeEach(async () => {
+  mockUser = null;
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -360,6 +378,60 @@ it('submits once when Save is pressed twice before the response', async () => {
     finish({ id: 10 });
     await pending;
   });
+});
+
+it('saves a bank notification with its source key and no conflicting client key', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => {
+    tree.update(<MainScreen />);
+  });
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'a'.repeat(64),
+      packageName: 'vn.bank.app',
+      appName: 'Ngân hàng',
+      title: 'Biến động số dư',
+      text: 'Thanh toán -79.000 VND tại THANG 2 CAFE',
+      postedAt: new Date('2026-10-20T04:44:00.000Z').getTime(),
+    },
+  ]);
+  (transactionsService.create as jest.Mock).mockResolvedValue({ id: 18 });
+
+  await act(async () => {
+    chat().onCreateTransaction!({ ...draft, amount: null } as any);
+  });
+  await act(async () => {
+    await tree.root
+      .findByProps({ accessibilityLabel: 'Đọc thông báo giao dịch' })
+      .props.onPress();
+  });
+  await act(async () => {
+    button('Tiền mặt').props.onPress();
+    button('Chi').props.onPress();
+  });
+  await act(async () => {
+    await button('Lưu giao dịch').props.onPress();
+  });
+
+  expect(transactionsService.create).toHaveBeenCalledWith(
+    'test-token',
+    expect.objectContaining({
+      source: 'BANK_NOTIFICATION',
+      source_ref: 'a'.repeat(64),
+      wallet_id: 1,
+      category_id: 4,
+      amount: '79000',
+      type: 'EXPENSE',
+    }),
+  );
+  const createdPayload = (
+    transactionsService.create as jest.Mock
+  ).mock.calls.at(-1)?.[1];
+  expect(createdPayload).not.toHaveProperty('client_request_id');
+  expect(bankNotificationReader.markProcessed).toHaveBeenCalledWith(
+    7,
+    'a'.repeat(64),
+  );
 });
 
 it('requires missing draft amount before saving', async () => {

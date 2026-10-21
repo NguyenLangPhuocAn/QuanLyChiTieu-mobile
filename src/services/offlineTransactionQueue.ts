@@ -17,7 +17,7 @@ export type OfflineTransactionDraft = {
   status: OfflineTransactionDraftStatus;
   attempts: number;
   lastError?: string;
-  payload: CreateTransactionPayload & { client_request_id: string };
+  payload: CreateTransactionPayload & { client_request_id?: string };
 };
 
 export type OfflineQueueSyncResult = {
@@ -45,12 +45,19 @@ const parseDrafts = (raw: string | null): OfflineTransactionDraft[] => {
     return value.filter(item => {
       if (!item || typeof item !== 'object') return false;
       const draft = item as Partial<OfflineTransactionDraft>;
+      const payload = draft.payload;
+      const hasClientId = Boolean(payload?.client_request_id);
+      const hasBankKey = Boolean(
+        payload?.source === 'BANK_NOTIFICATION' &&
+          payload.source_ref &&
+          /^[a-f0-9]{64}$/i.test(payload.source_ref),
+      );
       return Boolean(
         draft.id &&
-          draft.payload?.client_request_id &&
-          draft.payload.wallet_id &&
-          draft.payload.amount &&
-          draft.payload.type,
+          (hasClientId || hasBankKey) &&
+          payload?.wallet_id &&
+          payload.amount &&
+          payload.type,
       );
     }) as OfflineTransactionDraft[];
   } catch {
@@ -131,20 +138,27 @@ export const offlineTransactionQueue = {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
       );
-      const requestId = payload.client_request_id ?? createClientRequestId();
-      const existing = drafts.find(
-        item => item.payload.client_request_id === requestId,
+      const isBankNotification = Boolean(
+        payload.source === 'BANK_NOTIFICATION' && payload.source_ref,
       );
+      const requestId = isBankNotification
+        ? `bank_${payload.source_ref}`
+        : payload.client_request_id ?? createClientRequestId();
+      const existing = drafts.find(item => item.id === requestId);
       if (existing) return existing;
 
       const now = new Date().toISOString();
+      const bankPayload = { ...payload };
+      delete bankPayload.client_request_id;
       const draft: OfflineTransactionDraft = {
         id: requestId,
         createdAt: now,
         updatedAt: now,
         status: 'PENDING',
         attempts: 0,
-        payload: { ...payload, client_request_id: requestId },
+        payload: isBankNotification
+          ? bankPayload
+          : { ...payload, client_request_id: requestId },
       };
       drafts.push(draft);
       await save(userId, drafts);
@@ -176,11 +190,21 @@ export const offlineTransactionQueue = {
       const draft = drafts.find(item => item.id === id);
       if (!draft) return null;
       const clientRequestId = draft.payload.client_request_id;
-      draft.payload = {
+      const updatedPayload = {
         ...draft.payload,
         ...payload,
-        client_request_id: clientRequestId,
       };
+      if (
+        draft.payload.source === 'BANK_NOTIFICATION' &&
+        draft.payload.source_ref
+      ) {
+        updatedPayload.source = 'BANK_NOTIFICATION';
+        updatedPayload.source_ref = draft.payload.source_ref;
+        delete updatedPayload.client_request_id;
+      } else {
+        updatedPayload.client_request_id = clientRequestId;
+      }
+      draft.payload = updatedPayload;
       draft.status = 'PENDING';
       draft.lastError = undefined;
       draft.updatedAt = new Date().toISOString();

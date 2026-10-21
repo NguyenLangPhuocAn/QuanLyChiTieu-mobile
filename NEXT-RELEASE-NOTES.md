@@ -1,3 +1,21 @@
+# Bản kế tiếp — bản nháp, chưa phát hành
+
+## Đọc thông báo ngân hàng và lưu giao dịch
+
+- Sửa lỗi app gửi cùng lúc mã thông báo ngân hàng và mã yêu cầu chung; backend từ chối tổ hợp này nên giao dịch không lưu được.
+- Bản nháp ngân hàng khi mất mạng giữ nguyên mã chống trùng của thông báo, không tự thêm mã thứ hai khi đồng bộ lại.
+- Danh sách thông báo giữ các mục cần xem lại, giải thích vì sao chưa đọc chắc chắn thay vì làm chúng biến mất.
+- Nếu chưa xác định được khoản thu hay chi, app yêu cầu chọn rõ Thu/Chi trước khi lưu.
+- Danh sách vẫn theo thứ tự cũ nhất trước; đóng danh sách không xóa thông báo đang chờ.
+
+## Kiểm tra và giới hạn
+
+- Đã chạy hồi quy cho lưu giao dịch từ thông báo, hàng chờ ngoại tuyến và phân loại cần xem lại.
+- Đây mới là thay đổi mã nguồn. Chưa build APK, chưa phát hành và chưa cập nhật trang tải.
+- AI trích xuất thông báo, mic nhập giao dịch, hóa đơn định kỳ và cờ bật/tắt backend vẫn nằm trong kế hoạch; chưa được triển khai.
+
+---
+
 # Sổ Thu Chi Nova 1.2.1
 
 **Ngày phát hành:** 19/10/2026

@@ -48,6 +48,41 @@ describe('offlineTransactionQueue', () => {
     expect(drafts[0].status).toBe('PENDING');
   });
 
+  it('keeps a bank notification idempotency key without adding a conflicting client key', async () => {
+    const sourceRef = 'b'.repeat(64);
+    const draft = await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      category_id: 3,
+      amount: '79000',
+      type: 'EXPENSE',
+      source: 'BANK_NOTIFICATION',
+      source_ref: sourceRef,
+    });
+    const repeated = await offlineTransactionQueue.enqueue(7, draft.payload);
+    createTransaction.mockResolvedValue({ id: 91 });
+
+    expect(draft.id).toBe(`bank_${sourceRef}`);
+    expect(draft.payload.source_ref).toBe(sourceRef);
+    expect(draft.payload).not.toHaveProperty('client_request_id');
+    expect(repeated.id).toBe(draft.id);
+
+    await expect(offlineTransactionQueue.sync('token', 7)).resolves.toEqual({
+      synced: 1,
+      pending: 0,
+      needsReview: 0,
+    });
+    expect(createTransaction).toHaveBeenCalledWith(
+      'token',
+      expect.objectContaining({
+        source: 'BANK_NOTIFICATION',
+        source_ref: sourceRef,
+      }),
+    );
+    expect(createTransaction.mock.calls[0][1]).not.toHaveProperty(
+      'client_request_id',
+    );
+  });
+
   it('removes a draft after the idempotent request is confirmed', async () => {
     await offlineTransactionQueue.enqueue(7, {
       wallet_id: 2,

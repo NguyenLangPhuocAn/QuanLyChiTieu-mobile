@@ -1,5 +1,6 @@
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import {
+  buildBankNotificationItems,
   buildBankTransactionDraft,
   buildBankTransactionDrafts,
   syncBankNotifications,
@@ -111,9 +112,42 @@ describe('syncBankNotifications', () => {
       },
     ];
 
-    expect(buildBankTransactionDrafts(events).map(draft => draft.eventId)).toEqual([
-      'older',
-      'newer',
+    expect(
+      buildBankTransactionDrafts(events).map(draft => draft.eventId),
+    ).toEqual(['older', 'newer']);
+  });
+
+  it('keeps ambiguous transaction notifications visible for manual review in oldest-first order', () => {
+    const events = [
+      {
+        id: 'newer-review',
+        packageName: 'vn.bank.app',
+        appName: 'Ngân hàng',
+        title: 'Biến động số dư',
+        text: 'Giao dịch 100.000 VND, số dư 2.000.000 VND',
+        postedAt: 200,
+      },
+      {
+        id: 'older-ready',
+        packageName: 'vn.bank.app',
+        appName: 'Ngân hàng',
+        title: 'Biến động số dư',
+        text: 'Tiền vào +200.000 VND',
+        postedAt: 100,
+      },
+    ];
+
+    expect(buildBankNotificationItems(events)).toMatchObject([
+      {
+        event: { id: 'older-ready' },
+        parsed: { status: 'READY', type: 'INCOME' },
+        draft: { eventId: 'older-ready', amount: '200000' },
+      },
+      {
+        event: { id: 'newer-review' },
+        parsed: { status: 'REVIEW' },
+        draft: null,
+      },
     ]);
   });
 });
