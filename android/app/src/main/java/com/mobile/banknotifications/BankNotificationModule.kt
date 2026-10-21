@@ -91,10 +91,15 @@ class BankNotificationModule(
 
   @ReactMethod
   fun getPendingEventsJson(activeUser: String, promise: Promise) {
-    BankNotificationListenerService.refreshActiveNotifications()
-    promise.resolve(
-      BankNotificationStore.getPendingEvents(reactContext, activeUser).toString(),
-    )
+    try {
+      if (BankNotificationStore.getActiveUser(reactContext) != activeUser) {
+        throw IllegalStateException("Cấu hình người dùng đọc thông báo chưa sẵn sàng.")
+      }
+      BankNotificationListenerService.refreshActiveNotifications()
+      promise.resolve(BankNotificationStore.getPendingEvents(reactContext, activeUser).toString())
+    } catch (error: Exception) {
+      promise.reject("NOTIFICATION_READER_UNAVAILABLE", error.message, error)
+    }
   }
 
   @ReactMethod

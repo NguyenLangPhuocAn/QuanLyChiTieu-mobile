@@ -9,6 +9,21 @@ import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
 
 let mockUser: { id: number; currency_default: string } | null = null;
+let mockSpeechEvents: Record<string, (event?: any) => void> = {};
+jest.mock('rn-speech-recognition', () => ({
+  RNSpeechRecognitionModule: {
+    isAvailable: true,
+    isRecognitionAvailable: jest.fn(() => true),
+    requestPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+    addListener: jest.fn((name, callback) => {
+      mockSpeechEvents[name] = callback;
+      return { remove: jest.fn() };
+    }),
+    start: jest.fn(),
+    stop: jest.fn(),
+    abort: jest.fn(),
+  },
+}));
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
@@ -131,6 +146,7 @@ const button = (label: string) =>
       node.findAllByType(Text).some(text => text.props.children === label),
     )!;
 beforeEach(async () => {
+  mockSpeechEvents = {};
   mockUser = null;
   jest.useFakeTimers();
   jest.clearAllMocks();
@@ -146,6 +162,142 @@ beforeEach(async () => {
   await act(async () => {
     tab.props.onPress();
   });
+});
+
+it('previews speech then fills a draft without saving or choosing a wallet', async () => {
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Nhập giao dịch bằng giọng nói' })
+      .props.onPress(),
+  );
+  await act(async () => mockSpeechEvents.start());
+  await act(async () =>
+    mockSpeechEvents.result({
+      results: [{ transcript: 'Chi 79 nghìn ăn trưa hôm nay' }],
+    }),
+  );
+  expect(amount()).toBe('30.000');
+  expect(
+    tree.root.findByProps({
+      accessibilityLabel: 'Điền câu đã nghe vào giao dịch',
+    }).props.disabled,
+  ).toBe(true);
+  await act(async () => mockSpeechEvents.end());
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Điền câu đã nghe vào giao dịch' })
+      .props.onPress(),
+  );
+  expect(amount()).toBe('79.000');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  expect(
+    tree.root
+      .findAllByType(TextInput)
+      .some(input => input.props.value === 'Chi 79 nghìn ăn trưa hôm nay'),
+  ).toBe(true);
+  expect(
+    tree.root.findAllByProps({
+      accessibilityLabel: 'Nội dung giao dịch bằng giọng nói',
+    }),
+  ).toHaveLength(0);
+});
+
+it('keeps the existing draft when speech is cancelled and ignores late events', async () => {
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Nhập giao dịch bằng giọng nói' })
+      .props.onPress(),
+  );
+  const lateResult = mockSpeechEvents.result;
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Hủy nhập bằng giọng nói' })
+      .props.onPress(),
+  );
+  await act(async () =>
+    lateResult({ results: [{ transcript: 'thu 90 triệu' }] }),
+  );
+  expect(amount()).toBe('30.000');
+  expect(
+    tree.root
+      .findAllByType(TextInput)
+      .some(input => input.props.value === 'Test draft'),
+  ).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('does not apply an ambiguous spoken transaction', async () => {
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Nhập giao dịch bằng giọng nói' })
+      .props.onPress(),
+  );
+  await act(async () =>
+    mockSpeechEvents.result({
+      results: [{ transcript: 'chi 70 nghìn và thu 90 nghìn' }],
+    }),
+  );
+  await act(async () => mockSpeechEvents.end());
+  const apply = tree.root.findByProps({
+    accessibilityLabel: 'Điền câu đã nghe vào giao dịch',
+  });
+  expect(apply.props.disabled).toBe(true);
+  await act(async () => apply.props.onPress());
+  expect(amount()).toBe('30.000');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('does not overwrite a new draft with a bank read that finishes after closing the form', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  let finish!: (events: unknown[]) => void;
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  let reading!: Promise<void>;
+  await act(async () => {
+    reading = tree.root
+      .findByProps({ accessibilityLabel: 'Đọc thông báo giao dịch' })
+      .props.onPress();
+  });
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Đóng bản nháp giao dịch' })
+      .props.onPress(),
+  );
+  await act(async () =>
+    chat().onCreateTransaction!({
+      ...draft,
+      amount: 55000,
+      note: 'Bản nháp mới',
+    } as any),
+  );
+  await act(async () => {
+    finish([
+      {
+        id: 'b'.repeat(64),
+        packageName: 'bank.test',
+        appName: 'ACB ONE',
+        title: 'Biến động số dư',
+        text: 'Nhận +752,790 VND',
+        postedAt: Date.now(),
+      },
+    ]);
+    await reading;
+  });
+  expect(amount()).toBe('55.000');
+  expect(
+    tree.root
+      .findAllByType(TextInput)
+      .some(input => input.props.value === 'Bản nháp mới'),
+  ).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
 });
 afterEach(async () => {
   await act(async () => {

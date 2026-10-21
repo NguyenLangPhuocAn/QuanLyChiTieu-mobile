@@ -3,6 +3,7 @@ import { Alert, AppState, Linking } from 'react-native';
 import type { RNSpeechRecognitionModule } from 'rn-speech-recognition';
 
 type SpeechModule = typeof RNSpeechRecognitionModule;
+let activeVoiceSession: { owner: object; cancel: () => void } | null = null;
 
 export function useVoiceInput(onTranscript: (text: string) => void) {
   const [status, setStatus] = useState<
@@ -10,6 +11,7 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
   >('idle');
   const session = useRef(0);
   const busy = useRef(false);
+  const owner = useRef({});
   const moduleRef = useRef<SpeechModule | null>(null);
   const subscriptions = useRef<Array<{ remove: () => void }>>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,12 +24,14 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     busy.current = false;
+    if (activeVoiceSession?.owner === owner.current) activeVoiceSession = null;
   }, []);
 
   const cancel = useCallback(() => {
     session.current += 1;
+    const wasBusy = busy.current;
     cleanup();
-    moduleRef.current?.abort();
+    if (wasBusy) moduleRef.current?.abort();
     setStatus('idle');
   }, [cleanup]);
 
@@ -37,8 +41,9 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     });
     return () => {
       session.current += 1;
+      const wasBusy = busy.current;
       cleanup();
-      moduleRef.current?.abort();
+      if (wasBusy) moduleRef.current?.abort();
       subscription.remove();
     };
   }, [cancel, cleanup]);
@@ -53,7 +58,9 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
       }
       return;
     }
+    activeVoiceSession?.cancel();
     busy.current = true;
+    activeVoiceSession = { owner: owner.current, cancel };
     const currentSession = ++session.current;
     setStatus('starting');
     try {
@@ -63,7 +70,7 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
       moduleRef.current = speech;
       if (!speech.isAvailable || !speech.isRecognitionAvailable()) {
         throw new Error(
-          'Thiết bị chưa có dịch vụ nhận dạng giọng nói. Bạn vẫn có thể nhập câu hỏi bằng bàn phím.',
+          'Thiết bị chưa có dịch vụ nhận dạng giọng nói. Bạn vẫn có thể nhập bằng bàn phím.',
         );
       }
       const permissions = await speech.requestPermissionsAsync();
@@ -72,7 +79,7 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
         cancel();
         Alert.alert(
           'Chưa có quyền dùng giọng nói',
-          'Cho phép micro và nhận dạng giọng nói trong Cài đặt để nhập câu hỏi.',
+          'Cho phép micro và nhận dạng giọng nói trong Cài đặt để nhập bằng giọng nói.',
           [
             { text: 'Để sau', style: 'cancel' },
             {

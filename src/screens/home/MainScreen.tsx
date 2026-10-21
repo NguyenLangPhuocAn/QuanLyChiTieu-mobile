@@ -58,6 +58,8 @@ import { resolveChatDraftSelections } from '../../utils/chatTransactionDraft';
 import AccountScreen from './AccountScreen';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { parseVoiceTransactionDraft } from '../../utils/voiceTransactionDraft';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
 import {
@@ -214,7 +216,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [historyEditTransaction, setHistoryEditTransaction] =
     useState<TransactionItem | null>(null);
-  const [isTabLoading, setIsTabLoading] = useState(false);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -286,11 +287,31 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   ] = useState(false);
   const [isReadingBankNotification, setIsReadingBankNotification] =
     useState(false);
+  const bankReadVersion = useRef(0);
+  const bankReadInFlight = useRef(false);
   const [pendingBankDrafts, setPendingBankDrafts] = useState<
     BankNotificationItem[]
   >([]);
   const [isBankNotificationPickerVisible, setIsBankNotificationPickerVisible] =
     useState(false);
+  const [isVoiceEntryVisible, setIsVoiceEntryVisible] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const transactionVoice = useVoiceInput(setVoiceTranscript);
+  const cancelTransactionVoice = transactionVoice.cancel;
+  const voicePreview = useMemo(
+    () => parseVoiceTransactionDraft(voiceTranscript),
+    [voiceTranscript],
+  );
+  useEffect(() => {
+    if (!isModalVisible) {
+      bankReadVersion.current += 1;
+      cancelTransactionVoice();
+      setIsVoiceEntryVisible(false);
+    }
+    return () => {
+      bankReadVersion.current += 1;
+    };
+  }, [isModalVisible, cancelTransactionVoice]);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -611,9 +632,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       return;
     }
 
-    setIsTabLoading(true);
     setActiveTab(tab);
-    setTimeout(() => setIsTabLoading(false), 220);
   };
 
   const handleSelectTransactionType = (type: TransactionEntryType) => {
@@ -675,6 +694,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
+    bankReadVersion.current += 1;
+    transactionVoice.cancel();
+    setIsVoiceEntryVisible(false);
+    setVoiceTranscript('');
     receiptRequestVersion.current += 1;
     setIsChatDraft(false);
     setActiveBankNotificationEventId(null);
@@ -1067,12 +1090,18 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   applyBankNotificationReviewRef.current = applyBankNotificationReview;
 
   const handleReadBankNotificationFromForm = async () => {
-    if (!user?.id || isReadingBankNotification) return;
+    if (!user?.id || bankReadInFlight.current) return;
+    bankReadInFlight.current = true;
+    const version = ++bankReadVersion.current;
+
+    transactionVoice.cancel();
+    setIsVoiceEntryVisible(false);
 
     setIsReadingBankNotification(true);
     try {
       const granted =
         await bankNotificationReader.isNotificationAccessGranted();
+      if (version !== bankReadVersion.current) return;
       if (!granted) {
         Alert.alert(
           'Chưa có quyền đọc thông báo',
@@ -1092,7 +1121,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         return;
       }
 
+      await bankNotificationReader.setConfiguration(user.id, []);
+      if (version !== bankReadVersion.current) return;
       const events = await bankNotificationReader.getPendingEvents(user.id);
+      if (version !== bankReadVersion.current) return;
       const drafts = buildBankNotificationItems(events).filter(
         item => item.parsed.status !== 'IGNORED',
       );
@@ -1100,7 +1132,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       if (!drafts.length) {
         Alert.alert(
           'Chưa có giao dịch mới',
-          'Không có thông báo ngân hàng đủ thông tin để điền vào giao dịch.',
+          'Không có thông báo giao dịch chưa xử lý còn trong khay thông báo của điện thoại.',
         );
         return;
       }
@@ -1118,11 +1150,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       setPendingBankDrafts(drafts);
       setIsBankNotificationPickerVisible(true);
     } catch (error) {
+      if (version !== bankReadVersion.current) return;
       Alert.alert(
         'Chưa đọc được thông báo',
         getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
       );
     } finally {
+      bankReadInFlight.current = false;
       setIsReadingBankNotification(false);
     }
   };
@@ -1236,7 +1270,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   const handleSaveTransaction = () =>
     runSaveTransaction(async () => {
-      if (!token || isOcrLoading) return;
+      if (!token || isOcrLoading || isVoiceEntryVisible) return;
       if (activeBankNotificationEventId && requiresBankDirectionConfirmation) {
         Alert.alert(
           'Chưa xác định thu hay chi',
@@ -1481,16 +1515,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        {renderContent()}
-        {isTabLoading ? (
-          <View style={styles.routeLoadingOverlay}>
-            <View style={styles.routeLoadingCard}>
-              <Text style={styles.routeLoadingText}>Đang chuyển trang...</Text>
-            </View>
-          </View>
-        ) : null}
-      </View>
+      <View style={styles.content}>{renderContent()}</View>
 
       {isOcrLoading ? (
         <View
@@ -1560,7 +1585,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     style={styles.transactionQuickAction}
                     accessibilityRole="button"
                     accessibilityLabel="Đọc thông báo giao dịch"
-                    disabled={savingTransaction || isReadingBankNotification}
+                    disabled={
+                      savingTransaction ||
+                      isReadingBankNotification ||
+                      transactionVoice.isBusy
+                    }
                     onPress={() =>
                       handleReadBankNotificationFromForm().catch(
                         () => undefined,
@@ -1574,20 +1603,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[
-                      styles.transactionQuickAction,
-                      styles.transactionQuickActionUpcoming,
-                    ]}
+                    style={styles.transactionQuickAction}
                     accessibilityRole="button"
-                    accessibilityLabel="Nhập giao dịch bằng giọng nói, sắp có"
-                    onPress={() =>
-                      Alert.alert(
-                        'Nhập bằng giọng nói',
-                        'Nút mic đã được chuẩn bị. Chức năng nhập trực tiếp sẽ được bổ sung sau.',
-                      )
+                    accessibilityLabel="Nhập giao dịch bằng giọng nói"
+                    disabled={
+                      savingTransaction ||
+                      isReadingBankNotification ||
+                      isOcrLoading
                     }
+                    onPress={() => {
+                      setIsVoiceEntryVisible(true);
+                      transactionVoice.toggle('').catch(() => undefined);
+                    }}
                   >
-                    <Mic size={18} color="#9B806B" />
+                    {transactionVoice.status === 'starting' ||
+                    transactionVoice.status === 'stopping' ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Mic size={18} color={Colors.primary} />
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1604,6 +1638,98 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     }. Kiểm tra thông tin rồi bấm Lưu.`
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
+              {isVoiceEntryVisible ? (
+                <View style={styles.voiceEntryCard}>
+                  <Text
+                    style={styles.voiceEntryTitle}
+                    accessibilityLiveRegion="polite"
+                  >
+                    {transactionVoice.status === 'starting'
+                      ? 'Đang mở micro…'
+                      : transactionVoice.status === 'listening'
+                      ? 'Đang nghe · bấm mic để dừng'
+                      : transactionVoice.status === 'stopping'
+                      ? 'Đang nhận kết quả…'
+                      : 'Kiểm tra câu đã nghe'}
+                  </Text>
+                  <TextInput
+                    accessibilityLabel="Nội dung giao dịch bằng giọng nói"
+                    placeholder="Ví dụ: Chi 79 nghìn ăn trưa hôm nay"
+                    placeholderTextColor="#A87C58"
+                    style={styles.voiceTranscriptInput}
+                    multiline
+                    maxLength={500}
+                    editable={!transactionVoice.isBusy}
+                    value={voiceTranscript}
+                    onChangeText={setVoiceTranscript}
+                  />
+                  {!transactionVoice.isBusy && voiceTranscript.trim() ? (
+                    <Text style={styles.voiceEntryHint}>
+                      {voicePreview.draft
+                        ? `${
+                            voicePreview.draft.type === 'INCOME' ? 'Thu' : 'Chi'
+                          } · ${formatCurrency(
+                            voicePreview.draft.amount!,
+                            voicePreview.draft.currency ?? 'VND',
+                          )} · ${formatShortDate(
+                            voicePreview.draft.transaction_date!,
+                          )}`
+                        : voicePreview.issues.join(' ')}
+                    </Text>
+                  ) : null}
+                  <View style={styles.voiceEntryActions}>
+                    <TouchableOpacity
+                      style={styles.voiceEntryCancel}
+                      accessibilityLabel="Hủy nhập bằng giọng nói"
+                      onPress={() => {
+                        transactionVoice.cancel();
+                        setIsVoiceEntryVisible(false);
+                      }}
+                    >
+                      <Text style={styles.voiceEntryHint}>Hủy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.voiceEntryApply}
+                      accessibilityLabel="Điền câu đã nghe vào giao dịch"
+                      disabled={transactionVoice.isBusy || !voicePreview.draft}
+                      accessibilityState={{
+                        disabled:
+                          transactionVoice.isBusy || !voicePreview.draft,
+                      }}
+                      onPress={() => {
+                        if (!voicePreview.draft || transactionVoice.isBusy)
+                          return;
+                        const next = voicePreview.draft;
+                        setTransactionEntryType(next.type);
+                        setTransactionAmount(String(next.amount));
+                        setTransactionNote(next.note);
+                        setTransactionDate(
+                          parseDateKey(next.transaction_date!),
+                        );
+                        setChatDraftCurrency(next.currency);
+                        // A new spoken transaction must never consume a bank notification.
+                        setActiveBankNotificationEventId(null);
+                        setActiveBankNotificationReviewReason(null);
+                        setRequiresBankDirectionConfirmation(false);
+                        setActiveFinancialDraftId(null);
+                        setIsChatDraft(false);
+                        setSelectedWalletId(null);
+                        setSelectedTransactionCategory(null);
+                        setIsVoiceEntryVisible(false);
+                        transactionVoice.cancel();
+                      }}
+                    >
+                      <Text style={styles.voiceEntryApplyText}>
+                        Điền vào form
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.voiceEntryHint}>
+                    Điền lại số tiền, thu/chi, ngày và ghi chú. Chọn ví và danh
+                    mục rồi bấm Lưu.
+                  </Text>
+                </View>
+              ) : null}
               <View style={styles.typeSegment}>
                 {(activeBankNotificationEventId
                   ? (['EXPENSE', 'INCOME'] as const)
@@ -2263,9 +2389,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               <TouchableOpacity
                 style={styles.primaryButton}
                 onPress={handleSaveTransaction}
-                disabled={savingTransaction || isOcrLoading}
+                disabled={
+                  savingTransaction || isOcrLoading || isVoiceEntryVisible
+                }
                 accessibilityState={{
-                  disabled: savingTransaction || isOcrLoading,
+                  disabled:
+                    savingTransaction || isOcrLoading || isVoiceEntryVisible,
                   busy: savingTransaction,
                 }}
               >
@@ -2489,22 +2618,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  routeLoadingOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(255, 243, 232, 0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-  },
-  routeLoadingCard: {
-    borderRadius: 16,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: '#E8B680',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
-  routeLoadingText: { color: '#7A4A28', fontWeight: '900' },
   bottomBar: {
     position: 'absolute',
     left: 0,
@@ -2768,10 +2881,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  transactionQuickActionUpcoming: {
-    borderColor: '#E2D2C4',
-    backgroundColor: '#F7F1EC',
+  voiceEntryCard: {
+    borderWidth: 1,
+    borderColor: '#F0D2B4',
+    backgroundColor: '#FFF6ED',
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
   },
+  voiceEntryTitle: { fontWeight: '700', color: '#54321E' },
+  voiceTranscriptInput: {
+    minHeight: 70,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EBD8C6',
+    borderRadius: 10,
+    padding: 12,
+    color: '#54321E',
+    textAlignVertical: 'top',
+  },
+  voiceEntryHint: { color: '#8A623F', fontSize: 12, lineHeight: 18 },
+  voiceEntryActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  voiceEntryCancel: { padding: 10 },
+  voiceEntryApply: {
+    backgroundColor: '#FFE4C7',
+    borderRadius: 10,
+    padding: 10,
+  },
+  voiceEntryApplyText: { color: '#9C4C00', fontWeight: '700' },
   modalDescription: {
     color: '#8A623F',
     marginTop: 8,

@@ -9,7 +9,9 @@ object BankNotificationStore {
   private const val enabledPackagesKey = "enabled_packages"
   private const val activeUserKey = "active_user"
   private const val pendingEventsKey = "pending_events"
+  private const val handledEventsKey = "handled_events"
   private const val maximumPendingEvents = 100
+  private const val maximumHandledEvents = 1000
 
   fun getEnabledPackages(context: Context): Set<String> =
     context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
@@ -57,6 +59,10 @@ object BankNotificationStore {
     val current = getPendingEvents(context)
     val next = JSONArray()
     val eventId = event.optString("id")
+    val handled = getHandledEvents(context)
+    for (index in 0 until handled.length()) {
+      if (handled.optString(index) == eventId) return
+    }
 
     for (index in 0 until current.length()) {
       val existing = current.optJSONObject(index) ?: continue
@@ -88,7 +94,34 @@ object BankNotificationStore {
       }
     }
     savePendingEvents(context, next)
+    // Keep a bounded tombstone: re-reading the tray must not resurrect this event.
+    val handled = getHandledEvents(context)
+    val retained = JSONArray()
+    for (index in maxOf(0, handled.length() - maximumHandledEvents + 1) until handled.length()) {
+      if (handled.optString(index) != eventId) retained.put(handled.optString(index))
+    }
+    retained.put(eventId)
+    context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
+      .edit().putString(handledEventsKey, retained.toString()).apply()
   }
+
+  @Synchronized
+  fun retainActive(context: Context, activeUser: String, activeIds: Set<String>) {
+    val current = getPendingEvents(context)
+    val next = JSONArray()
+    for (index in 0 until current.length()) {
+      val event = current.optJSONObject(index) ?: continue
+      if (event.optString("ownerUserId") != activeUser || activeIds.contains(event.optString("id"))) {
+        next.put(event)
+      }
+    }
+    savePendingEvents(context, next)
+  }
+
+  private fun getHandledEvents(context: Context): JSONArray = try {
+    JSONArray(context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)
+      .getString(handledEventsKey, "[]") ?: "[]")
+  } catch (_: Exception) { JSONArray() }
 
   private fun savePendingEvents(context: Context, events: JSONArray) {
     context.getSharedPreferences(preferencesName, Context.MODE_PRIVATE)

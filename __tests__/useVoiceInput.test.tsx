@@ -26,6 +26,33 @@ function Harness() {
   return null;
 }
 
+it('an idle voice consumer cannot abort an active session owned by another form', async () => {
+  let other!: ReturnType<typeof useVoiceInput>;
+  function OtherForm() {
+    other = useVoiceInput(jest.fn());
+    return null;
+  }
+  let second!: TestRenderer.ReactTestRenderer;
+  await act(async () => {
+    second = TestRenderer.create(<OtherForm />);
+  });
+  await act(async () => other.toggle(''));
+  const lateOtherResult = events.result;
+  await act(async () => hook.toggle(''));
+  // Switching owners cancels the previous session once.
+  expect(mocked.abort).toHaveBeenCalledTimes(1);
+  await act(async () => other.cancel());
+  await act(async () => second.unmount());
+  expect(mocked.abort).toHaveBeenCalledTimes(1);
+  await act(async () =>
+    lateOtherResult({ results: [{ transcript: 'old session' }] }),
+  );
+  await act(async () =>
+    events.result({ results: [{ transcript: 'current session' }] }),
+  );
+  expect(transcript).toHaveBeenLastCalledWith('current session');
+});
+
 beforeEach(async () => {
   jest.clearAllMocks();
   events = {};

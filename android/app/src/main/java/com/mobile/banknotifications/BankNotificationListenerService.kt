@@ -10,7 +10,11 @@ class BankNotificationListenerService : NotificationListenerService() {
   override fun onListenerConnected() {
     super.onListenerConnected()
     activeInstance = this
-    captureActiveNotifications()
+    try {
+      captureActiveNotifications()
+    } catch (_: Exception) {
+      // Permission or listener connection may still be changing; the button reports this on demand.
+    }
   }
 
   override fun onListenerDisconnected() {
@@ -24,11 +28,11 @@ class BankNotificationListenerService : NotificationListenerService() {
   }
 
   private fun captureActiveNotifications() {
-    try {
-      activeNotifications?.forEach(::captureNotification)
-    } catch (_: SecurityException) {
-      // Android có thể đang thu hồi quyền trong lúc người dùng rời màn cài đặt.
-    }
+    val activeUser = BankNotificationStore.getActiveUser(this) ?: return
+    val notifications = activeNotifications ?: throw IllegalStateException("Bộ đọc thông báo chưa kết nối. Hãy bật lại quyền đọc thông báo.")
+    val activeIds = notifications.map { fingerprintFor(activeUser, it) }.toSet()
+    BankNotificationStore.retainActive(this, activeUser, activeIds)
+    notifications.forEach(::captureNotification)
   }
 
   private fun captureNotification(notification: StatusBarNotification) {
@@ -57,10 +61,7 @@ class BankNotificationListenerService : NotificationListenerService() {
       notification.packageName
     }
 
-    val fingerprint = sha256(
-      listOf(activeUser, notification.packageName, notification.key, notification.postTime.toString())
-        .joinToString("|")
-    )
+    val fingerprint = fingerprintFor(activeUser, notification)
     val event = JSONObject()
       .put("id", fingerprint)
       .put("packageName", notification.packageName)
@@ -93,12 +94,17 @@ class BankNotificationListenerService : NotificationListenerService() {
       .digest(value.toByteArray(Charsets.UTF_8))
       .joinToString("") { byte -> "%02x".format(byte) }
 
+  private fun fingerprintFor(activeUser: String, notification: StatusBarNotification): String = sha256(
+    listOf(activeUser, notification.packageName, notification.key, notification.postTime.toString()).joinToString("|")
+  )
+
   companion object {
     @Volatile
     private var activeInstance: BankNotificationListenerService? = null
 
     fun refreshActiveNotifications() {
-      activeInstance?.captureActiveNotifications()
+      val instance = activeInstance ?: throw IllegalStateException("Bộ đọc chưa kết nối. Hãy tắt rồi bật lại quyền đọc thông báo của Nova.")
+      instance.captureActiveNotifications()
     }
 
     private const val maximumTitleLength = 160

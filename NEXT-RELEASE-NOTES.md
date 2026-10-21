@@ -10,9 +10,16 @@
 
 ## Kiểm tra và giới hạn
 
+- Mic trong form thêm giao dịch đã nhận giọng nói, cho sửa câu đã nghe, xem trước và điền vào form. Hiểu các mẫu như “Chi 79 nghìn ăn trưa hôm nay”, “Thu một triệu rưỡi”. Người dùng vẫn chọn ví/danh mục và bấm Lưu.
+- Kết quả nhiều số tiền, chưa rõ Thu/Chi hoặc ngày không hợp lệ yêu cầu sửa câu. Hủy nghe hoặc đóng form không làm thay đổi bản nháp; kết quả đến muộn bị bỏ qua.
+- Source Android đọc lại các thông báo hiện còn trong khay; loại mục đã vuốt bỏ và ghi nhớ các mục đã xử lý để không xuất hiện lại ngay khi bấm chuông.
+- Khi bộ đọc bị ngắt kết nối, báo lỗi để kiểm tra quyền thay vì báo nhầm không có thông báo. Bỏ kết quả đọc đến muộn nếu người dùng đã đóng form hoặc mở bản nháp khác.
+- Bỏ lớp loading cố định 220 ms khi chuyển tab.
+
 - Đã chạy hồi quy cho lưu giao dịch từ thông báo, hàng chờ ngoại tuyến và phân loại cần xem lại.
 - Đây mới là thay đổi mã nguồn. Chưa build APK, chưa phát hành và chưa cập nhật trang tải.
-- AI trích xuất thông báo, mic nhập giao dịch, hóa đơn định kỳ và cờ bật/tắt backend vẫn nằm trong kế hoạch; chưa được triển khai.
+- Kiểm thử liên quan đạt 66/66; TypeScript, ESLint và compile Android Kotlin đạt. Chưa kiểm tra thay đổi native mới trên điện thoại thật; độ chính xác giọng nói còn phụ thuộc dịch vụ nhận dạng trên thiết bị.
+- AI trích xuất thông báo, hóa đơn định kỳ và cờ bật/tắt tính năng backend vẫn nằm trong kế hoạch; chưa được triển khai.
 
 ---
 
