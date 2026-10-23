@@ -279,4 +279,32 @@ describe('apiRequest', () => {
     await expect(pending).resolves.toEqual({ ok: true });
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
+  it('does not send a pre-cancelled request', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      apiRequest('/features', { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'REQUEST_CANCELLED' });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+  it('cancels a read without probing another server', async () => {
+    (globalThis.fetch as jest.Mock).mockImplementationOnce(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            const error = new Error('cancelled');
+            error.name = 'AbortError';
+            reject(error);
+          });
+        }),
+    );
+    const controller = new AbortController();
+    const pending = apiRequest('/features', {
+      signal: controller.signal,
+    }).catch(error => error);
+    await jest.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect(await pending).toMatchObject({ code: 'REQUEST_CANCELLED' });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
 });

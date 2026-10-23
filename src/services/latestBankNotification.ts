@@ -5,10 +5,10 @@ import type {
 import { parseNotificationText } from './bankNotificationExtraction';
 
 /** The native snapshot already excludes handled/dismissed notifications. Never reorder oldest first here. */
-export function latestBankNotification(
+export function latestBankNotificationEvent(
   events: BankNotificationEvent[],
   userId: number,
-): BankNotificationItem | null {
+): BankNotificationEvent | null {
   const ordered = events
     .filter(
       event =>
@@ -26,28 +26,40 @@ export function latestBankNotification(
       )
     )
       continue;
-    const parsed = parseNotificationText(text, event.postedAt);
-    // A REVIEW item remains first; do not silently substitute an older easy-to-parse one.
-    return {
-      event,
-      parsed,
-      draft:
-        parsed.status === 'READY' &&
-        parsed.type &&
-        parsed.amount &&
-        parsed.currency
-          ? {
-              eventId: event.id,
-              sourceApp: event.appName,
-              postedAt: event.postedAt,
-              type: parsed.type,
-              amount: parsed.amount,
-              currency: parsed.currency,
-              note: parsed.note,
-              transactionDate: parsed.transactionDate,
-            }
-          : null,
-    };
+    return event;
   }
   return null;
+}
+
+// Retained for the legacy local parser's regression suite; the AI read hook uses only the raw selector above.
+export function latestBankNotification(
+  events: BankNotificationEvent[],
+  userId: number,
+): BankNotificationItem | null {
+  const event = latestBankNotificationEvent(events, userId);
+  if (!event) return null;
+  const parsed = parseNotificationText(
+    `${event.title}\n${event.text}`,
+    event.postedAt,
+  );
+  return {
+    event,
+    parsed,
+    draft:
+      parsed.status === 'READY' &&
+      parsed.type &&
+      parsed.amount &&
+      parsed.currency
+        ? {
+            eventId: event.id,
+            sourceApp: event.appName,
+            postedAt: event.postedAt,
+            type: parsed.type,
+            amount: parsed.amount,
+            currency: parsed.currency,
+            note: parsed.note,
+            transactionDate: parsed.transactionDate,
+          }
+        : null,
+  };
 }

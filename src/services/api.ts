@@ -195,9 +195,16 @@ const fetchWithTimeout = async (
   timeoutMs = REQUEST_TIMEOUT_MS,
 ) => {
   const controller = new AbortController();
+  const cancel = () => controller.abort();
+  init?.signal?.addEventListener('abort', cancel, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    if (init?.signal?.aborted) {
+      const error = new Error('Request cancelled');
+      error.name = 'AbortError';
+      throw error;
+    }
     const response = await fetch(input, {
       ...init,
       signal: controller.signal,
@@ -209,6 +216,7 @@ const fetchWithTimeout = async (
       text: async () => responseText,
     };
   } finally {
+    init?.signal?.removeEventListener('abort', cancel);
     clearTimeout(timeoutId);
   }
 };
@@ -369,6 +377,8 @@ export const apiRequest = async <T>(
   } = options;
   const revision = sessionRevision;
   let lastError: unknown;
+  if (restOptions.signal?.aborted)
+    throw new ApiError('Đã hủy thao tác.', 0, 'REQUEST_CANCELLED');
   let authToken = authMode === 'none' ? token : await getValidToken(token);
   assertCurrentSession(revision);
 
@@ -445,6 +455,11 @@ export const apiRequest = async <T>(
     } catch (error) {
       assertCurrentSession(revision);
       lastError = error;
+
+      if (restOptions.signal?.aborted) {
+        if (!readOnly) throw unknownWriteOutcome();
+        throw new ApiError('Đã hủy thao tác.', 0, 'REQUEST_CANCELLED');
+      }
 
       if (!isNetworkError(error)) {
         throw error;

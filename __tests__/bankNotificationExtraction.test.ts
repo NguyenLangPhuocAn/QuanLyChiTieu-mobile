@@ -7,7 +7,10 @@ import { apiRequest } from '../src/services/api';
 jest.mock('../src/services/api', () => ({ apiRequest: jest.fn() }));
 const at = new Date('2026-10-23T10:00:00+07:00').getTime();
 const api = apiRequest as jest.Mock;
-beforeEach(() => api.mockReset());
+beforeEach(() => {
+  api.mockReset();
+  bankNotificationExtraction.clearAvailabilityCache();
+});
 
 it.each([
   [
@@ -108,4 +111,74 @@ it('validates model direction against the notification text', async () => {
     (await bankNotificationExtraction.analyze('token', 'Nhận +125.000 VND', at))
       .status,
   ).toBe('REVIEW');
+});
+
+it('validates an AI-selected principal among multiple monetary values without a unique-amount gate', async () => {
+  api
+    .mockResolvedValueOnce({ bank_notification_ai: true })
+    .mockResolvedValueOnce({
+      status: 'READY',
+      type: 'EXPENSE',
+      amount: 100000,
+      currency: 'VND',
+      note: 'CF',
+      confidence: 0.99,
+      requires_confirmation: true,
+    });
+  expect(
+    await bankNotificationExtraction.analyze(
+      'token',
+      'Ghi nợ -100.000 VND. Phí -5.000 VND',
+      at,
+    ),
+  ).toMatchObject({ status: 'READY', amount: '100000', note: 'CF' });
+});
+it('accepts an unfamiliar direction label when the validated API assigns its meaning', async () => {
+  api
+    .mockResolvedValueOnce({ bank_notification_ai: true })
+    .mockResolvedValueOnce({
+      status: 'READY',
+      type: 'INCOME',
+      amount: 125000,
+      currency: 'VND',
+      note: 'Nhận tiền',
+      confidence: 0.99,
+      requires_confirmation: true,
+    });
+  expect(
+    await bankNotificationExtraction.analyze('token', 'CR 125.000 VND', at),
+  ).toMatchObject({ status: 'READY', type: 'INCOME', amount: '125000' });
+});
+it('does not reuse capability flags across sessions', async () => {
+  api
+    .mockResolvedValueOnce({ bank_notification_ai: true })
+    .mockResolvedValueOnce({ bank_notification_ai: false });
+  expect(await bankNotificationExtraction.isAvailable('token-a')).toBe(true);
+  expect(await bankNotificationExtraction.isAvailable('token-a')).toBe(true);
+  expect(await bankNotificationExtraction.isAvailable('token-b')).toBe(false);
+  expect(api).toHaveBeenCalledTimes(2);
+});
+it('keeps uncertain AI answers empty instead of falling back to local field guesses', async () => {
+  api
+    .mockResolvedValueOnce({ bank_notification_ai: true })
+    .mockResolvedValueOnce({
+      status: 'REVIEW',
+      type: null,
+      amount: null,
+      reason: 'Chưa rõ',
+    });
+  const result = await bankNotificationExtraction.analyze(
+    'token',
+    'Nhận +125.000 VND',
+    at,
+  );
+  expect(result.status).toBe('REVIEW');
+  expect(result.amount).toBeUndefined();
+  expect(result.type).toBeUndefined();
+});
+
+it('treats a legacy server without the feature endpoint as AI unavailable', async () => {
+  api.mockRejectedValueOnce({ status: 404 });
+  expect(await bankNotificationExtraction.isAvailable('token')).toBe(false);
+  expect(api).toHaveBeenCalledTimes(1);
 });

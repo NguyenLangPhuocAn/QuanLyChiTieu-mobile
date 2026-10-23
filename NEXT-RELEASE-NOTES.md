@@ -1,31 +1,32 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
-Cập nhật source ngày 23/10/2026 theo yêu cầu giảm thao tác.
+Cập nhật source ngày 23/10/2026 — AI trích xuất thông báo ngân hàng.
 
-## Thông báo ngân hàng và giao dịch
+## Lắc/chuông và AI
 
-- Lắc điện thoại khi đang dùng màn chính của app, hoặc bấm chuông trong form, để lấy thông báo giao dịch mới nhất chưa xử lý còn trên thanh thông báo Android. Cần quyền truy cập thông báo một lần.
-- Đọc trực tiếp chữ thông báo trên máy; không chụp màn hình, khoanh vùng, upload ảnh hoặc gọi AI khi lắc. Đã gỡ luồng MediaProjection, foreground service chụp và ML Kit vừa thêm cho ngân hàng; OCR hóa đơn không đổi.
-- Ưu tiên mới nhất trước theo thời điểm thông báo Android. Sau khi lưu/giữ bản nháp ngoại tuyến an toàn, đánh dấu mục đó đã xử lý; lần đọc tiếp lấy mục kế tiếp. Đóng form chưa lưu không tự bỏ mục.
-- Điền Thu/Chi, số tiền giao dịch và nội dung vào form. Không lấy số dư hoặc OTP; mục mới nhất chưa rõ vẫn mở để kiểm tra, không lén thay bằng mục cũ dễ đọc hơn.
-- Giữ nguyên phần đã sửa khi lắc lại cùng một mục. Nếu form đang có nội dung khác, hỏi trước khi thay. Chống đọc đồng thời, hộp xin quyền lặp và bỏ kết quả muộn sau đóng form/đổi tài khoản/rời app.
-- Chỉ đọc khi có thao tác lắc/chuông; vào app hoặc trở lại app không tự đọc. Dừng cảm biến khi rời app/mở màn khác/đang lưu hay OCR; bỏ thông báo nhóm tổng hợp để tránh lấy nhiều giao dịch thành một.
-- Ví do người dùng chọn, chỉ ghi tiền khi bấm Lưu. Giữ source_ref, không gửi client_request_id xung đột; đánh dấu đã xử lý sau lưu hoặc enqueue an toàn, không đánh dấu lúc mới đọc.
-- Quy tắc danh mục không tự đổi ngược chiều Thu/Chi đã đọc từ thông báo.
+- Lắc khi dùng màn chính hoặc bấm chuông để chọn thông báo giao dịch mới nhất chưa xử lý còn trên thanh thông báo Android. Không chụp ảnh hoặc khoanh vùng.
+- Sau khi được đồng ý gửi chữ, Gemini là bộ trích xuất chính cho Thu/Chi, số tiền và nội dung. Không dùng parser regex để điền các trường trước AI hoặc đoán thay khi AI lỗi.
+- Vẫn lọc OTP/dữ liệu không cần thiết và đối chiếu số tiền, tiền tệ, dấu tiền, bằng chứng nguyên văn sau AI. Bộ lọc native chỉ tìm ứng viên thô có chữ số/dấu hiệu tài chính, không phụ thuộc mẫu số tiền cụ thể.
+- Hỏi quyền gửi chữ sang máy chủ/Gemini: Nhập tay, Chỉ lần này hoặc Luôn cho phép. Lựa chọn nhớ theo tài khoản, có mục Quyền dùng AI để đặt lại. Ảnh và khóa Gemini không gửi từ app.
+- Có thông báo chờ AI và nút Hủy. Hủy/rời app/đổi tài khoản bỏ kết quả muộn; HTTP hỗ trợ hủy và không thử máy chủ khác sau khi người dùng hủy một read.
+- Giữ kết quả cùng sự kiện/nội dung trong RAM 2 phút; khác tài khoản/phiên/nội dung không dùng lại. Không ghi nội dung vào kho lưu quyền AI. Cache cờ tính năng ngắn hạn để giảm request.
+- AI lỗi, cờ tắt, server cũ chưa có endpoint hoặc người dùng chọn Nhập tay: mở form REVIEW với các trường tiền/Thu-Chi rỗng để nhập tay; không fallback regex để tự điền.
 
-## Giọng nói và trải nghiệm
+## Giao dịch và trải nghiệm
 
-- Mic trong form đã có nghe tiếng Việt, sửa câu, xem trước rồi điền giao dịch; không tự lưu hay chuyển sang chatbot. Source từ 21/10.
-- Hủy/đóng form bỏ qua kết quả muộn; câu nhiều số tiền hoặc mơ hồ cần sửa. Chất lượng nhận dạng còn phụ thuộc máy.
-- Bỏ chờ cố định 220 ms khi chuyển tab. Luồng ngân hàng đọc chữ trực tiếp nên không cần tải ảnh lên backend; chưa có số đo thời gian máy thật.
+- Mới nhất trước; chỉ đánh dấu đã xử lý sau Lưu hoặc giữ offline an toàn. Đóng chưa lưu giữ mục cho lần sau. Cùng nguồn giữ sửa đổi, nguồn khác hỏi trước khi thay.
+- Ví do người dùng chọn; chỉ ghi tiền sau xác nhận. Giữ source_ref, không gửi thêm client_request_id xung đột. Quy tắc danh mục không đổi ngược Thu/Chi đã đọc.
+- Mic trong form đã có nghe, sửa câu, xem trước và điền nháp từ 21/10. OCR hóa đơn và việc bỏ chờ cố định 220 ms giữ nguyên.
 
-## Backend và kiểm tra
+## Backend, kiểm tra và giới hạn
 
-- Giữ source cờ FEATURE_BANK_NOTIFICATION_AI mặc định tắt và API trích xuất chữ có đồng ý gửi, che dữ liệu, kiểm chứng và hạn mức. Luồng lắc mới không gọi API này; chưa có giao diện AI trong luồng rút gọn.
-- Backend đang chạy, .env, DNS, website và APK hiện tại được giữ nguyên. Hóa đơn định kỳ vẫn là việc tiếp theo.
-- Mobile đạt 70/70 kiểm thử mục tiêu qua 7 bộ; TypeScript noEmit, ESLint và compileDebugKotlin đạt. Backend giữ mốc 55/55 kiểm thử mới trước đó, không đổi mã xử lý trong đợt rút gọn.
-- Chưa build/ký/phát hành APK mới, chưa thử cảm biến và thông báo ngân hàng trên điện thoại thật. Đọc thông báo Android không xác định riêng banner nào đang nổi.
-- Khóa nguồn chống lặp cùng sự kiện thông báo; chưa cam kết chống trùng ngữ nghĩa nếu ngân hàng phát hành lại cùng giao dịch dưới sự kiện khác.
+- Thêm JSON Schema cho kết quả Gemini; yêu cầu một thông báo, tối đa 600 token đầu ra, timeout riêng 12 giây (client 16 giây). Không đổi model đang cấu hình hoặc mặc định timeout của các tác vụ khác.
+- AI được gọi trước bước đối chiếu số tiền; không chặn toàn bộ chỉ vì có thêm phí. Sau model, kiểm chứng tiền/bằng chứng/dấu của khoản được chọn; sai hoặc không chắc thì REVIEW.
+- Giữ cờ FEATURE_BANK_NOTIFICATION_AI mặc định tắt và hạn mức 3 lần/phút/tài khoản, một upstream đồng thời. Không có thao tác ghi tiền trong API trích xuất.
+- Mobile 100/100 kiểm thử mục tiêu qua 9 bộ; backend 73/73 qua 5 bộ (gồm Gemini/HTTP/OCR hóa đơn). TypeScript, ESLint và compile Android Kotlin đạt. Tất cả model/provider đều mock trong kiểm thử.
+- Chưa triển khai source mới lên server, chưa bật cờ/.env/restart, chưa build/ký/phát hành APK hoặc cập nhật website. AI chưa có trong APK hiện tại.
+- Cần triển khai thử riêng, bật cờ có kế hoạch và thử Gemini thật/điện thoại thật; chưa có số đo độ trễ/độ chính xác thực tế. AI thường cần mạng nên không được coi là nhanh hơn regex cục bộ.
+- Source_ref chống lặp cùng sự kiện; chưa cam kết chống mọi bản phát lại của cùng giao dịch. Snapshot thông báo không xác nhận riêng banner đang nổi.
 
 ---
 

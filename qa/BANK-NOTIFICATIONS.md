@@ -1,27 +1,23 @@
-# Lắc/chuông đọc thông báo mới nhất — 23/10/2026
+# Lắc/chuông và AI đọc thông báo — source 23/10/2026
 
-## Luồng source hiện tại
+## Đã có
 
-- Khi Main đang được dùng ở foreground, lắc hai nhịp hoặc bấm chuông trong form. Nếu chưa cấp Notification Access, app giải thích rồi mở cài đặt khi người dùng chọn; quay lại không tự đọc, lắc/bấm lại.
-- Lấy snapshot Android còn trên thanh thông báo, loại group summary, bỏ OTP/quảng cáo và các nguồn đã xử lý. Chọn postedAt mới nhất trước. Dữ liệu được phân tích bằng chữ trên máy, không chụp/crop/OCR/upload hoặc gọi AI.
-- Có nhiều mục: mới nhất chưa xử lý trước; lưu hoặc enqueue offline an toàn mới markProcessed. Đọc lần sau mới tới mục kế. Đóng form chưa lưu giữ mục cho lần sau.
-- Nếu cùng nguồn đang sửa, giữ nguyên. Nguồn khác khi form đã có dữ liệu cần xác nhận thay; không mở nhiều hộp xác nhận. Đóng form/background/đổi tài khoản bỏ kết quả muộn.
-- Người dùng chọn ví/danh mục và bấm Lưu. Source_ref không đi kèm client_request_id. Quy tắc danh mục không đổi ngược Thu/Chi đã đọc.
-- Cảm biến dừng khi background, mất focus, lưu, OCR, nghe mic, picker ngày/hashtag. Máy thiếu sensor vẫn dùng chuông. Chỉ đọc khi có thao tác; không tự đọc khi vào/khôi phục app.
+Chọn notification mới nhất chưa xử lý; người dùng cấp quyền Android rồi chọn quyền gửi chữ đến server/Gemini (Nhập tay / Chỉ lần này / Luôn cho phép). Cho đặt lại quyền trong form. AI trích xuất các trường; không gọi parser regex để chọn Thu/Chi/số tiền hoặc fallback khi model lỗi. Vẫn có lọc OTP/che dữ liệu và đối chiếu tiền/bằng chứng sau AI.
 
-## Bằng chứng
+Có loading và Hủy, abort HTTP/bỏ kết quả muộn. Cache RAM source/nội dung/phiên 2 phút, feature flags ngắn hạn. Thu thập native kết thúc trước lúc chờ consent hoặc model. Giữ trường tiền/Thu-Chi rỗng nếu cờ tắt/server cũ/không đồng ý/lỗi AI. MarkProcessed chỉ sau Save/enqueue an toàn; giữ sửa cùng nguồn và hỏi trước thay form khác.
 
-70/70 ca mục tiêu qua 7 suite (MainScreenDrafts, latestBankNotification, useLatestBankNotification, bankNotificationExtraction, offlineTransactionQueue, bankNotificationSync, App); TypeScript, ESLint và :app:compileDebugKotlin đạt. Không tạo APK mới. Backend giữ mốc 55/55 trước đó với Gemini mock, không đổi mã xử lý hoặc restart server.
+## Kiểm thử
 
-## Cần thử trên Android thật — chưa đánh dấu đạt
+Mobile 100/100 qua 9 bộ: bankAiConsent, useLatestBankNotification, bankNotificationExtraction, MainScreenDrafts, latestBankNotification, App, offlineTransactionQueue, bankNotificationSync, api. Backend 73/73 qua 5 bộ, có hồi quy OCR. TypeScript/ESLint/compile Kotlin đạt. Tất cả model/fetch được mock; chưa có APK hoặc deploy mới.
 
-- [ ] Lắc hai nhịp và chuông khi Main foreground; đi bộ/cầm máy bình thường không mở form bất ngờ; lực lắc trên Xiaomi/thiết bị khác.
-- [ ] Sensor không hoạt động khi màn hình khóa/background/màn khác; trở lại app không tự đọc.
-- [ ] Cấp/từ chối/thu hồi quyền; listener disconnect phải báo lỗi thay vì nói hết thông báo. Máy thiếu sensor dùng chuông.
-- [ ] ACB (VND) +752,790; các khoản chi, SD/SDTK và số dư không có VND; MB/VCB thực; thiếu thông tin phải REVIEW.
-- [ ] 3 thông báo khác ngân hàng: đọc mới nhất trước, lưu/đọc tiếp đúng thứ tự; bỏ qua/đóng chưa lưu giữ nguyên mục; vuốt bỏ không đọc lại.
-- [ ] Thông báo nhóm, cùng notification update, nội dung ngắn/dài; không ghép trùng đoạn. OTP/quảng cáo không thành bản nháp tiền.
-- [ ] Form đang sửa, lắc lặp, nhấn thay rồi hủy/đóng; dữ liệu cũ không bị ghi đè ngoài xác nhận.
-- [ ] Save/offline/retry chỉ một giao dịch theo khóa nguồn; sự kiện phát lại khác id cần review trùng bổ sung.
+## Cần thử trước nghiệm thu — chưa đánh dấu đạt
 
-Giới hạn: đây là đọc thông báo Android đang hoạt động, không phải API xác nhận banner nổi. Một số hãng/phiên bản Android có thể che nội dung hoặc ngắt listener; không cố vượt quyền hệ thống. Khóa sự kiện không cam kết chống trùng ngữ nghĩa giữa các sự kiện khác nhau. Chưa đo độ chính xác hoặc độ trễ trên máy thật.
+- [ ] Deploy thử riêng, bật cờ; server cũ/flag tắt không gửi nội dung, mở REVIEW thay vì regex fill.
+- [ ] Android Notification Access, lắc/chuông, thiếu sensor, background/đổi tài khoản/đóng form; không tự gửi lúc vào app.
+- [ ] Mỗi lựa chọn consent, nhớ theo tài khoản, đặt lại và đổi phiên; xem đúng chữ đã lọc, không gửi ảnh/khóa API.
+- [ ] Gemini thật với ACB/MB/VCB ẩn danh, CR/DR, VND/USD, tiền chính/phí/số dư/OTP/marketing và thông báo nhiều giao dịch; đo đúng/sai/REVIEW.
+- [ ] Loading/Hủy khi chờ quyền/flags/model, mất mạng, 401/429/timeout; không lưu hoặc ghi đè form khi hủy, có thể nhập tay.
+- [ ] Đọc lại cùng nguồn dùng cache; nguồn/nội dung/phiên khác gọi mới. Save/offline/retry giữ chống trùng; vuốt bỏ, nhóm và cập nhật notification hoạt động đúng.
+- [ ] Đo độ trễ p50/p95 và quota trên Wi-Fi/4G; AI cần mạng, không giả định nhanh hơn regex cục bộ.
+
+Giới hạn: validate literal tiền vẫn cần định dạng số hợp lệ; JSON Schema không bảo đảm đúng ngữ nghĩa. Hủy client không cam kết dừng upstream đã nhận. Khóa notification không chống mọi bản phát lại; snapshot không xác định riêng banner nổi. Không restart server đang ổn định, build APK hay cập nhật web trong đợt source này.

@@ -3,6 +3,19 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { Alert, AppState } from 'react-native';
 import { useLatestBankNotification } from '../src/hooks/useLatestBankNotification';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
+import { bankNotificationExtraction } from '../src/services/bankNotificationExtraction';
+import { bankAiConsent } from '../src/services/bankAiConsent';
+jest.mock('../src/services/bankNotificationExtraction', () => ({
+  ...jest.requireActual('../src/services/bankNotificationExtraction'),
+  bankNotificationExtraction: { isAvailable: jest.fn(), analyze: jest.fn() },
+}));
+jest.mock('../src/services/bankAiConsent', () => ({
+  bankAiConsent: {
+    has: jest.fn(),
+    allow: jest.fn().mockResolvedValue(undefined),
+    reset: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 jest.mock('../src/native/bankNotificationReader', () => ({
   bankNotificationReader: {
     isSupported: true,
@@ -26,7 +39,13 @@ function Harness({
   enabled?: boolean;
   userId?: number;
 }) {
-  hook = useLatestBankNotification(enabled, userId, delivered, () => !blocked);
+  hook = useLatestBankNotification(
+    enabled,
+    userId,
+    delivered,
+    () => !blocked,
+    'test-token',
+  );
   return null;
 }
 let tree: TestRenderer.ReactTestRenderer;
@@ -43,6 +62,16 @@ const event = {
 beforeEach(async () => {
   jest.clearAllMocks();
   blocked = false;
+  (bankNotificationExtraction.isAvailable as jest.Mock).mockResolvedValue(true);
+  (bankNotificationExtraction.analyze as jest.Mock).mockResolvedValue({
+    status: 'READY',
+    type: 'EXPENSE',
+    amount: '79000',
+    currency: 'VND',
+    note: 'CAFE',
+    transactionDate: '2026-10-23',
+  });
+  (bankAiConsent.has as jest.Mock).mockResolvedValue(true);
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_, callback) => {
     appState = callback as typeof appState;
@@ -190,4 +219,131 @@ it('unregisters when backgrounded and re-arms without auto-reading on resume', a
   await act(async () => appState('active'));
   expect(bankNotificationReader.startShakeDetection).toHaveBeenCalledTimes(2);
   expect(bankNotificationReader.getPendingEvents).not.toHaveBeenCalled();
+});
+
+it('asks before any AI upload and allows manual entry without a regex fallback', async () => {
+  (bankAiConsent.has as jest.Mock).mockResolvedValue(false);
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = hook.read();
+  });
+  expect(hook.phase).toBe('consent');
+  expect(bankNotificationExtraction.analyze).not.toHaveBeenCalled();
+  const prompt = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Dùng AI đọc thông báo?',
+  );
+  expect(prompt[1]).toContain('Gemini');
+  expect(prompt[1]).not.toContain('5.000.000');
+  await act(async () => {
+    prompt[2]
+      .find((choice: { text: string }) => choice.text === 'Nhập tay')
+      .onPress();
+    await pending;
+  });
+  expect(bankNotificationExtraction.analyze).not.toHaveBeenCalled();
+  expect(delivered.mock.calls[0][0].parsed).toMatchObject({ status: 'REVIEW' });
+  expect(delivered.mock.calls[0][0].parsed.amount).toBeUndefined();
+});
+it('remembers permission only when Always is explicitly chosen', async () => {
+  (bankAiConsent.has as jest.Mock).mockResolvedValue(false);
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = hook.read();
+  });
+  const prompt = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Dùng AI đọc thông báo?',
+  );
+  await act(async () => {
+    prompt[2]
+      .find((choice: { text: string }) => choice.text === 'Luôn cho phép')
+      .onPress();
+    await pending;
+  });
+  expect(bankAiConsent.allow).toHaveBeenCalledWith(7);
+  expect(bankNotificationExtraction.analyze).toHaveBeenCalledTimes(1);
+});
+it('uses a short in-memory cache for the same event and does not rewrite remembered permission', async () => {
+  await act(async () => {
+    await hook.read();
+    await hook.read();
+  });
+  expect(bankNotificationExtraction.analyze).toHaveBeenCalledTimes(1);
+  expect(bankAiConsent.allow).not.toHaveBeenCalled();
+  expect(delivered).toHaveBeenCalledTimes(2);
+});
+it('does not interpret fields locally when AI is unavailable or fails', async () => {
+  (bankNotificationExtraction.isAvailable as jest.Mock).mockResolvedValue(
+    false,
+  );
+  await act(async () => {
+    await hook.read();
+  });
+  expect(bankNotificationExtraction.analyze).not.toHaveBeenCalled();
+  expect(delivered.mock.calls[0][0].parsed).toMatchObject({ status: 'REVIEW' });
+  expect(delivered.mock.calls[0][0].parsed.amount).toBeUndefined();
+  (bankNotificationExtraction.isAvailable as jest.Mock).mockResolvedValue(true);
+  (bankNotificationExtraction.analyze as jest.Mock).mockRejectedValueOnce(
+    new Error('AI timeout'),
+  );
+  await act(async () => {
+    await hook.read();
+  });
+  expect(delivered.mock.calls[1][0].parsed).toMatchObject({
+    status: 'REVIEW',
+    reason: 'AI timeout',
+  });
+  expect(delivered.mock.calls[1][0].parsed.amount).toBeUndefined();
+});
+it('cancels pending consent when the app leaves foreground, without sending text', async () => {
+  (bankAiConsent.has as jest.Mock).mockResolvedValue(false);
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = hook.read();
+  });
+  await act(async () => {
+    appState('background');
+    await pending;
+  });
+  expect(bankNotificationExtraction.analyze).not.toHaveBeenCalled();
+  expect(delivered).not.toHaveBeenCalled();
+});
+it('shows the AI phase, then ignores a model response after cancellation', async () => {
+  let finish!: (value: unknown) => void;
+  (bankNotificationExtraction.analyze as jest.Mock).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = hook.read();
+  });
+  expect(hook.phase).toBe('ai');
+  await act(async () => hook.cancel());
+  expect(hook.phase).toBe('idle');
+  await act(async () => {
+    finish({ status: 'READY', type: 'EXPENSE', amount: '79000' });
+    await pending;
+  });
+  expect(delivered).not.toHaveBeenCalled();
+});
+it('revokes remembered consent and clears the warm result cache', async () => {
+  await act(async () => {
+    await hook.read();
+  });
+  await act(async () => hook.resetAiConsent());
+  const prompt = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Đặt lại quyền AI?',
+  );
+  await act(async () =>
+    prompt[2]
+      .find((choice: { text: string }) => choice.text === 'Đặt lại')
+      .onPress(),
+  );
+  expect(bankAiConsent.reset).toHaveBeenCalledWith(7);
+  await act(async () => {
+    await hook.read();
+  });
+  expect(bankNotificationExtraction.analyze).toHaveBeenCalledTimes(2);
 });

@@ -306,6 +306,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     user?.id,
     (item, isCurrent) => readBankItem.current(item, isCurrent),
     () => !pendingBankReplacement.current,
+    token,
   );
   const isReadingBankNotification = latestBank.busy;
   const cancelLatestBankRead = latestBank.cancel;
@@ -1470,6 +1471,33 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>{renderContent()}</View>
 
+      {latestBank.phase === 'ai' ? (
+        <View
+          style={[
+            styles.modalBackdrop,
+            styles.receiptScanBackdrop,
+            styles.inlineModalLayer,
+            styles.receiptScanLayer,
+          ]}
+          accessibilityLabel="AI đang đọc thông báo ngân hàng"
+        >
+          <View style={styles.receiptScanCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.receiptScanTitle}>Đang đọc thông báo</Text>
+            <Text style={styles.receiptScanDescription}>
+              AI đang trích xuất khoản thu/chi và nội dung để bạn kiểm tra.
+            </Text>
+            <TouchableOpacity
+              style={styles.receiptScanCancelButton}
+              onPress={latestBank.cancel}
+              accessibilityLabel="Hủy AI đọc thông báo"
+            >
+              <Text style={styles.receiptScanCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       {isOcrLoading ? (
         <View
           style={[
@@ -1598,6 +1626,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   ? 'Bấm chuông để lấy thông báo ngân hàng mới nhất.'
                   : 'Lắc điện thoại hoặc bấm chuông để lấy thông báo ngân hàng mới nhất.'}
               </Text>
+              <TouchableOpacity
+                onPress={latestBank.resetAiConsent}
+                accessibilityLabel="Đặt lại quyền đọc thông báo bằng AI"
+              >
+                <Text style={styles.voiceEntryHint}>Quyền dùng AI</Text>
+              </TouchableOpacity>
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>
                   <Text

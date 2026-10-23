@@ -81,9 +81,10 @@ class BankNotificationListenerService : NotificationListenerService() {
 
   private fun looksLikeTransaction(content: String): Boolean {
     val normalized = content.lowercase()
-    val hasAmount = amountPattern.containsMatchIn(normalized)
+    val hasDigits = normalized.any { it.isDigit() }
     val hasTransactionTerm = transactionTerms.any(normalized::contains)
-    return hasAmount && hasTransactionTerm
+    val hasCurrencyHint = listOf("vnd", "vnđ", "usd", "₫").any(normalized::contains)
+    return hasDigits && (hasTransactionTerm || hasCurrencyHint)
   }
 
   private fun containsSensitiveCode(content: String): Boolean {
@@ -111,7 +112,6 @@ class BankNotificationListenerService : NotificationListenerService() {
 
     private const val maximumTitleLength = 160
     private const val maximumTextLength = 800
-    private val amountPattern = Regex("(?:[+-]\\s*)?\\d[\\d.,\\s]{1,18}\\s*(?:vnd|vnđ|đ|₫|usd)|\\(?\\s*(?:vnd|vnđ|₫|usd)\\s*\\)?\\s*[+-]?\\s*\\d[\\d.,\\s]{1,18}", RegexOption.IGNORE_CASE)
     private val otpPattern = Regex("(?:otp|mã xác thực|ma xac thuc|verification code|smart otp)[^0-9]{0,20}\\d{4,8}", RegexOption.IGNORE_CASE)
     private val sensitiveTerms = listOf("mã otp", "ma otp", "mật khẩu", "mat khau", "password", "pin code")
     private val transactionTerms = listOf(

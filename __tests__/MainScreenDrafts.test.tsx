@@ -7,6 +7,33 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
+import { bankNotificationExtraction } from '../src/services/bankNotificationExtraction';
+
+jest.mock('../src/services/bankAiConsent', () => ({
+  bankAiConsent: {
+    has: jest.fn().mockResolvedValue(true),
+    allow: jest.fn().mockResolvedValue(undefined),
+    reset: jest.fn().mockResolvedValue(undefined),
+  },
+}));
+jest.mock('../src/services/bankNotificationExtraction', () => ({
+  ...jest.requireActual('../src/services/bankNotificationExtraction'),
+  bankNotificationExtraction: {
+    isAvailable: jest.fn().mockResolvedValue(true),
+    analyze: jest.fn(async (_token, text) => ({
+      status: 'READY',
+      type: text.includes('+') ? 'INCOME' : 'EXPENSE',
+      amount: text.includes('125.000')
+        ? '125000'
+        : text.includes('752,790')
+        ? '752790'
+        : '79000',
+      currency: 'VND',
+      note: 'Kết quả AI',
+      transactionDate: '2026-10-23',
+    })),
+  },
+}));
 
 let mockUser: { id: number; currency_default: string } | null = null;
 let mockShake: () => void;
@@ -687,6 +714,64 @@ it('asks before replacing an edited form and ignores confirmation after it close
   await act(async () => mockShake());
   expect(draftVisible()).toBe(true);
   expect(amount()).toBe('125.000');
+});
+
+it('shows a cancellable AI loading notice without applying a late result', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () =>
+    chat().onCreateTransaction!({ ...draft, amount: null, note: '' } as any),
+  );
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'a'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Thanh toán -79.000 VND',
+      postedAt: Date.now(),
+    },
+  ]);
+  let finish!: (value: unknown) => void;
+  (bankNotificationExtraction.analyze as jest.Mock).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  let reading!: Promise<void>;
+  await act(async () => {
+    reading = tree.root
+      .findByProps({ accessibilityLabel: 'Đọc thông báo giao dịch' })
+      .props.onPress();
+  });
+  expect(
+    tree.root.findByProps({
+      accessibilityLabel: 'AI đang đọc thông báo ngân hàng',
+    }),
+  ).toBeTruthy();
+  const signal = (
+    bankNotificationExtraction.analyze as jest.Mock
+  ).mock.calls.at(-1)?.[3] as AbortSignal;
+  expect(signal.aborted).toBe(false);
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Hủy AI đọc thông báo' })
+      .props.onPress(),
+  );
+  expect(signal.aborted).toBe(true);
+  await act(async () => {
+    finish({
+      status: 'READY',
+      type: 'EXPENSE',
+      amount: '79000',
+      currency: 'VND',
+      note: 'CF',
+      transactionDate: '2026-10-23',
+    });
+    await reading;
+  });
+  expect(amount()).toBe('');
+  expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
 it('requires missing draft amount before saving', async () => {
