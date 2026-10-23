@@ -1,36 +1,31 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
-Cập nhật source ngày 23/10/2026.
+Cập nhật source ngày 23/10/2026 theo yêu cầu giảm thao tác.
 
 ## Thông báo ngân hàng và giao dịch
 
-- Nút chuông dùng phiên chụp màn hình được Android cấp quyền. Lần đầu chuẩn bị quyền; bấm lại khi banner đang nổi để chụp ảnh mới.
-- Cho chọn vùng đúng một banner, đọc chữ trên máy, xem/sửa nội dung rồi điền Thu/Chi và số tiền vào form. Không đọc lại hàng chờ trong khay; bỏ đồng bộ thông báo cũ tự động khỏi MainScreen.
-- Không lấy số dư, chặn OTP khi phân tích; nhiều số tiền hoặc chưa rõ Thu/Chi thì yêu cầu chọn lại vùng/nhập tay.
-- Ví và danh mục do người dùng chọn; chỉ lưu sau kiểm tra. Giữ source_ref để chống gửi lại, không gửi đồng thời client_request_id gây lỗi backend. Hàng chờ ngoại tuyến giữ nguyên khóa.
-- Phiên có nút Dừng và dừng khi rời app/đóng form. Ảnh chỉ nằm trong cache, được dọn khi kết thúc và không tự đính kèm hóa đơn.
-- Chữ khó hiểu có thể nhờ AI sau bước đồng ý riêng: chỉ gửi chữ đã che tài khoản/mã GD và bỏ số dư, không gửi ảnh màn hình. Chưa bật/deploy backend AI nên hiện có thể dùng OCR cục bộ và nhập tay.
+- Lắc điện thoại khi đang dùng màn chính của app, hoặc bấm chuông trong form, để lấy thông báo giao dịch mới nhất chưa xử lý còn trên thanh thông báo Android. Cần quyền truy cập thông báo một lần.
+- Đọc trực tiếp chữ thông báo trên máy; không chụp màn hình, khoanh vùng, upload ảnh hoặc gọi AI khi lắc. Đã gỡ luồng MediaProjection, foreground service chụp và ML Kit vừa thêm cho ngân hàng; OCR hóa đơn không đổi.
+- Ưu tiên mới nhất trước theo thời điểm thông báo Android. Sau khi lưu/giữ bản nháp ngoại tuyến an toàn, đánh dấu mục đó đã xử lý; lần đọc tiếp lấy mục kế tiếp. Đóng form chưa lưu không tự bỏ mục.
+- Điền Thu/Chi, số tiền giao dịch và nội dung vào form. Không lấy số dư hoặc OTP; mục mới nhất chưa rõ vẫn mở để kiểm tra, không lén thay bằng mục cũ dễ đọc hơn.
+- Giữ nguyên phần đã sửa khi lắc lại cùng một mục. Nếu form đang có nội dung khác, hỏi trước khi thay. Chống đọc đồng thời, hộp xin quyền lặp và bỏ kết quả muộn sau đóng form/đổi tài khoản/rời app.
+- Chỉ đọc khi có thao tác lắc/chuông; vào app hoặc trở lại app không tự đọc. Dừng cảm biến khi rời app/mở màn khác/đang lưu hay OCR; bỏ thông báo nhóm tổng hợp để tránh lấy nhiều giao dịch thành một.
+- Ví do người dùng chọn, chỉ ghi tiền khi bấm Lưu. Giữ source_ref, không gửi client_request_id xung đột; đánh dấu đã xử lý sau lưu hoặc enqueue an toàn, không đánh dấu lúc mới đọc.
+- Quy tắc danh mục không tự đổi ngược chiều Thu/Chi đã đọc từ thông báo.
 
-## Nhập giọng nói và trải nghiệm
+## Giọng nói và trải nghiệm
 
-- Mic trong form nhận tiếng Việt, cho sửa câu đã nghe và xem trước rồi điền giao dịch; không tự lưu hay chuyển sang chatbot. Đã có trong source từ 21/10.
-- Hủy nghe/đóng form bỏ qua kết quả đến muộn; câu nhiều số tiền hoặc mơ hồ cần sửa lại. Độ chính xác nhận dạng còn phụ thuộc thiết bị.
-- Bỏ lớp chờ cố định 220 ms khi đổi tab.
+- Mic trong form đã có nghe tiếng Việt, sửa câu, xem trước rồi điền giao dịch; không tự lưu hay chuyển sang chatbot. Source từ 21/10.
+- Hủy/đóng form bỏ qua kết quả muộn; câu nhiều số tiền hoặc mơ hồ cần sửa. Chất lượng nhận dạng còn phụ thuộc máy.
+- Bỏ chờ cố định 220 ms khi chuyển tab. Luồng ngân hàng đọc chữ trực tiếp nên không cần tải ảnh lên backend; chưa có số đo thời gian máy thật.
 
-## Dữ liệu và backend
+## Backend và kiểm tra
 
-- Source thêm cờ FEATURE_BANK_NOTIFICATION_AI mặc định tắt, GET /features có đăng nhập và POST /bank-notifications/extract có đồng ý gửi.
-- Kiểm chứng số tiền/tiền tệ/bằng chứng Thu/Chi, giới hạn gọi AI theo tài khoản. Không có thao tác ghi tiền trong API trích xuất.
-- Giữ bộ START/STOP/STATUS-BACKEND. Chưa sửa .env, chạy backend dist mới hoặc restart/deploy server.
-
-## Kiểm tra và giới hạn
-
-- Mobile: 57/57 kiểm thử mục tiêu qua 6 bộ — form giao dịch, quyền/phiên chụp, xem trước vùng, parser, hàng chờ và đồng bộ cũ; TypeScript và ESLint đạt.
-- Backend: 55/55 kiểm thử mới qua 3 bộ; TypeScript và ESLint đạt. AI dùng mock, chưa đo độ chính xác model thật.
-- Android compileDebugKotlin đạt; chưa tạo/ký/phát hành APK mới, chưa cập nhật website.
-- Cần thử quyền Android, banner ACB/MB/VCB thật, OEM chặn chụp, ảnh không có banner, đổi hướng và thu hồi quyền. Chưa nghiệm thu hoạt động trên điện thoại thật.
-- Chống trùng theo hash vùng ảnh nhận diện cùng crop; các ảnh khác nhau của cùng giao dịch chưa được cam kết chống trùng ngữ nghĩa.
-- Hóa đơn định kỳ riêng, đo hiệu năng Wi-Fi/4G và tuyển nhóm thử vẫn là việc tiếp theo.
+- Giữ source cờ FEATURE_BANK_NOTIFICATION_AI mặc định tắt và API trích xuất chữ có đồng ý gửi, che dữ liệu, kiểm chứng và hạn mức. Luồng lắc mới không gọi API này; chưa có giao diện AI trong luồng rút gọn.
+- Backend đang chạy, .env, DNS, website và APK hiện tại được giữ nguyên. Hóa đơn định kỳ vẫn là việc tiếp theo.
+- Mobile đạt 70/70 kiểm thử mục tiêu qua 7 bộ; TypeScript noEmit, ESLint và compileDebugKotlin đạt. Backend giữ mốc 55/55 kiểm thử mới trước đó, không đổi mã xử lý trong đợt rút gọn.
+- Chưa build/ký/phát hành APK mới, chưa thử cảm biến và thông báo ngân hàng trên điện thoại thật. Đọc thông báo Android không xác định riêng banner nào đang nổi.
+- Khóa nguồn chống lặp cùng sự kiện thông báo; chưa cam kết chống trùng ngữ nghĩa nếu ngân hàng phát hành lại cùng giao dịch dưới sự kiện khác.
 
 ---
 

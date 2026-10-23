@@ -29,13 +29,15 @@ class BankNotificationListenerService : NotificationListenerService() {
 
   private fun captureActiveNotifications() {
     val activeUser = BankNotificationStore.getActiveUser(this) ?: return
-    val notifications = activeNotifications ?: throw IllegalStateException("Bộ đọc thông báo chưa kết nối. Hãy bật lại quyền đọc thông báo.")
+    val notifications = (activeNotifications ?: throw IllegalStateException("Bộ đọc thông báo chưa kết nối. Hãy bật lại quyền đọc thông báo."))
+      .filter { it.notification.flags and Notification.FLAG_GROUP_SUMMARY == 0 }
     val activeIds = notifications.map { fingerprintFor(activeUser, it) }.toSet()
     BankNotificationStore.retainActive(this, activeUser, activeIds)
-    notifications.forEach(::captureNotification)
+    notifications.sortedBy { it.postTime }.forEach(::captureNotification)
   }
 
   private fun captureNotification(notification: StatusBarNotification) {
+    if (notification.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
     if (notification.packageName == packageName) return
     val activeUser = BankNotificationStore.getActiveUser(this) ?: return
     val enabledPackages = BankNotificationStore.getEnabledPackages(this)
@@ -43,11 +45,11 @@ class BankNotificationListenerService : NotificationListenerService() {
 
     val extras = notification.notification.extras
     val title = clean(extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
-    val textParts = listOf(
-      extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
-      extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
-      extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
-    ).map(::clean).filter { it.isNotBlank() }.distinct()
+    val primaryText = clean(extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString())
+      .ifBlank { clean(extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()) }
+      .ifBlank { clean(extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString(" ")) }
+    val textParts = listOf(primaryText, clean(extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()))
+      .filter { it.isNotBlank() }.distinct()
     val text = textParts.joinToString(" ").take(maximumTextLength)
     val content = "$title $text".trim()
 

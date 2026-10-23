@@ -1,8 +1,8 @@
 import {
-  parseScreenText,
-  bankScreenExtraction,
-} from '../src/services/bankScreenExtraction';
-import { prepareBankNotificationText } from '../src/utils/bankScreenText';
+  parseNotificationText,
+  bankNotificationExtraction,
+} from '../src/services/bankNotificationExtraction';
+import { prepareBankNotificationText } from '../src/utils/bankNotificationText';
 import { apiRequest } from '../src/services/api';
 jest.mock('../src/services/api', () => ({ apiRequest: jest.fn() }));
 const at = new Date('2026-10-23T10:00:00+07:00').getTime();
@@ -30,7 +30,7 @@ it.each([
 ])(
   'extracts transaction money and excludes balances: %s',
   (text, amount, type) => {
-    expect(parseScreenText(text, at)).toMatchObject({
+    expect(parseNotificationText(text, at)).toMatchObject({
       status: 'READY',
       amount,
       type,
@@ -48,7 +48,7 @@ it.each([
   'Nhận +125,00 VND',
   '',
 ])('requires manual review rather than guessing: %s', text => {
-  const parsed = parseScreenText(text, at);
+  const parsed = parseNotificationText(text, at);
   expect(parsed.status).toBe('REVIEW');
   expect(parsed.amount).toBeUndefined();
 });
@@ -65,7 +65,7 @@ it('masks accounts and references before any optional network call', () => {
 it('does not send text when the server flag is off', async () => {
   api.mockResolvedValueOnce({ bank_notification_ai: false });
   await expect(
-    bankScreenExtraction.analyze('token', 'Nhận +125.000 VND', at),
+    bankNotificationExtraction.analyze('token', 'Nhận +125.000 VND', at),
   ).rejects.toThrow('chưa bật');
   expect(api).toHaveBeenCalledTimes(1);
   expect(api.mock.calls[0][0]).toBe('/features');
@@ -81,7 +81,7 @@ it('sends sanitized text only and refuses a hallucinated amount', async () => {
       currency: 'VND',
       note: 'Nhận tiền',
     });
-  const result = await bankScreenExtraction.analyze(
+  const result = await bankNotificationExtraction.analyze(
     'token',
     'TK 87654321 nhận +125.000 VND. Số dư 15.000.000 VND',
     at,
@@ -94,7 +94,7 @@ it('sends sanitized text only and refuses a hallucinated amount', async () => {
   expect(options.body).not.toHaveProperty('image');
 });
 
-it('validates model direction against the screenshot text', async () => {
+it('validates model direction against the notification text', async () => {
   api
     .mockResolvedValueOnce({ bank_notification_ai: true })
     .mockResolvedValueOnce({
@@ -105,7 +105,7 @@ it('validates model direction against the screenshot text', async () => {
       note: 'Chi tiền',
     });
   expect(
-    (await bankScreenExtraction.analyze('token', 'Nhận +125.000 VND', at))
+    (await bankNotificationExtraction.analyze('token', 'Nhận +125.000 VND', at))
       .status,
   ).toBe('REVIEW');
 });

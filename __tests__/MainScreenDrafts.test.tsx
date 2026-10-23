@@ -7,9 +7,9 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
-import { bankScreenCapture } from '../src/native/bankScreenCapture';
 
 let mockUser: { id: number; currency_default: string } | null = null;
+let mockShake: () => void;
 let mockSpeechEvents: Record<string, (event?: any) => void> = {};
 jest.mock('rn-speech-recognition', () => ({
   RNSpeechRecognitionModule: {
@@ -29,6 +29,7 @@ jest.mock('rn-speech-recognition', () => ({
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
   useFocusEffect: () => undefined,
+  useIsFocused: () => true,
 }));
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({ token: 'test-token', user: mockUser }),
@@ -120,33 +121,10 @@ jest.mock('../src/native/bankNotificationReader', () => ({
     dismissEvent: jest.fn().mockResolvedValue(true),
     startShakeDetection: jest.fn().mockResolvedValue(true),
     stopShakeDetection: jest.fn().mockResolvedValue(true),
-    onShake: jest.fn(() => ({ remove: jest.fn() })),
-  },
-}));
-
-jest.mock('../src/native/bankScreenCapture', () => ({
-  bankScreenCapture: {
-    isReady: jest.fn().mockResolvedValue(true),
-    prepare: jest.fn().mockResolvedValue(true),
-    capture: jest
-      .fn()
-      .mockResolvedValue({
-        uri: 'file:///screen.png',
-        width: 1080,
-        height: 2400,
-        capturedAt: Date.now(),
-      }),
-    recognize: jest
-      .fn()
-      .mockResolvedValue({
-        uri: 'file:///crop.png',
-        width: 1080,
-        height: 500,
-        sourceRef: 'a'.repeat(64),
-        text: 'Thanh toán -79.000 VND tại THANG 2 CAFE',
-      }),
-    stop: jest.fn().mockResolvedValue(true),
-    deleteCapture: jest.fn().mockResolvedValue(true),
+    onShake: jest.fn(callback => {
+      mockShake = callback;
+      return { remove: jest.fn() };
+    }),
   },
 }));
 
@@ -280,8 +258,8 @@ it('does not apply an ambiguous spoken transaction', async () => {
 it('does not overwrite a new draft with a bank read that finishes after closing the form', async () => {
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => chat().onCreateTransaction!(draft as any));
-  let finish!: (capture: unknown) => void;
-  (bankScreenCapture.capture as jest.Mock).mockImplementationOnce(
+  let finish!: (events: unknown[]) => void;
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockImplementationOnce(
     () =>
       new Promise(resolve => {
         finish = resolve;
@@ -306,12 +284,16 @@ it('does not overwrite a new draft with a bank read that finishes after closing 
     } as any),
   );
   await act(async () => {
-    finish({
-      uri: 'file:///late-screen.png',
-      width: 1080,
-      height: 2400,
-      capturedAt: Date.now(),
-    });
+    finish([
+      {
+        id: 'b'.repeat(64),
+        packageName: 'bank.test',
+        appName: 'Bank',
+        title: '',
+        text: 'Nhận +752,790 VND',
+        postedAt: Date.now(),
+      },
+    ]);
     await reading;
   });
   expect(amount()).toBe('55.000');
@@ -561,9 +543,19 @@ it('saves a bank notification with its source key and no conflicting client key'
     tree.update(<MainScreen />);
   });
   (transactionsService.create as jest.Mock).mockResolvedValue({ id: 18 });
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'a'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Thanh toán -79.000 VND tại CAFE',
+      postedAt: Date.now(),
+    },
+  ]);
 
   await act(async () => {
-    chat().onCreateTransaction!({ ...draft, amount: null } as any);
+    chat().onCreateTransaction!({ ...draft, amount: null, note: '' } as any);
   });
   await act(async () => {
     await tree.root
@@ -571,12 +563,6 @@ it('saves a bank notification with its source key and no conflicting client key'
       .props.onPress();
   });
   expect(transactionsService.create).not.toHaveBeenCalled();
-  await act(async () => button('Đọc vùng đã chọn').props.onPress());
-  await act(async () =>
-    tree.root
-      .findByProps({ accessibilityLabel: 'Điền banner vào bản nháp' })
-      .props.onPress(),
-  );
   await act(async () => {
     button('Tiền mặt').props.onPress();
     button('Chi').props.onPress();
@@ -600,8 +586,107 @@ it('saves a bank notification with its source key and no conflicting client key'
     transactionsService.create as jest.Mock
   ).mock.calls.at(-1)?.[1];
   expect(createdPayload).not.toHaveProperty('client_request_id');
+  expect(bankNotificationReader.markProcessed).toHaveBeenCalledWith(
+    7,
+    'a'.repeat(64),
+  );
+});
+
+it('opens the latest bank draft with one shake, without saving or preselecting a wallet', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'a'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Thanh toán -79.000 VND',
+      postedAt: 100,
+    },
+    {
+      id: 'b'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Nhận +125.000 VND',
+      postedAt: 200,
+    },
+  ]);
+  await act(async () => mockShake());
+  expect(amount()).toBe('125.000');
+  expect(transactionsService.create).not.toHaveBeenCalled();
   expect(bankNotificationReader.markProcessed).not.toHaveBeenCalled();
-  expect(bankNotificationReader.getPendingEvents).not.toHaveBeenCalled();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('keeps edits when shaking again for the same notification', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'a'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Thanh toán -79.000 VND',
+      postedAt: 100,
+    },
+  ]);
+  await act(async () => mockShake());
+  await act(async () =>
+    tree.root.findByProps({ placeholder: '0' }).props.onChangeText('80000'),
+  );
+  await act(async () => mockShake());
+  expect(amount()).toBe('80.000');
+  expect(
+    (Alert.alert as jest.Mock).mock.calls.some(
+      call => call[0] === 'Thay nội dung đang nhập?',
+    ),
+  ).toBe(false);
+});
+
+it('asks before replacing an edited form and ignores confirmation after it closes', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
+    {
+      id: 'b'.repeat(64),
+      packageName: 'bank.test',
+      appName: 'Bank',
+      title: 'Giao dịch',
+      text: 'Nhận +125.000 VND',
+      postedAt: 200,
+    },
+  ]);
+  await act(async () => mockShake());
+  expect(amount()).toBe('30.000');
+  const prompt = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Thay nội dung đang nhập?',
+  );
+  expect(prompt).toBeTruthy();
+  await act(async () => mockShake());
+  expect(
+    (Alert.alert as jest.Mock).mock.calls.filter(
+      call => call[0] === 'Thay nội dung đang nhập?',
+    ),
+  ).toHaveLength(1);
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Đóng bản nháp giao dịch' })
+      .props.onPress(),
+  );
+  await act(async () =>
+    prompt[2]
+      .find((choice: { text: string }) => choice.text === 'Thay nội dung')
+      .onPress(),
+  );
+  expect(draftVisible()).toBe(false);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => mockShake());
+  expect(draftVisible()).toBe(true);
+  expect(amount()).toBe('125.000');
 });
 
 it('requires missing draft amount before saving', async () => {

@@ -8,6 +8,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import com.facebook.react.bridge.LifecycleEventListener
 import com.facebook.react.bridge.Promise
@@ -16,6 +17,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.common.LifecycleState
 import kotlin.math.sqrt
 import org.json.JSONArray
 import org.json.JSONObject
@@ -159,7 +161,7 @@ class BankNotificationModule(
     val force = sqrt(x * x + y * y + z * z)
     if (force < shakeThreshold) return
 
-    val now = System.currentTimeMillis()
+    val now = SystemClock.elapsedRealtime()
     if (now - lastPeakAt < minimumPeakGapMs || now - lastEmittedAt < eventCooldownMs) return
     lastPeakAt = now
 
@@ -203,6 +205,7 @@ class BankNotificationModule(
   }
 
   private fun registerShakeSensor(): Boolean {
+    if (reactContext.lifecycleState != LifecycleState.RESUMED) return false
     val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return false
     return sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME)
   }

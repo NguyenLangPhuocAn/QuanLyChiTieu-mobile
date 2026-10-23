@@ -22,7 +22,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useIsFocused,
+  useNavigation,
+} from '@react-navigation/native';
 import type {
   NativeStackNavigationProp,
   NativeStackScreenProps,
@@ -110,8 +114,7 @@ import type { SavingsGoal } from '../../types/savings';
 import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
 import type { BankNotificationItem } from '../../types/bankNotification';
-import { useBankBannerCapture } from '../../hooks/useBankBannerCapture';
-import BankBannerReview from '../../components/BankBannerReview';
+import { useLatestBankNotification } from '../../hooks/useLatestBankNotification';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -192,6 +195,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
+  const isScreenFocused = useIsFocused();
   const { run: runSaveTransaction, busy: savingTransaction } =
     useSingleFlight();
   const {
@@ -279,12 +283,32 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     requiresBankDirectionConfirmation,
     setRequiresBankDirectionConfirmation,
   ] = useState(false);
-  const bannerCapture = useBankBannerCapture(isModalVisible, user?.id);
-  const isReadingBankNotification = bannerCapture.busy;
   const [isVoiceEntryVisible, setIsVoiceEntryVisible] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const transactionVoice = useVoiceInput(setVoiceTranscript);
   const cancelTransactionVoice = transactionVoice.cancel;
+  const readBankItem = useRef<
+    (item: BankNotificationItem, isCurrent: () => boolean) => void
+  >(() => undefined);
+  const bankFormVersion = useRef(0);
+  const pendingBankReplacement = useRef<object | null>(null);
+  const [activeBankNotificationSource, setActiveBankNotificationSource] =
+    useState<string | null>(null);
+  const latestBank = useLatestBankNotification(
+    isScreenFocused &&
+      !savingTransaction &&
+      !isOcrLoading &&
+      !transactionVoice.isBusy &&
+      !isTagModalVisible &&
+      !isTransactionDatePickerVisible &&
+      !isLoanDebtDueDatePickerVisible &&
+      !historyEditTransaction,
+    user?.id,
+    (item, isCurrent) => readBankItem.current(item, isCurrent),
+    () => !pendingBankReplacement.current,
+  );
+  const isReadingBankNotification = latestBank.busy;
+  const cancelLatestBankRead = latestBank.cancel;
   const voicePreview = useMemo(
     () => parseVoiceTransactionDraft(voiceTranscript),
     [voiceTranscript],
@@ -294,7 +318,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       cancelTransactionVoice();
       setIsVoiceEntryVisible(false);
     }
-  }, [isModalVisible, cancelTransactionVoice]);
+    return () => {
+      cancelLatestBankRead();
+      bankFormVersion.current += 1;
+      pendingBankReplacement.current = null;
+    };
+  }, [isModalVisible, cancelTransactionVoice, cancelLatestBankRead, user?.id]);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -468,10 +497,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       item => item.id === rule.categoryId,
     );
     if (!category) return;
+    if (activeBankNotificationEventId && category.type !== transactionEntryType)
+      return;
 
     setTransactionEntryType(category.type);
     setSelectedTransactionCategory(category);
   }, [
+    activeBankNotificationEventId,
     isModalVisible,
     normalTransactionCategories,
     setSelectedTransactionCategory,
@@ -519,13 +551,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       };
     }, [fetchDashboardData, token, user?.id]),
   );
-
-  useEffect(() => {
-    // Disable legacy background collection; the bell now reads a selected screen crop only.
-    if (bankNotificationReader.isSupported) {
-      bankNotificationReader.setConfiguration(null, []).catch(() => undefined);
-    }
-  }, []);
 
   const selectedWallet = useMemo(
     () =>
@@ -655,13 +680,16 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
-    bannerCapture.close();
+    latestBank.cancel();
+    bankFormVersion.current += 1;
+    pendingBankReplacement.current = null;
     transactionVoice.cancel();
     setIsVoiceEntryVisible(false);
     setVoiceTranscript('');
     receiptRequestVersion.current += 1;
     setIsChatDraft(false);
     setActiveBankNotificationEventId(null);
+    setActiveBankNotificationSource(null);
     setActiveBankNotificationReviewReason(null);
     setRequiresBankDirectionConfirmation(false);
     setChatDraftCurrency(null);
@@ -1015,6 +1043,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     resetTransactionForm();
     setIsChatDraft(true);
     setActiveBankNotificationEventId(event.id);
+    setActiveBankNotificationSource(
+      `${event.appName} · ${new Date(event.postedAt).toLocaleString('vi-VN')}`,
+    );
     setActiveBankNotificationReviewReason(parsed.reason ?? null);
     setRequiresBankDirectionConfirmation(!parsed.type);
     setChatDraftCurrency(parsed.currency ?? null);
@@ -1027,10 +1058,60 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setIsModalVisible(true);
   };
 
+  readBankItem.current = (item, isCurrent) => {
+    if (isModalVisible && activeBankNotificationEventId === item.event.id)
+      return;
+    if (pendingBankReplacement.current) return;
+    const hasEdits =
+      isModalVisible &&
+      Boolean(
+        transactionAmount.trim() ||
+          transactionNote.trim() ||
+          transactionTags.trim() ||
+          receiptFile ||
+          receiptItems.length ||
+          loanDebtPersonName.trim(),
+      );
+    if (!hasEdits) {
+      applyBankNotificationReview(item);
+      return;
+    }
+    const prompt = {};
+    const version = bankFormVersion.current;
+    pendingBankReplacement.current = prompt;
+    const clearPrompt = () => {
+      if (pendingBankReplacement.current === prompt)
+        pendingBankReplacement.current = null;
+    };
+    Alert.alert(
+      'Thay nội dung đang nhập?',
+      `Có thông báo mới nhất từ ${item.event.appName}. Bản đang nhập sẽ được thay bằng thông báo này; chưa có giao dịch nào được lưu.`,
+      [
+        { text: 'Giữ bản đang nhập', style: 'cancel', onPress: clearPrompt },
+        {
+          text: 'Thay nội dung',
+          onPress: () => {
+            if (
+              pendingBankReplacement.current !== prompt ||
+              version !== bankFormVersion.current ||
+              !isCurrent()
+            ) {
+              clearPrompt();
+              return;
+            }
+            clearPrompt();
+            applyBankNotificationReview(item);
+          },
+        },
+      ],
+      { onDismiss: clearPrompt },
+    );
+  };
+
   const handleReadBankNotificationFromForm = async () => {
     transactionVoice.cancel();
     setIsVoiceEntryVisible(false);
-    await bannerCapture.read();
+    await latestBank.read();
   };
 
   const applyCapturedTransactionDraftRef = useRef<
@@ -1267,6 +1348,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
           await offlineTransactionQueue.enqueue(user.id, createPayload);
+          if (activeBankNotificationEventId) {
+            await bankNotificationReader
+              .markProcessed(user.id, activeBankNotificationEventId)
+              .catch(() => undefined);
+          }
           if (activeFinancialDraftId) {
             await financialCaptureInbox
               .remove(user.id, activeFinancialDraftId)
@@ -1308,6 +1394,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         } catch {
           receiptUploadFailed = true;
         }
+      }
+
+      if (activeBankNotificationEventId && user?.id) {
+        await bankNotificationReader
+          .markProcessed(user.id, activeBankNotificationEventId)
+          .catch(() => undefined);
       }
 
       await fetchDashboardData();
@@ -1490,7 +1582,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 {activeBankNotificationEventId
                   ? activeBankNotificationReviewReason
                     ? `${activeBankNotificationReviewReason} Nhập hoặc sửa số tiền, xác nhận loại thu/chi, chọn ví và danh mục rồi mới lưu.`
-                    : `Từ thông báo ngân hàng${
+                    : `Từ ${
+                        activeBankNotificationSource ?? 'thông báo ngân hàng'
+                      }${
                         chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
                       }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
                   : isChatDraft
@@ -1499,20 +1593,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     }. Kiểm tra thông tin rồi bấm Lưu.`
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
-              {bannerCapture.ready ? (
-                <View style={styles.voiceEntryCard}>
-                  <Text style={styles.voiceEntryHint}>
-                    Chụp màn hình đã sẵn sàng. Bấm chuông khi banner ngân hàng
-                    đang hiện.
-                  </Text>
-                  <TouchableOpacity
-                    onPress={bannerCapture.close}
-                    accessibilityLabel="Dừng phiên chụp banner"
-                  >
-                    <Text style={styles.voiceEntryTitle}>Dừng chụp</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
+              <Text style={styles.voiceEntryHint}>
+                {latestBank.shakeAvailable === false
+                  ? 'Bấm chuông để lấy thông báo ngân hàng mới nhất.'
+                  : 'Lắc điện thoại hoặc bấm chuông để lấy thông báo ngân hàng mới nhất.'}
+              </Text>
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>
                   <Text
@@ -1584,6 +1669,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                         setChatDraftCurrency(next.currency);
                         // A new spoken transaction must never consume a bank notification.
                         setActiveBankNotificationEventId(null);
+                        setActiveBankNotificationSource(null);
                         setActiveBankNotificationReviewReason(null);
                         setRequiresBankDirectionConfirmation(false);
                         setActiveFinancialDraftId(null);
@@ -2286,15 +2372,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
-      ) : null}
-
-      {bannerCapture.capture ? (
-        <BankBannerReview
-          capture={bannerCapture.capture}
-          token={token}
-          onClose={bannerCapture.close}
-          onConfirm={applyBankNotificationReview}
-        />
       ) : null}
 
       <Modal transparent visible={isTagModalVisible} animationType="fade">

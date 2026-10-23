@@ -2,14 +2,14 @@ import { apiRequest } from './api';
 import {
   directionInEvidence,
   prepareBankNotificationText,
-} from '../utils/bankScreenText';
+} from '../utils/bankNotificationText';
 import type { ParsedBankNotification } from '../types/bankNotification';
 
-export function parseScreenText(
+export function parseNotificationText(
   text: string,
-  capturedAt: number,
+  postedAt: number,
 ): ParsedBankNotification {
-  const date = new Date(capturedAt);
+  const date = new Date(postedAt);
   const transactionDate = [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, '0'),
@@ -17,6 +17,11 @@ export function parseScreenText(
   ].join('-');
   try {
     const prepared = prepareBankNotificationText(text);
+    const note = prepared.text
+      .replace(/\[ĐÃ [^\]]+\]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
     const unique = new Set(
       prepared.money.map(value => `${value.currency}:${value.amount}`),
     );
@@ -30,7 +35,7 @@ export function parseScreenText(
       return {
         status: 'REVIEW',
         transactionDate,
-        note: prepared.text.slice(0, 180),
+        note,
         reason: !money
           ? 'Chọn một thông báo có số tiền thu/chi rõ ràng, không lấy số dư.'
           : 'Cần xác nhận đây là khoản thu hay chi.',
@@ -40,7 +45,7 @@ export function parseScreenText(
       type,
       amount: String(money.amount),
       currency: money.currency,
-      note: prepared.text.slice(0, 180),
+      note,
       transactionDate,
     };
   } catch (error) {
@@ -53,11 +58,11 @@ export function parseScreenText(
   }
 }
 
-export const bankScreenExtraction = {
+export const bankNotificationExtraction = {
   async analyze(
     token: string,
     text: string,
-    capturedAt: number,
+    postedAt: number,
   ): Promise<ParsedBankNotification> {
     // Call only after a separate user confirmation of this exact sanitized text.
     const prepared = prepareBankNotificationText(text);
@@ -82,7 +87,7 @@ export const bankScreenExtraction = {
       timeoutMs: 45000,
       body: { text: prepared.text, consent: true },
     });
-    const local = parseScreenText(text, capturedAt);
+    const local = parseNotificationText(text, postedAt);
     const matches = prepared.money.filter(
       m => m.amount === result.amount && m.currency === result.currency,
     );
