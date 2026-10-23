@@ -7,7 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class BankNotificationPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-    listOf(BankNotificationModule(reactContext))
+    listOf(BankNotificationModule(reactContext), BankScreenCaptureModule(reactContext))
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext,

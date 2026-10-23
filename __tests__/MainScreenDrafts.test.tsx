@@ -7,6 +7,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
+import { bankScreenCapture } from '../src/native/bankScreenCapture';
 
 let mockUser: { id: number; currency_default: string } | null = null;
 let mockSpeechEvents: Record<string, (event?: any) => void> = {};
@@ -120,6 +121,32 @@ jest.mock('../src/native/bankNotificationReader', () => ({
     startShakeDetection: jest.fn().mockResolvedValue(true),
     stopShakeDetection: jest.fn().mockResolvedValue(true),
     onShake: jest.fn(() => ({ remove: jest.fn() })),
+  },
+}));
+
+jest.mock('../src/native/bankScreenCapture', () => ({
+  bankScreenCapture: {
+    isReady: jest.fn().mockResolvedValue(true),
+    prepare: jest.fn().mockResolvedValue(true),
+    capture: jest
+      .fn()
+      .mockResolvedValue({
+        uri: 'file:///screen.png',
+        width: 1080,
+        height: 2400,
+        capturedAt: Date.now(),
+      }),
+    recognize: jest
+      .fn()
+      .mockResolvedValue({
+        uri: 'file:///crop.png',
+        width: 1080,
+        height: 500,
+        sourceRef: 'a'.repeat(64),
+        text: 'Thanh toán -79.000 VND tại THANG 2 CAFE',
+      }),
+    stop: jest.fn().mockResolvedValue(true),
+    deleteCapture: jest.fn().mockResolvedValue(true),
   },
 }));
 
@@ -253,8 +280,8 @@ it('does not apply an ambiguous spoken transaction', async () => {
 it('does not overwrite a new draft with a bank read that finishes after closing the form', async () => {
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => chat().onCreateTransaction!(draft as any));
-  let finish!: (events: unknown[]) => void;
-  (bankNotificationReader.getPendingEvents as jest.Mock).mockImplementationOnce(
+  let finish!: (capture: unknown) => void;
+  (bankScreenCapture.capture as jest.Mock).mockImplementationOnce(
     () =>
       new Promise(resolve => {
         finish = resolve;
@@ -279,16 +306,12 @@ it('does not overwrite a new draft with a bank read that finishes after closing 
     } as any),
   );
   await act(async () => {
-    finish([
-      {
-        id: 'b'.repeat(64),
-        packageName: 'bank.test',
-        appName: 'ACB ONE',
-        title: 'Biến động số dư',
-        text: 'Nhận +752,790 VND',
-        postedAt: Date.now(),
-      },
-    ]);
+    finish({
+      uri: 'file:///late-screen.png',
+      width: 1080,
+      height: 2400,
+      capturedAt: Date.now(),
+    });
     await reading;
   });
   expect(amount()).toBe('55.000');
@@ -537,16 +560,6 @@ it('saves a bank notification with its source key and no conflicting client key'
   await act(async () => {
     tree.update(<MainScreen />);
   });
-  (bankNotificationReader.getPendingEvents as jest.Mock).mockResolvedValue([
-    {
-      id: 'a'.repeat(64),
-      packageName: 'vn.bank.app',
-      appName: 'Ngân hàng',
-      title: 'Biến động số dư',
-      text: 'Thanh toán -79.000 VND tại THANG 2 CAFE',
-      postedAt: new Date('2026-10-20T04:44:00.000Z').getTime(),
-    },
-  ]);
   (transactionsService.create as jest.Mock).mockResolvedValue({ id: 18 });
 
   await act(async () => {
@@ -557,6 +570,13 @@ it('saves a bank notification with its source key and no conflicting client key'
       .findByProps({ accessibilityLabel: 'Đọc thông báo giao dịch' })
       .props.onPress();
   });
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => button('Đọc vùng đã chọn').props.onPress());
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Điền banner vào bản nháp' })
+      .props.onPress(),
+  );
   await act(async () => {
     button('Tiền mặt').props.onPress();
     button('Chi').props.onPress();
@@ -580,10 +600,8 @@ it('saves a bank notification with its source key and no conflicting client key'
     transactionsService.create as jest.Mock
   ).mock.calls.at(-1)?.[1];
   expect(createdPayload).not.toHaveProperty('client_request_id');
-  expect(bankNotificationReader.markProcessed).toHaveBeenCalledWith(
-    7,
-    'a'.repeat(64),
-  );
+  expect(bankNotificationReader.markProcessed).not.toHaveBeenCalled();
+  expect(bankNotificationReader.getPendingEvents).not.toHaveBeenCalled();
 });
 
 it('requires missing draft amount before saving', async () => {

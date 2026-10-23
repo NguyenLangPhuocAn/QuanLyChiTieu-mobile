@@ -1,25 +1,36 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
-## Đọc thông báo ngân hàng và lưu giao dịch
+Cập nhật source ngày 23/10/2026.
 
-- Sửa lỗi app gửi cùng lúc mã thông báo ngân hàng và mã yêu cầu chung; backend từ chối tổ hợp này nên giao dịch không lưu được.
-- Bản nháp ngân hàng khi mất mạng giữ nguyên mã chống trùng của thông báo, không tự thêm mã thứ hai khi đồng bộ lại.
-- Danh sách thông báo giữ các mục cần xem lại, giải thích vì sao chưa đọc chắc chắn thay vì làm chúng biến mất.
-- Nếu chưa xác định được khoản thu hay chi, app yêu cầu chọn rõ Thu/Chi trước khi lưu.
-- Danh sách vẫn theo thứ tự cũ nhất trước; đóng danh sách không xóa thông báo đang chờ.
+## Thông báo ngân hàng và giao dịch
+
+- Nút chuông dùng phiên chụp màn hình được Android cấp quyền. Lần đầu chuẩn bị quyền; bấm lại khi banner đang nổi để chụp ảnh mới.
+- Cho chọn vùng đúng một banner, đọc chữ trên máy, xem/sửa nội dung rồi điền Thu/Chi và số tiền vào form. Không đọc lại hàng chờ trong khay; bỏ đồng bộ thông báo cũ tự động khỏi MainScreen.
+- Không lấy số dư, chặn OTP khi phân tích; nhiều số tiền hoặc chưa rõ Thu/Chi thì yêu cầu chọn lại vùng/nhập tay.
+- Ví và danh mục do người dùng chọn; chỉ lưu sau kiểm tra. Giữ source_ref để chống gửi lại, không gửi đồng thời client_request_id gây lỗi backend. Hàng chờ ngoại tuyến giữ nguyên khóa.
+- Phiên có nút Dừng và dừng khi rời app/đóng form. Ảnh chỉ nằm trong cache, được dọn khi kết thúc và không tự đính kèm hóa đơn.
+- Chữ khó hiểu có thể nhờ AI sau bước đồng ý riêng: chỉ gửi chữ đã che tài khoản/mã GD và bỏ số dư, không gửi ảnh màn hình. Chưa bật/deploy backend AI nên hiện có thể dùng OCR cục bộ và nhập tay.
+
+## Nhập giọng nói và trải nghiệm
+
+- Mic trong form nhận tiếng Việt, cho sửa câu đã nghe và xem trước rồi điền giao dịch; không tự lưu hay chuyển sang chatbot. Đã có trong source từ 21/10.
+- Hủy nghe/đóng form bỏ qua kết quả đến muộn; câu nhiều số tiền hoặc mơ hồ cần sửa lại. Độ chính xác nhận dạng còn phụ thuộc thiết bị.
+- Bỏ lớp chờ cố định 220 ms khi đổi tab.
+
+## Dữ liệu và backend
+
+- Source thêm cờ FEATURE_BANK_NOTIFICATION_AI mặc định tắt, GET /features có đăng nhập và POST /bank-notifications/extract có đồng ý gửi.
+- Kiểm chứng số tiền/tiền tệ/bằng chứng Thu/Chi, giới hạn gọi AI theo tài khoản. Không có thao tác ghi tiền trong API trích xuất.
+- Giữ bộ START/STOP/STATUS-BACKEND. Chưa sửa .env, chạy backend dist mới hoặc restart/deploy server.
 
 ## Kiểm tra và giới hạn
 
-- Mic trong form thêm giao dịch đã nhận giọng nói, cho sửa câu đã nghe, xem trước và điền vào form. Hiểu các mẫu như “Chi 79 nghìn ăn trưa hôm nay”, “Thu một triệu rưỡi”. Người dùng vẫn chọn ví/danh mục và bấm Lưu.
-- Kết quả nhiều số tiền, chưa rõ Thu/Chi hoặc ngày không hợp lệ yêu cầu sửa câu. Hủy nghe hoặc đóng form không làm thay đổi bản nháp; kết quả đến muộn bị bỏ qua.
-- Source Android đọc lại các thông báo hiện còn trong khay; loại mục đã vuốt bỏ và ghi nhớ các mục đã xử lý để không xuất hiện lại ngay khi bấm chuông.
-- Khi bộ đọc bị ngắt kết nối, báo lỗi để kiểm tra quyền thay vì báo nhầm không có thông báo. Bỏ kết quả đọc đến muộn nếu người dùng đã đóng form hoặc mở bản nháp khác.
-- Bỏ lớp loading cố định 220 ms khi chuyển tab.
-
-- Đã chạy hồi quy cho lưu giao dịch từ thông báo, hàng chờ ngoại tuyến và phân loại cần xem lại.
-- Đây mới là thay đổi mã nguồn. Chưa build APK, chưa phát hành và chưa cập nhật trang tải.
-- Kiểm thử liên quan đạt 66/66; TypeScript, ESLint và compile Android Kotlin đạt. Chưa kiểm tra thay đổi native mới trên điện thoại thật; độ chính xác giọng nói còn phụ thuộc dịch vụ nhận dạng trên thiết bị.
-- AI trích xuất thông báo, hóa đơn định kỳ và cờ bật/tắt tính năng backend vẫn nằm trong kế hoạch; chưa được triển khai.
+- Mobile: 57/57 kiểm thử mục tiêu qua 6 bộ — form giao dịch, quyền/phiên chụp, xem trước vùng, parser, hàng chờ và đồng bộ cũ; TypeScript và ESLint đạt.
+- Backend: 55/55 kiểm thử mới qua 3 bộ; TypeScript và ESLint đạt. AI dùng mock, chưa đo độ chính xác model thật.
+- Android compileDebugKotlin đạt; chưa tạo/ký/phát hành APK mới, chưa cập nhật website.
+- Cần thử quyền Android, banner ACB/MB/VCB thật, OEM chặn chụp, ảnh không có banner, đổi hướng và thu hồi quyền. Chưa nghiệm thu hoạt động trên điện thoại thật.
+- Chống trùng theo hash vùng ảnh nhận diện cùng crop; các ảnh khác nhau của cùng giao dịch chưa được cam kết chống trùng ngữ nghĩa.
+- Hóa đơn định kỳ riêng, đo hiệu năng Wi-Fi/4G và tuyển nhóm thử vẫn là việc tiếp theo.
 
 ---
 

@@ -8,7 +8,6 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-  AppState,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -85,10 +84,6 @@ import {
   findMatchingSmartRule,
   smartRulesService,
 } from '../../services/smartRules';
-import {
-  buildBankNotificationItems,
-  syncBankNotifications,
-} from '../../services/bankNotificationSync';
 import { bankNotificationReader } from '../../native/bankNotificationReader';
 import { loanDebtsService } from '../../services/loanDebts';
 import { buildWalletBudgetAlerts } from '../../utils/budgetAlerts';
@@ -114,10 +109,9 @@ import type { ReceiptItem, ReceiptOcrResult } from '../../types/transaction';
 import type { SavingsGoal } from '../../types/savings';
 import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
-import type {
-  BankNotificationItem,
-  BankTransactionDraft,
-} from '../../types/bankNotification';
+import type { BankNotificationItem } from '../../types/bankNotification';
+import { useBankBannerCapture } from '../../hooks/useBankBannerCapture';
+import BankBannerReview from '../../components/BankBannerReview';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -285,15 +279,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     requiresBankDirectionConfirmation,
     setRequiresBankDirectionConfirmation,
   ] = useState(false);
-  const [isReadingBankNotification, setIsReadingBankNotification] =
-    useState(false);
-  const bankReadVersion = useRef(0);
-  const bankReadInFlight = useRef(false);
-  const [pendingBankDrafts, setPendingBankDrafts] = useState<
-    BankNotificationItem[]
-  >([]);
-  const [isBankNotificationPickerVisible, setIsBankNotificationPickerVisible] =
-    useState(false);
+  const bannerCapture = useBankBannerCapture(isModalVisible, user?.id);
+  const isReadingBankNotification = bannerCapture.busy;
   const [isVoiceEntryVisible, setIsVoiceEntryVisible] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const transactionVoice = useVoiceInput(setVoiceTranscript);
@@ -304,13 +291,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   );
   useEffect(() => {
     if (!isModalVisible) {
-      bankReadVersion.current += 1;
       cancelTransactionVoice();
       setIsVoiceEntryVisible(false);
     }
-    return () => {
-      bankReadVersion.current += 1;
-    };
   }, [isModalVisible, cancelTransactionVoice]);
   const [smartRules, setSmartRules] = useState<SmartRule[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
@@ -507,7 +490,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           .then(setSmartRules)
           .catch(() => undefined);
         (async () => {
-          let created = 0;
           let syncedDrafts = 0;
           try {
             syncedDrafts = (await offlineTransactionQueue.sync(token, user.id))
@@ -515,18 +497,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           } catch {
             // Bản nháp vẫn nằm trong hàng chờ và sẽ được thử lại khi có mạng.
           }
-          try {
-            created = (await syncBankNotifications(token, user.id)).created;
-          } catch {
-            // Dashboard data should still refresh when bank sync is unavailable.
-          }
           await fetchDashboardData(false);
-          if (active && created > 0) {
-            Alert.alert(
-              'Đã cập nhật giao dịch',
-              `${created} biến động ngân hàng đã được thêm.`,
-            );
-          } else if (active && syncedDrafts > 0) {
+          if (active && syncedDrafts > 0) {
             Alert.alert(
               'Đã đồng bộ bản nháp',
               `${syncedDrafts} giao dịch ngoại tuyến đã được thêm an toàn.`,
@@ -549,22 +521,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   );
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextState => {
-      if (nextState !== 'active' || !token || !user?.id) return;
-      syncBankNotifications(token, user.id)
-        .then(result => {
-          if (result.created > 0) {
-            fetchDashboardData();
-            Alert.alert(
-              'Đã cập nhật giao dịch',
-              `${result.created} biến động ngân hàng đã được thêm.`,
-            );
-          }
-        })
-        .catch(() => undefined);
-    });
-    return () => subscription.remove();
-  }, [fetchDashboardData, token, user?.id]);
+    // Disable legacy background collection; the bell now reads a selected screen crop only.
+    if (bankNotificationReader.isSupported) {
+      bankNotificationReader.setConfiguration(null, []).catch(() => undefined);
+    }
+  }, []);
 
   const selectedWallet = useMemo(
     () =>
@@ -694,7 +655,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
-    bankReadVersion.current += 1;
+    bannerCapture.close();
     transactionVoice.cancel();
     setIsVoiceEntryVisible(false);
     setVoiceTranscript('');
@@ -1049,26 +1010,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setIsModalVisible(true);
   };
 
-  const applyBankTransactionDraft = (draft: BankTransactionDraft) => {
-    resetTransactionForm();
-    setIsChatDraft(true);
-    setActiveBankNotificationEventId(draft.eventId);
-    setActiveBankNotificationReviewReason(null);
-    setChatDraftCurrency(draft.currency);
-    setTransactionEntryType(draft.type);
-    setTransactionAmount(draft.amount);
-    setTransactionNote(draft.note);
-    setTransactionDate(parseDateKey(draft.transactionDate));
-    setSelectedWalletId(null);
-    setSelectedTransactionCategory(null);
-    setIsModalVisible(true);
-  };
-
-  const applyBankTransactionDraftRef = useRef<
-    (draft: BankTransactionDraft) => void
-  >(() => undefined);
-  applyBankTransactionDraftRef.current = applyBankTransactionDraft;
-
   const applyBankNotificationReview = (item: BankNotificationItem) => {
     const { event, parsed } = item;
     resetTransactionForm();
@@ -1086,79 +1027,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     setIsModalVisible(true);
   };
 
-  const applyBankNotificationReviewRef = useRef(applyBankNotificationReview);
-  applyBankNotificationReviewRef.current = applyBankNotificationReview;
-
   const handleReadBankNotificationFromForm = async () => {
-    if (!user?.id || bankReadInFlight.current) return;
-    bankReadInFlight.current = true;
-    const version = ++bankReadVersion.current;
-
     transactionVoice.cancel();
     setIsVoiceEntryVisible(false);
-
-    setIsReadingBankNotification(true);
-    try {
-      const granted =
-        await bankNotificationReader.isNotificationAccessGranted();
-      if (version !== bankReadVersion.current) return;
-      if (!granted) {
-        Alert.alert(
-          'Chưa có quyền đọc thông báo',
-          'Cấp quyền cho Sổ Thu Chi Nova để đọc thông báo từ ứng dụng ngân hàng.',
-          [
-            { text: 'Để sau', style: 'cancel' },
-            {
-              text: 'Cấp quyền',
-              onPress: () => {
-                bankNotificationReader
-                  .openNotificationAccessSettings()
-                  .catch(() => undefined);
-              },
-            },
-          ],
-        );
-        return;
-      }
-
-      await bankNotificationReader.setConfiguration(user.id, []);
-      if (version !== bankReadVersion.current) return;
-      const events = await bankNotificationReader.getPendingEvents(user.id);
-      if (version !== bankReadVersion.current) return;
-      const drafts = buildBankNotificationItems(events).filter(
-        item => item.parsed.status !== 'IGNORED',
-      );
-
-      if (!drafts.length) {
-        Alert.alert(
-          'Chưa có giao dịch mới',
-          'Không có thông báo giao dịch chưa xử lý còn trong khay thông báo của điện thoại.',
-        );
-        return;
-      }
-
-      if (drafts.length === 1) {
-        const [item] = drafts;
-        if (item.draft) {
-          applyBankTransactionDraftRef.current(item.draft);
-        } else {
-          applyBankNotificationReviewRef.current(item);
-        }
-        return;
-      }
-
-      setPendingBankDrafts(drafts);
-      setIsBankNotificationPickerVisible(true);
-    } catch (error) {
-      if (version !== bankReadVersion.current) return;
-      Alert.alert(
-        'Chưa đọc được thông báo',
-        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
-      );
-    } finally {
-      bankReadInFlight.current = false;
-      setIsReadingBankNotification(false);
-    }
+    await bannerCapture.read();
   };
 
   const applyCapturedTransactionDraftRef = useRef<
@@ -1395,11 +1267,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
           await offlineTransactionQueue.enqueue(user.id, createPayload);
-          if (activeBankNotificationEventId) {
-            await bankNotificationReader
-              .markProcessed(user.id, activeBankNotificationEventId)
-              .catch(() => undefined);
-          }
           if (activeFinancialDraftId) {
             await financialCaptureInbox
               .remove(user.id, activeFinancialDraftId)
@@ -1441,12 +1308,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         } catch {
           receiptUploadFailed = true;
         }
-      }
-
-      if (activeBankNotificationEventId && user?.id) {
-        await bankNotificationReader
-          .markProcessed(user.id, activeBankNotificationEventId)
-          .catch(() => undefined);
       }
 
       await fetchDashboardData();
@@ -1638,6 +1499,20 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     }. Kiểm tra thông tin rồi bấm Lưu.`
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
+              {bannerCapture.ready ? (
+                <View style={styles.voiceEntryCard}>
+                  <Text style={styles.voiceEntryHint}>
+                    Chụp màn hình đã sẵn sàng. Bấm chuông khi banner ngân hàng
+                    đang hiện.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={bannerCapture.close}
+                    accessibilityLabel="Dừng phiên chụp banner"
+                  >
+                    <Text style={styles.voiceEntryTitle}>Dừng chụp</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>
                   <Text
@@ -2413,110 +2288,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         </KeyboardAvoidingView>
       ) : null}
 
-      {isBankNotificationPickerVisible ? (
-        <View style={[styles.modalBackdrop, styles.bankPickerLayer]}>
-          <Pressable
-            style={styles.backdropPressable}
-            onPress={() => setIsBankNotificationPickerVisible(false)}
-          />
-          <View style={styles.bankPickerCard}>
-            <View style={styles.bankPickerHeader}>
-              <View style={styles.bankPickerHeaderCopy}>
-                <Text style={styles.bankPickerTitle}>Chọn thông báo</Text>
-                <Text style={styles.bankPickerDescription}>
-                  {pendingBankDrafts.length} giao dịch đang chờ. Chọn một dòng
-                  để kiểm tra trước khi lưu.
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.bankPickerClose}
-                accessibilityLabel="Đóng danh sách thông báo"
-                onPress={() => setIsBankNotificationPickerVisible(false)}
-              >
-                <X size={18} color="#7A4A28" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.bankPickerList}
-              contentContainerStyle={styles.bankPickerListContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {pendingBankDrafts.map(item => {
-                const { event, parsed, draft } = item;
-                const postedAt = new Date(event.postedAt);
-                const postedLabel = postedAt.toLocaleString('vi-VN', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                });
-
-                return (
-                  <TouchableOpacity
-                    key={event.id}
-                    style={styles.bankPickerItem}
-                    accessibilityLabel={
-                      draft
-                        ? `Chọn giao dịch ${
-                            draft.type === 'INCOME' ? 'thu' : 'chi'
-                          } ${draft.amount}`
-                        : `Kiểm tra thông báo ${event.appName}`
-                    }
-                    onPress={() => {
-                      setIsBankNotificationPickerVisible(false);
-                      setPendingBankDrafts([]);
-                      if (draft) {
-                        applyBankTransactionDraftRef.current(draft);
-                      } else {
-                        applyBankNotificationReviewRef.current(item);
-                      }
-                    }}
-                  >
-                    <View
-                      style={[
-                        styles.bankPickerType,
-                        parsed.type === 'INCOME'
-                          ? styles.bankPickerIncome
-                          : styles.bankPickerExpense,
-                      ]}
-                    >
-                      <Text style={styles.bankPickerTypeText}>
-                        {parsed.type === 'INCOME'
-                          ? 'Thu'
-                          : parsed.type === 'EXPENSE'
-                          ? 'Chi'
-                          : 'Xem'}
-                      </Text>
-                    </View>
-                    <View style={styles.bankPickerItemCopy}>
-                      <Text
-                        style={[
-                          styles.bankPickerAmount,
-                          !draft && styles.bankPickerReviewAmount,
-                        ]}
-                      >
-                        {draft
-                          ? formatCurrency(Number(draft.amount), draft.currency)
-                          : 'Cần kiểm tra'}
-                      </Text>
-                      <Text style={styles.bankPickerMeta} numberOfLines={1}>
-                        {event.appName} · {postedLabel}
-                      </Text>
-                      {!draft && parsed.reason ? (
-                        <Text
-                          style={styles.bankPickerReviewReason}
-                          numberOfLines={2}
-                        >
-                          {parsed.reason}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
+      {bannerCapture.capture ? (
+        <BankBannerReview
+          capture={bannerCapture.capture}
+          token={token}
+          onClose={bannerCapture.close}
+          onConfirm={applyBankNotificationReview}
+        />
       ) : null}
 
       <Modal transparent visible={isTagModalVisible} animationType="fade">
@@ -2675,104 +2453,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 60,
     elevation: 60,
-  },
-  bankPickerLayer: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 90,
-    elevation: 90,
-  },
-  bankPickerCard: {
-    maxHeight: '72%',
-    borderRadius: 26,
-    borderWidth: 1,
-    borderColor: '#F0D6C1',
-    backgroundColor: '#FFFDFB',
-    padding: 18,
-    shadowColor: '#7A3E12',
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  bankPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  bankPickerHeaderCopy: {
-    flex: 1,
-  },
-  bankPickerTitle: {
-    color: '#4C2A18',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  bankPickerDescription: {
-    color: '#8A623F',
-    lineHeight: 20,
-    marginTop: 5,
-  },
-  bankPickerClose: {
-    width: 38,
-    height: 38,
-    borderRadius: 14,
-    backgroundColor: '#FFF0DF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bankPickerList: {
-    marginTop: 14,
-  },
-  bankPickerListContent: {
-    gap: 10,
-    paddingBottom: 2,
-  },
-  bankPickerItem: {
-    minHeight: 76,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#F0D6C1',
-    backgroundColor: '#FFF7EF',
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  bankPickerType: {
-    width: 52,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bankPickerIncome: {
-    backgroundColor: '#E6F6EC',
-  },
-  bankPickerExpense: {
-    backgroundColor: '#FFE9DF',
-  },
-  bankPickerTypeText: {
-    color: '#70452A',
-    fontWeight: '900',
-  },
-  bankPickerItemCopy: {
-    flex: 1,
-  },
-  bankPickerAmount: {
-    color: '#4C2A18',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  bankPickerReviewAmount: { color: '#9A5A25' },
-  bankPickerReviewReason: {
-    color: '#8A684D',
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 3,
-  },
-  bankPickerMeta: {
-    color: '#936D50',
-    fontSize: 12,
-    marginTop: 5,
   },
   receiptScanBackdrop: {
     backgroundColor: 'rgba(42, 24, 12, 0.38)',
