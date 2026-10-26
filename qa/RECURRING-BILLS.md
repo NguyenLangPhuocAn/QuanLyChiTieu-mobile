@@ -40,6 +40,8 @@ Lối vào: Tài khoản → Hóa đơn định kỳ. Phạm vi hiện tại là
 
 ## Giới hạn và việc tiếp theo
 
+Nghiên cứu bổ sung ngày26/10: [Nhắc các khoản dễ bỏ sót](RECURRING-REMINDERS-RESEARCH.md). Gồm phát hiện thuê bao/khoản lặp, nhắc hạn, tăng tiền, nghi trùng kỳ, tổng hợp và giới hạn dữ liệu. Đây là đề xuất, chưa có hành vi mới trong app.
+
 - Liên kết là bản chụp thông tin giao dịch đã chọn; chưa tự kiểm lại khi giao dịch gốc bị sửa hoặc xóa, chưa hỗ trợ trả nhiều lần cho một kỳ hoặc dùng một lần trả cho nhiều kỳ.
 - Bộ chọn chỉ truy vấn khoản Chi thông thường, cùng tiền tệ, 31 ngày trước/sau kỳ; không tự đổi tiền tệ hoặc ghép vay/nợ/tiết kiệm. Trả quá sớm/muộn ngoài cửa sổ này chưa được hỗ trợ.
 - Chưa có đồng bộ nhiều thiết bị hoặc đưa lịch vào backup/Excel. Các nghĩa vụ trong màn mới chưa được cộng vào công thức chi an toàn hoặc lịch tiền cũ; không nghiệm thu toàn P3.
