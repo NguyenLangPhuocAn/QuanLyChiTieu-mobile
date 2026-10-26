@@ -387,13 +387,14 @@ function RecurringBillsContent({
             ) : (
               <View style={styles.card} pointerEvents={busy ? 'none' : 'auto'}>
                 <View style={styles.row}>
-                  <Text style={styles.heading}>
+                  <Text style={[styles.heading, styles.grow]}>
                     {editor.id ? 'Sửa lịch' : 'Lịch mới'}
                   </Text>
                   <TouchableOpacity
                     disabled={busy}
                     accessibilityRole="button"
                     accessibilityLabel="Đóng form lịch hóa đơn"
+                    style={styles.smallButton}
                     onPress={() => {
                       setEditor(null);
                       setShowDate(false);
@@ -801,7 +802,10 @@ function RecurringBillsContent({
                   </Text>
                 </TouchableOpacity>
               ))}
-              {picker && !picker.loading && !picker.rows.length ? (
+              {picker &&
+              !picker.loading &&
+              !picker.error &&
+              !picker.rows.length ? (
                 <Text style={styles.empty}>
                   Chưa có khoản chi phù hợp trong khoảng ngày này. Hãy ghi giao
                   dịch trước, rồi quay lại liên kết.
@@ -848,7 +852,7 @@ export default function RecurringBillsScreen(props: Props) {
   if (!user || !token) return null;
   return (
     <RecurringBillsContent
-      key={`${server}:${user.id}:${token}`}
+      key={`${server}:${user.id}`}
       {...props}
       scope={scope}
       token={token}

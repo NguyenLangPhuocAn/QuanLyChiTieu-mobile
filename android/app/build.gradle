@@ -118,6 +118,11 @@ android {
     }
     buildTypes {
         debug {
+            // Optional isolated Metro app for QA, leaving the installed release intact.
+            if (providers.gradleProperty("QA_ISOLATED_APP").getOrElse("false").toBoolean()) {
+                applicationIdSuffix ".dev"
+                versionNameSuffix "-dev"
+            }
             signingConfig signingConfigs.debug
         }
         release {

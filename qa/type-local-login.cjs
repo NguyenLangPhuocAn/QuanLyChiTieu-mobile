@@ -1,0 +1,13 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
+const data = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../backend/.runtime/recurring-bills-qa/session.json'), 'utf8'));
+if (data.email !== 'qa.bills@example.test' || !/^nova_qa_bills_20261026_\d+$/.test(data.database)) throw new Error('Only the isolated QA identity is allowed.');
+const field = process.argv[2];
+if (!['email', 'password'].includes(field)) throw new Error('Choose email or password after focusing the corresponding QA login input.');
+const adb = path.join(process.env.ANDROID_HOME || path.join(os.homedir(), 'AppData/Local/Android/Sdk'), 'platform-tools/adb.exe');
+const foreground = execFileSync(adb, ['-s', 'emulator-5554', 'shell', 'dumpsys', 'activity', 'activities'], { encoding: 'utf8', windowsHide: true });
+if (!foreground.split('\n').some(line => /(?:mResumedActivity|topResumedActivity).*com\.mobile\.dev\//.test(line))) throw new Error('Focus the isolated com.mobile.dev QA app first.');
+execFileSync(adb, ['-s', 'emulator-5554', 'shell', 'input', 'text', data[field]], { windowsHide: true, stdio: 'ignore' });
+console.log(`Entered local QA ${field}; value not logged.`);

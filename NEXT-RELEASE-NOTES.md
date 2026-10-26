@@ -6,7 +6,9 @@
 - Xem kỳ chưa trả/đã xử lý; tạm dừng, tiếp tục, bỏ qua một kỳ và mở lại. Xóa lịch vẫn giữ lịch sử liên kết đã trả.
 - Liên kết khoản chi đã có sau xem trước/xác nhận. Chặn dùng trùng giao dịch giữa các kỳ; không tạo/sửa/xóa giao dịch hoặc thay đổi số dư.
 - Lưu local theo tài khoản/môi trường, khóa ghi tuần tự, giữ form khi lỗi và không ghi đè dữ liệu hỏng. Giao dịch tải theo trang, bỏ phản hồi muộn sau khi đóng.
-- 46/46 kiểm thử qua 4 bộ, TypeScript/ESLint đạt. Chưa thử Android thật hoặc build APK. Chưa có nhắc hạn từng hóa đơn, gợi ý tự động, đồng bộ/backup lịch hoặc tích hợp chi an toàn; snapshot thanh toán chưa tự theo dõi sửa/xóa giao dịch gốc. Chi tiết: qa/RECURRING-BILLS.md.
+- Sửa lỗi form/picker mất khi token tự làm mới, tăng vùng bấm nút đóng form và tránh báo không có giao dịch khi thực ra đang lỗi mạng. Thử lại sau mất kết nối tải được danh sách.
+- 50/50 kiểm thử qua 4 bộ, thêm 2/2 kiểm tra cấu hình Metro; TypeScript/ESLint đạt. Đã thao tác Android emulator với backend/MySQL QA thật, lưu 97 ảnh gốc từng bước tại qa/evidence/2026-10-26-recurring/README.md. Đối chiếu trước/sau vẫn 2 giao dịch, số dư 6.590.000đ.
+- Chỉ build/cài debug local tách riêng phục vụ test; chưa phát hành APK production hoặc cập nhật web tải. Chưa thử điện thoại vật lý. Chưa có nhắc hạn từng hóa đơn, gợi ý tự động, đồng bộ/backup lịch hoặc tích hợp chi an toàn; snapshot thanh toán chưa tự theo dõi sửa/xóa giao dịch gốc. Chi tiết: qa/RECURRING-BILLS.md.
 
 Cập nhật source ngày 23/10/2026 — AI trích xuất thông báo ngân hàng.
 

@@ -1,0 +1,584 @@
+[
+  {
+    "file": "00-local-launch.png",
+    "bytes": 21344,
+    "sha256": "54d5d4150461dabd8a3b64e6a05f994a3e43b6b88d208e00477d21bc6fc12d08",
+    "ui": "00-local-launch.xml"
+  },
+  {
+    "file": "01-app-start.png",
+    "bytes": 26095,
+    "sha256": "88b7c4a7c9fc3c7f0bf09ab10c122541dad901bc8837f6a5138868ae3abf4ead",
+    "ui": "01-app-start.xml"
+  },
+  {
+    "file": "02-launch-ready.png",
+    "bytes": 26492,
+    "sha256": "0992dffd35e7ab5aab456fc31e8acb61bc5bf742f501ff4c22363915ff3c5b53",
+    "ui": "02-launch-ready.xml"
+  },
+  {
+    "file": "03-initial-screen.png",
+    "bytes": 26514,
+    "sha256": "bd72b4f26c212005fcce05ed594d15352afa49a52bac0246e1a48bf6ca7e82ba",
+    "ui": "03-initial-screen.xml"
+  },
+  {
+    "file": "04-before-login.png",
+    "bytes": 27253,
+    "sha256": "dd5bfa040569ef1225903b86d215acba60efd5065ab1c7707bcf626707f3d09b",
+    "ui": "04-before-login.xml"
+  },
+  {
+    "file": "05-entry.png",
+    "bytes": 27013,
+    "sha256": "bd23cd8734fc245fb7f50072bde7ba57f6ec5e5e6856777c866f9bbda4936927",
+    "ui": "05-entry.xml"
+  },
+  {
+    "file": "06-entry-ready.png",
+    "bytes": 472033,
+    "sha256": "ade0f58ee7eb27ca8c77ca3eacb7a15186a0a3e638d6f1c996d026b51d101e69",
+    "ui": "06-entry-ready.xml"
+  },
+  {
+    "file": "07-login.png",
+    "bytes": 91302,
+    "sha256": "b815e1e76c7603d0ab6f43d10f61d1831546d851b81f7d4ccde0ddaab9227381",
+    "ui": "07-login.xml"
+  },
+  {
+    "file": "08-email-focus.png",
+    "bytes": 144702,
+    "sha256": "e5df5a600badaf1f4aeed848f79abcc6bf7b7fcaefb11da73cb89aaaf52fcbd8",
+    "ui": "08-email-focus.xml"
+  },
+  {
+    "file": "09-password-focus.png",
+    "bytes": 137682,
+    "sha256": "6d310a5d1e752be800f488a0395f676857525753c63a10d89b83416977754167",
+    "ui": "09-password-focus.xml"
+  },
+  {
+    "file": "10-qa-signed-in.png",
+    "bytes": 131555,
+    "sha256": "71321f1124023357f089e17374459ee4b5ac79f71b0548f6b4c37ad0a1bf73b6",
+    "ui": "10-qa-signed-in.xml"
+  },
+  {
+    "file": "11-login-result.png",
+    "bytes": 208838,
+    "sha256": "d77e464a12b7cf954f48f7db7bd7abc74edf6d556fade00ee6a66af2172a5f2f",
+    "ui": "11-login-result.xml"
+  },
+  {
+    "file": "12-dashboard-balance.png",
+    "bytes": 217120,
+    "sha256": "0c8bc138835f2c160bebf791bf0e88f6115b004eb66aa0c243f77cc49f8fdb92",
+    "ui": "12-dashboard-balance.xml"
+  },
+  {
+    "file": "13-account.png",
+    "bytes": 405079,
+    "sha256": "cb4185fe789650e876521f4f2a26ef48c975a52a034e125187082eda1d67f444",
+    "ui": "13-account.xml"
+  },
+  {
+    "file": "14-account-menu.png",
+    "bytes": 284308,
+    "sha256": "6f04dcde40d0bc2ecb9dd50be37d17c4a9c62a0b92ef587ab34d43a83f1f4787",
+    "ui": "14-account-menu.xml"
+  },
+  {
+    "file": "15-bills-empty.png",
+    "bytes": 107784,
+    "sha256": "126b8f1eb4b7ec2960c2a9c77a47ed2e9c0fe36f9653263fe73398ca312f2609",
+    "ui": "15-bills-empty.xml"
+  },
+  {
+    "file": "16-create-bill-form.png",
+    "bytes": 150724,
+    "sha256": "610e579fcea837ee1356525ff3f7b5c74fbffe25b779aa5f07f2e3b3a74c220d",
+    "ui": "16-create-bill-form.xml"
+  },
+  {
+    "file": "17-bill-name-focus.png",
+    "bytes": 181661,
+    "sha256": "67fb8489f2dd69c11e3106ced67aff849e63d949551d37fa4dd052a117b06faf",
+    "ui": "17-bill-name-focus.xml"
+  },
+  {
+    "file": "18-bill-name-entered.png",
+    "bytes": 183075,
+    "sha256": "bf5293b4f87a6a1c5255c0068c2719a90fed09dd95b5d52153a38f04f38d7d46",
+    "ui": "18-bill-name-entered.xml"
+  },
+  {
+    "file": "19-date-picker.png",
+    "bytes": 169520,
+    "sha256": "993bce17f0b8a7d45a2b5279cd5aa52f7aa31d974849c57aed417c57bab7ce7e",
+    "ui": "19-date-picker.xml"
+  },
+  {
+    "file": "20-date-october-31.png",
+    "bytes": 165500,
+    "sha256": "cd4ce5bc0d2213541e9d89efc8a0be4d2d741d4b2eba22c3a4dd578078208e01",
+    "ui": "20-date-october-31.xml"
+  },
+  {
+    "file": "21-anchor-confirmed.png",
+    "bytes": 183095,
+    "sha256": "3aaa16ed8e48a4f4543fd9deff3682b1fde66511f35fb08c7c89a9bf325f444d",
+    "ui": "21-anchor-confirmed.xml"
+  },
+  {
+    "file": "22-form-full.png",
+    "bytes": 150010,
+    "sha256": "6f0b413e79d837b2447605f45e1811fc60430ef9efa703ea8045cea0f0d49176",
+    "ui": "22-form-full.xml"
+  },
+  {
+    "file": "23-amount-focus.png",
+    "bytes": 152200,
+    "sha256": "15a6d605fc1c35ea1243f4418eee4a3d6adef337a463d2deae7b426b2680e01f",
+    "ui": "23-amount-focus.xml"
+  },
+  {
+    "file": "24-fixed-amount.png",
+    "bytes": 154905,
+    "sha256": "b33a1610d5830df58301334811ff90673ba181eddbbe168747c92705cefc4828",
+    "ui": "24-fixed-amount.xml"
+  },
+  {
+    "file": "25-form-review.png",
+    "bytes": 155970,
+    "sha256": "a8b40ad9bb9ba57962f6b3f40d00338df70e4dc17720f76aba162199c4929868",
+    "ui": "25-form-review.xml"
+  },
+  {
+    "file": "26-schedule-saved.png",
+    "bytes": 112842,
+    "sha256": "90b12d93ac27afa7acbbe6c0c7b3e263d77784143d12887572f9ee4cf82d1683",
+    "ui": "26-schedule-saved.xml"
+  },
+  {
+    "file": "27-month-end-periods.png",
+    "bytes": 181912,
+    "sha256": "5f6410a6f499f60faf12851f4c3ac1d8f186fa0bbe8b3fd1a0fe5f896bbff428",
+    "ui": "27-month-end-periods.xml"
+  },
+  {
+    "file": "28-december-restored-31.png",
+    "bytes": 165976,
+    "sha256": "660cec8285311836d3945b16404b5055cfa7782aa2fdb4c2366531fcd813dd79",
+    "ui": "28-december-restored-31.xml"
+  },
+  {
+    "file": "29-payment-picker.png",
+    "bytes": 164635,
+    "sha256": "2730712b0a5efabf8676312bdbfb045278fc2a40a0039b8ff665f16c2bc32688",
+    "ui": "29-payment-picker.xml"
+  },
+  {
+    "file": "30-payment-confirmation.png",
+    "bytes": 191648,
+    "sha256": "2efd3211e047762e274ab7a6043c59065bd7fc23a9816d64d3f9b5ce33126dcc",
+    "ui": "30-payment-confirmation.xml"
+  },
+  {
+    "file": "31-cancel-payment.png",
+    "bytes": 164678,
+    "sha256": "e80b6107d1fe4e941b7b9714fe9188d2ca5e9f89ece507e5c0b4445aa5fe1f41",
+    "ui": "31-cancel-payment.xml"
+  },
+  {
+    "file": "32-cancel-keeps-pending.png",
+    "bytes": 165959,
+    "sha256": "07639074ec94b2ad24593f879cc270e592b8683f0130983b7860a8b4ca1605fc",
+    "ui": "32-cancel-keeps-pending.xml"
+  },
+  {
+    "file": "33-payment-picker-again.png",
+    "bytes": 163850,
+    "sha256": "91c35a221d1456881a5a41482845b88d822bf50b6843997b25d47c4d11b7fd4c",
+    "ui": "33-payment-picker-again.xml"
+  },
+  {
+    "file": "34-payment-preview.png",
+    "bytes": 190719,
+    "sha256": "1dc9dd13f969c0138d95ad3ba4b0910f89fa48a9388fe61ef06f98993ca4ca50",
+    "ui": "34-payment-preview.xml"
+  },
+  {
+    "file": "35-payment-linked.png",
+    "bytes": 171659,
+    "sha256": "779f40a87f3df3f7af7a8fdf81f014c649afc2f722c1c53f182b90324ac629d1",
+    "ui": "35-payment-linked.xml"
+  },
+  {
+    "file": "36-paid-period.png",
+    "bytes": 137106,
+    "sha256": "0a12ed2c739436c09838a8c21a1558818dadcc4c6981bceb6ead23d2b7f5b136",
+    "ui": "36-paid-period.xml"
+  },
+  {
+    "file": "37-schedule-actions.png",
+    "bytes": 113388,
+    "sha256": "5edda34f294c6160494747631ee555d3a645e5ef6b25650d23331a5b281b794e",
+    "ui": "37-schedule-actions.xml"
+  },
+  {
+    "file": "38-paused.png",
+    "bytes": 110939,
+    "sha256": "6fefadf8f29e31c067304d87ff4fb8ed9cdac1d5872c649b75ceabfc59f4ade1",
+    "ui": "38-paused.xml"
+  },
+  {
+    "file": "39-paused-hides-pending.png",
+    "bytes": 107327,
+    "sha256": "d288f61970e538c217a244abc484b2998b15d8c8f6400407522512a813ebbbe5",
+    "ui": "39-paused-hides-pending.xml"
+  },
+  {
+    "file": "40-resume-action.png",
+    "bytes": 111039,
+    "sha256": "19c8fddcd2295eedf9d23053a274d1e6656b54d9b8b9f385d37da25a3f803ee1",
+    "ui": "40-resume-action.xml"
+  },
+  {
+    "file": "41-resumed.png",
+    "bytes": 113486,
+    "sha256": "407afde68c8dd4aaeed926cea34864fae497362e56676e7c68f447003c31b759",
+    "ui": "41-resumed.xml"
+  },
+  {
+    "file": "42-resumed-pending.png",
+    "bytes": 172426,
+    "sha256": "3ac36df692070d1f749138f77e159b86f0ad0c34ed81358c0689a19bd81e6cc7",
+    "ui": "42-resumed-pending.xml"
+  },
+  {
+    "file": "43-skip-preview.png",
+    "bytes": 167901,
+    "sha256": "5817469df23148263759fafccadd581a96c3c9b29d517a871d845e4a5527a4b8",
+    "ui": "43-skip-preview.xml"
+  },
+  {
+    "file": "44-one-period-skipped.png",
+    "bytes": 136036,
+    "sha256": "2d05ba439125d5d2b41c768910da0fab7c3a3bddc9c9a5452d0cedc10fb66735",
+    "ui": "44-one-period-skipped.xml"
+  },
+  {
+    "file": "45-skipped-history.png",
+    "bytes": 168251,
+    "sha256": "ef8f34f848281aa92fa5b853c26de9795f71a7d7006d1d49241cdb81eb37b7f1",
+    "ui": "45-skipped-history.xml"
+  },
+  {
+    "file": "46-reopen-preview.png",
+    "bytes": 174237,
+    "sha256": "077c074978923f87286ec8396885266bb7b1476baf127dddeef06fad56ddeaa2",
+    "ui": "46-reopen-preview.xml"
+  },
+  {
+    "file": "47-period-reopened.png",
+    "bytes": 137517,
+    "sha256": "6c9778ee9e7749833094b4fec0b37bdc2ace8d5e28acb6e9e11d3f5f0d72f7e6",
+    "ui": "47-period-reopened.xml"
+  },
+  {
+    "file": "48-after-layout-fix.png",
+    "bytes": 172555,
+    "sha256": "8e7ad6e080b7a5a0b7ea68f06fe10767610ea0290d10809ff167fd603930d272",
+    "ui": "48-after-layout-fix.xml"
+  },
+  {
+    "file": "49-create-variable-bill.png",
+    "bytes": 148695,
+    "sha256": "e721a5ad7dee5583e1c2e324098fa470540d74049019a7883bd19a88b2d97e1d",
+    "ui": "49-create-variable-bill.xml"
+  },
+  {
+    "file": "50-variable-name.png",
+    "bytes": 173071,
+    "sha256": "3ff42328994eba9dd718ee54224967246529336e3f7a847f400474db1a652d12",
+    "ui": "50-variable-name.xml"
+  },
+  {
+    "file": "51-variable-form.png",
+    "bytes": 147651,
+    "sha256": "8424c3e6665bf2327119d746fed62bb0f828ad464fb2357199d4a7c8938d9230",
+    "ui": "51-variable-form.xml"
+  },
+  {
+    "file": "52-variable-range-fields.png",
+    "bytes": 147153,
+    "sha256": "4e674eb1f1bc4f8f7fd70c8580ee2c1dff60086274043d8f45c57770211e4ab7",
+    "ui": "52-variable-range-fields.xml"
+  },
+  {
+    "file": "53-variable-minimum.png",
+    "bytes": 155144,
+    "sha256": "1fba9a7983529c3c33b9c3139e8fb534a48072af6c0448edf486e858aad47256",
+    "ui": "53-variable-minimum.xml"
+  },
+  {
+    "file": "54-variable-maximum.png",
+    "bytes": 152400,
+    "sha256": "63e5b54e9029a5edc60ad8e9bd588f736a52f6062f7c41dbee8f791f8c4ccd77",
+    "ui": "54-variable-maximum.xml"
+  },
+  {
+    "file": "55-variable-review.png",
+    "bytes": 138769,
+    "sha256": "d9458729a40d7d22653af5b8c4654a2e26d2044dfb212942a69a88d4df125f5b",
+    "ui": "55-variable-review.xml"
+  },
+  {
+    "file": "56-variable-saved.png",
+    "bytes": 147575,
+    "sha256": "840eea06f6c5440ff5f0aa0759341f1c310b1e7677e4b228a614fc9fefe289e9",
+    "ui": "56-variable-saved.xml"
+  },
+  {
+    "file": "57-variable-due-today.png",
+    "bytes": 180466,
+    "sha256": "1cc32c1f6dffe5ea7394403cbe87ece3539ab4a429bf753a58d462133b0be5df",
+    "ui": "57-variable-due-today.xml"
+  },
+  {
+    "file": "58-variable-payment-picker.png",
+    "bytes": 171788,
+    "sha256": "7bb79b6dce1e17781c66b4f37742e7b2c6f564d24cd12a5222b82be8dc2d565b",
+    "ui": "58-variable-payment-picker.xml"
+  },
+  {
+    "file": "59-payment-load-result.png",
+    "bytes": 180098,
+    "sha256": "7b46b12c8afc4c498543c76bb4b7345b1e9278214f790a29c903b5f97647f83b",
+    "ui": "59-payment-load-result.xml"
+  },
+  {
+    "file": "60-session-fix-loaded.png",
+    "bytes": 183685,
+    "sha256": "87001b878c2b5be2627837498f0c29dc6d56e79cbd09c0b8b0750343f1259886",
+    "ui": "60-session-fix-loaded.xml"
+  },
+  {
+    "file": "61-payment-picker-fixed.png",
+    "bytes": 172740,
+    "sha256": "b78077db19a16d11c6e5ba764b5b405e6455d1badefcd45f7f9dbeb6aebae684",
+    "ui": "61-payment-picker-fixed.xml"
+  },
+  {
+    "file": "62-duplicate-payment-preview.png",
+    "bytes": 190260,
+    "sha256": "5c870c8ffc43a3f06dea38df7eec9652a33e79513c6be4fcd34ade8f81884862",
+    "ui": "62-duplicate-payment-preview.xml"
+  },
+  {
+    "file": "63-duplicate-blocked.png",
+    "bytes": 169688,
+    "sha256": "6f58549d8aa93178500c2bb933f36ad61014c04a5b3e9918e2b328592413f6ad",
+    "ui": "63-duplicate-blocked.xml"
+  },
+  {
+    "file": "64-picker-after-block.png",
+    "bytes": 172774,
+    "sha256": "87211cf5db5c1d62c004bcfc57e82200a3b35d989f89a6379912bb4cb7fb974d",
+    "ui": "64-picker-after-block.xml"
+  },
+  {
+    "file": "65-variable-payment-preview.png",
+    "bytes": 180552,
+    "sha256": "493f0ef41d381ae26fca034bc842b94cc3c7d27d464890898dcad9c38f49924a",
+    "ui": "65-variable-payment-preview.xml"
+  },
+  {
+    "file": "66-variable-linked.png",
+    "bytes": 183278,
+    "sha256": "c8c71a6c44336d820dafbe293f1080a4d6646dbeb58c3a8e47cf151e15ed1e65",
+    "ui": "66-variable-linked.xml"
+  },
+  {
+    "file": "67-schedules-before-archive.png",
+    "bytes": 151040,
+    "sha256": "0836495bc6226f2655f5a674e00f4be5fc004e3039268cccf62d954f9e3d571a",
+    "ui": "67-schedules-before-archive.xml"
+  },
+  {
+    "file": "68-archive-preview.png",
+    "bytes": 158671,
+    "sha256": "a55c941fb48995eee4243c91d37dc6d76ad5fcb88c9d10caaac45b80f587a2b7",
+    "ui": "68-archive-preview.xml"
+  },
+  {
+    "file": "69-archived-schedule.png",
+    "bytes": 113189,
+    "sha256": "0633ce6eb637e86b9ffe0e2dca569b537b3ac515dde2475393880412d544581f",
+    "ui": "69-archived-schedule.xml"
+  },
+  {
+    "file": "70-archive-keeps-history.png",
+    "bytes": 179743,
+    "sha256": "0f1cea9e953db62d58bbaeb2804758a2ab698251f26ad2d4e6a58020f599861d",
+    "ui": "70-archive-keeps-history.xml"
+  },
+  {
+    "file": "71-relaunch.png",
+    "bytes": 27253,
+    "sha256": "5879b4022ffb26db9cc43bc30f4ab7239bf5d38c2fc1a46600cf27367635b28b",
+    "ui": "71-relaunch.xml"
+  },
+  {
+    "file": "72-restored-session.png",
+    "bytes": 208033,
+    "sha256": "3197e7644fa5acce513f5a696ab7a6a819e7e6948a9c28a15e68b32472125707",
+    "ui": "72-restored-session.xml"
+  },
+  {
+    "file": "73-account-after-relaunch.png",
+    "bytes": 404524,
+    "sha256": "0587b47b0a28bdc41ed8ac68fdd9a79f530149191fc1b9397d67e1c627140320",
+    "ui": "73-account-after-relaunch.xml"
+  },
+  {
+    "file": "74-account-reopened-menu.png",
+    "bytes": 426757,
+    "sha256": "4ccded6c33afadf8d87e89fe47fa0c92cd458e93c5024564308ab648e8366f83",
+    "ui": "74-account-reopened-menu.xml"
+  },
+  {
+    "file": "75-bills-restored.png",
+    "bytes": 173119,
+    "sha256": "994c2afc2249d6374567ddbfbddd70bcaa0436df1eb06568b307d0297928cef9",
+    "ui": "75-bills-restored.xml"
+  },
+  {
+    "file": "76-history-survives-relaunch.png",
+    "bytes": 180126,
+    "sha256": "8089bce3cda24ccb32fa74724e0107a459448fc9fe945fc4978ee0b0c592bc70",
+    "ui": "76-history-survives-relaunch.xml"
+  },
+  {
+    "file": "77-large-font.png",
+    "bytes": 1328300,
+    "sha256": "101b013502e918b03c1d55feaabf907de4df654a2824ec4d40aa6d6e5e9b2130",
+    "ui": "77-large-font.xml"
+  },
+  {
+    "file": "78-large-font-app.png",
+    "bytes": 29757,
+    "sha256": "d1469ab7650bbe0ad443d11135af1decbdec3b821dc602a131e573e5ce273e96",
+    "ui": "78-large-font-app.xml"
+  },
+  {
+    "file": "79-font-session-ready.png",
+    "bytes": 208971,
+    "sha256": "ff07b51072c20f58d56650e8993c661f94ed0d9a645c3346d370e616474149cf",
+    "ui": "79-font-session-ready.xml"
+  },
+  {
+    "file": "80-large-font-account.png",
+    "bytes": 448696,
+    "sha256": "5f030a735c54476176f5dd6001bcb032da17836121301d045517bb21542afa02",
+    "ui": "80-large-font-account.xml"
+  },
+  {
+    "file": "81-large-font-menu.png",
+    "bytes": 408478,
+    "sha256": "e9fe36b73d0668363e22eb612d56111491f2317c1ea5f142d09f85be00ad2e77",
+    "ui": "81-large-font-menu.xml"
+  },
+  {
+    "file": "82-bills-large-font.png",
+    "bytes": 206110,
+    "sha256": "cd00f91f8fc8c8bc1cc9f05fee0cb638ea1c9a4680823c7377f693a97c6cef55",
+    "ui": "82-bills-large-font.xml"
+  },
+  {
+    "file": "83-large-font-picker.png",
+    "bytes": 192962,
+    "sha256": "baf1063f2f7a03cc169b8735a78d6a5c517933704e144f7d76723d47addaac71",
+    "ui": "83-large-font-picker.xml"
+  },
+  {
+    "file": "84-large-font-picker-loaded.png",
+    "bytes": 182666,
+    "sha256": "8f1dff398105370a6625171c3143b441083660cedff8ec28632bc88e150f172d",
+    "ui": "84-large-font-picker-loaded.xml"
+  },
+  {
+    "file": "85-close-before-network-test.png",
+    "bytes": 205097,
+    "sha256": "002e93065411089eb9438236045633e15e53642757e40b07c7a85e69157c537d",
+    "ui": "85-close-before-network-test.xml"
+  },
+  {
+    "file": "86-network-unavailable.png",
+    "bytes": 192569,
+    "sha256": "d0569a581c5b89cffb7aa52eaf4794c70176eb2f040030a7b01f0e9004a76026",
+    "ui": "86-network-unavailable.xml"
+  },
+  {
+    "file": "87-network-error-retry.png",
+    "bytes": 182892,
+    "sha256": "04610062c936b567c783661017322ec8a23932d900d335225b7701b896203cc5",
+    "ui": "87-network-error-retry.xml"
+  },
+  {
+    "file": "88-network-copy-fix-loaded.png",
+    "bytes": 205322,
+    "sha256": "fa87fbb3ea0350d45f2a401fa5cc1f2b1347944ddac08b7fac31741665fafe8c",
+    "ui": "88-network-copy-fix-loaded.xml"
+  },
+  {
+    "file": "89-offline-request.png",
+    "bytes": 192813,
+    "sha256": "74bf89be5ac5506c9c6b318d8c33454aa8fd711bee0283da69ce12c2fd4f555d",
+    "ui": "89-offline-request.xml"
+  },
+  {
+    "file": "90-offline-error-corrected.png",
+    "bytes": 191922,
+    "sha256": "03e06bc4b58525d41554fb10e92471e873fa313de7a2bb1944f78bc4527e2b9c",
+    "ui": "90-offline-error-corrected.xml"
+  },
+  {
+    "file": "91-after-format-state.png",
+    "bytes": 206017,
+    "sha256": "d2949532868b608ee899aece3bd1f73fd95901786dcabb2bc614e8808bab7e87",
+    "ui": "91-after-format-state.xml"
+  },
+  {
+    "file": "92-offline-retry-start.png",
+    "bytes": 193611,
+    "sha256": "16a335f9357f7ddecfd00eed4cee727339329e2df9171a034979f1ecf5281e83",
+    "ui": "92-offline-retry-start.xml"
+  },
+  {
+    "file": "93-offline-before-retry.png",
+    "bytes": 188669,
+    "sha256": "183145978b429925d1eef4d066b3fe66177bd4f9c323d441a3573ef12760b654",
+    "ui": "93-offline-before-retry.xml"
+  },
+  {
+    "file": "94-retry-after-reconnect.png",
+    "bytes": 190115,
+    "sha256": "0898ed78f2471d1713c0454d865dbc59eb7b3c394828cd9415e5938e84cf95ec",
+    "ui": "94-retry-after-reconnect.xml"
+  },
+  {
+    "file": "95-retry-restored-payments.png",
+    "bytes": 184226,
+    "sha256": "a7999dd778ca580fcc610f0e6a683a0836278d5fbf60fcba821dd71a169608a4",
+    "ui": "95-retry-restored-payments.xml"
+  },
+  {
+    "file": "96-close-after-success.png",
+    "bytes": 206042,
+    "sha256": "e6d9e01b86af881d5383bdc548d3c4799d9a4999c6fac3b2d605fd4d361130e8",
+    "ui": "96-close-after-success.xml"
+  }
+]

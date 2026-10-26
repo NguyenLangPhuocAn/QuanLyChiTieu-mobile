@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-26",
+  "environment": "isolated local Nest backend and MySQL QA schema",
+  "healthStatus": 200,
+  "loginStatus": 201,
+  "profileStatus": 200,
+  "walletsStatus": 200,
+  "transactionsStatus": 200,
+  "transactionCount": 2,
+  "authSecretsRecorded": false
+}

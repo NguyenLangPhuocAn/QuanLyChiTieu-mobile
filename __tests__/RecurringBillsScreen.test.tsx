@@ -9,11 +9,13 @@ import { getTransactionDateKey } from '../src/utils/mapTransactions';
 import type { BillInput } from '../src/utils/recurringBills';
 
 jest.setTimeout(20000);
+let mockToken = 'token';
+let mockUserId = 99;
 
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 99, currency_default: 'VND' },
-    token: 'token',
+    user: { id: mockUserId, currency_default: 'VND' },
+    token: mockToken,
   }),
 }));
 jest.mock('../src/services/api', () => ({
@@ -48,16 +50,17 @@ const bill: BillInput = {
   note: '',
 };
 let renderer: TestRenderer.ReactTestRenderer | undefined;
+const screen = () => (
+  <RecurringBillsScreen
+    {...({
+      navigation: { goBack: jest.fn() },
+      route: {},
+    } as unknown as React.ComponentProps<typeof RecurringBillsScreen>)}
+  />
+);
 const mount = async () => {
   await act(async () => {
-    renderer = TestRenderer.create(
-      <RecurringBillsScreen
-        {...({
-          navigation: { goBack: jest.fn() },
-          route: {},
-        } as unknown as React.ComponentProps<typeof RecurringBillsScreen>)}
-      />,
-    );
+    renderer = TestRenderer.create(screen());
   });
 };
 const press = (label: string) =>
@@ -75,6 +78,8 @@ const confirm = () => {
   return buttons.find(button => button.text === 'Xác nhận')!.onPress!();
 };
 beforeEach(async () => {
+  mockToken = 'token';
+  mockUserId = 99;
   await AsyncStorage.removeItem(key);
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -216,4 +221,98 @@ it('accepts a decimal comma for a variable bill in a foreign currency', async ()
     minAmount: 12.5,
     maxAmount: 20.75,
   });
+});
+
+it('keeps an unsaved draft when the same account refreshes its token', async () => {
+  await mount();
+  await act(async () => press('Thêm lịch hóa đơn'));
+  await act(async () => {
+    field('Tên hóa đơn', 'Internet draft');
+    field('Số tiền hóa đơn', '200000');
+  });
+  await act(async () => {
+    mockToken = 'rotated-token';
+    renderer!.update(screen());
+  });
+  expect(
+    renderer!.root.findAllByProps({ accessibilityLabel: 'Tên hóa đơn' })[0]
+      ?.props.value,
+  ).toBe('Internet draft');
+});
+
+it('keeps a pending payment picker open across token refresh', async () => {
+  await service.save(scope, bill);
+  let resolve!: (
+    value: Awaited<ReturnType<typeof transactionsService.getPage>>,
+  ) => void;
+  jest.mocked(transactionsService.getPage).mockImplementationOnce(
+    () =>
+      new Promise(done => {
+        resolve = done;
+      }),
+  );
+  await mount();
+  await act(async () => {
+    press('Chọn giao dịch đã trả');
+  });
+  await act(async () => {
+    mockToken = 'rotated-token';
+    renderer!.update(screen());
+  });
+  await act(async () =>
+    resolve({
+      data: [
+        {
+          id: 77,
+          wallet_id: 1,
+          amount: 3000000,
+          currency: 'VND',
+          type: 'EXPENSE',
+          transaction_date: today,
+        },
+      ],
+      meta: { page: 1, limit: 40, total: 1, totalPages: 1 },
+    }),
+  );
+  expect(
+    renderer!.root.findByType(require('react-native').Modal).props.visible,
+  ).toBe(true);
+  expect(
+    renderer!.root.findAllByProps({
+      accessibilityLabel: 'Liên kết giao dịch 77',
+    }).length,
+  ).toBeGreaterThan(0);
+});
+
+it('clears the editor when the account actually changes', async () => {
+  await mount();
+  await act(async () => press('Thêm lịch hóa đơn'));
+  await act(async () => field('Tên hóa đơn', 'Private draft'));
+  await act(async () => {
+    mockUserId = 100;
+    mockToken = 'other-account';
+    renderer!.update(screen());
+  });
+  expect(
+    renderer!.root.findAllByProps({ accessibilityLabel: 'Tên hóa đơn' }),
+  ).toHaveLength(0);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Private draft');
+});
+
+it('shows a retryable network error without claiming that no payments exist', async () => {
+  await service.save(scope, bill);
+  jest
+    .mocked(transactionsService.getPage)
+    .mockRejectedValueOnce(new Error('Offline'));
+  await mount();
+  await act(async () => press('Chọn giao dịch đã trả'));
+  const content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Chưa tải được giao dịch');
+  expect(content).not.toContain('Chưa có khoản chi phù hợp');
+  await act(async () => press('Thử tải giao dịch'));
+  expect(
+    renderer!.root.findAllByProps({
+      accessibilityLabel: 'Liên kết giao dịch 77',
+    }).length,
+  ).toBeGreaterThan(0);
 });

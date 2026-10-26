@@ -1,0 +1,10 @@
+PASS __tests__/RecurringBillsScreen.test.tsx (14.941 s)
+PASS __tests__/App.test.tsx (5.79 s)
+PASS __tests__/recurringBills.test.ts
+PASS src/services/__tests__/financialPlanning.test.ts
+
+Test Suites: 4 passed, 4 total
+Tests:       50 passed, 50 total
+Snapshots:   0 total
+Time:        21.771 s
+Ran all test suites matching /recurringBills.test.ts|RecurringBillsScreen.test.tsx|financialPlanning.test.ts|App.test.tsx/i.
