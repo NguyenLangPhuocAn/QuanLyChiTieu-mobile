@@ -42,6 +42,7 @@ import DataManagementScreen from '../screens/home/DataManagementScreen';
 import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
 import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
+import RecurringBillsScreen from '../screens/home/RecurringBillsScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -115,6 +116,7 @@ export type RootStackParamList = {
   DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
   FinancialInbox: undefined;
   PersonalBackup: undefined;
+  RecurringBills: undefined;
   FinancialCenter: { wallets?: Wallet[] } | undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
@@ -253,6 +255,7 @@ const AppNavigator = () => {
           />
           <Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
           <Stack.Screen name="FinancialPlan" component={FinancialPlanScreen} />
+          <Stack.Screen name="RecurringBills" component={RecurringBillsScreen} />
           <Stack.Screen
             name="CurrencyPicker"
             component={CurrencyPickerScreen}

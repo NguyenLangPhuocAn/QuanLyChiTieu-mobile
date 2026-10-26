@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Hóa đơn định kỳ — source 26/10/2026
+
+- Thêm **Tài khoản → Hóa đơn định kỳ**: lịch tuần/tháng/năm, tiền cố định hoặc khoảng dự kiến, giữ đúng ngày gốc qua tháng ngắn/năm nhuận.
+- Xem kỳ chưa trả/đã xử lý; tạm dừng, tiếp tục, bỏ qua một kỳ và mở lại. Xóa lịch vẫn giữ lịch sử liên kết đã trả.
+- Liên kết khoản chi đã có sau xem trước/xác nhận. Chặn dùng trùng giao dịch giữa các kỳ; không tạo/sửa/xóa giao dịch hoặc thay đổi số dư.
+- Lưu local theo tài khoản/môi trường, khóa ghi tuần tự, giữ form khi lỗi và không ghi đè dữ liệu hỏng. Giao dịch tải theo trang, bỏ phản hồi muộn sau khi đóng.
+- 46/46 kiểm thử qua 4 bộ, TypeScript/ESLint đạt. Chưa thử Android thật hoặc build APK. Chưa có nhắc hạn từng hóa đơn, gợi ý tự động, đồng bộ/backup lịch hoặc tích hợp chi an toàn; snapshot thanh toán chưa tự theo dõi sửa/xóa giao dịch gốc. Chi tiết: qa/RECURRING-BILLS.md.
+
 Cập nhật source ngày 23/10/2026 — AI trích xuất thông báo ngân hàng.
 
 ## Lắc/chuông và AI

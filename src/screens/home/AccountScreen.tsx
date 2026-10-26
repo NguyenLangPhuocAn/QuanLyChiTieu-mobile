@@ -14,6 +14,7 @@ import {
 import {
   ChevronRight,
   Bell,
+  CalendarDays,
   Crown,
   Download,
   HelpCircle,
@@ -391,6 +392,12 @@ const AccountScreen = ({
             subtitle: 'Dự báo thu–chi 4 tháng và tiến độ tiết kiệm',
             Icon: TrendingUp,
             action: () => navigation.navigate('FinancialPlan'),
+          },
+          {
+            title: 'Hóa đơn định kỳ',
+            subtitle: 'Ngày đến hạn, khoản dự kiến và kỳ đã trả',
+            Icon: CalendarDays,
+            action: () => navigation.navigate('RecurringBills'),
           },
           {
             title: 'Ngân sách',
