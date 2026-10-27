@@ -1,5 +1,7 @@
 # Rà soát kế hoạch — 27/10/2026
 
+**Tiếp tục sau đợt A:** đã triển khai gợi ý khoản chi lặp, lựa chọn lưu bền và startDate trong book/native. Xem [đợt B phần1](BILL-SUGGESTIONS.md). Bảng rà bên dưới là snapshot trước triển khai; kiểm lại liên kết gốc và đợt C vẫn chưa làm.
+
 **Sau lần rà này:** đợt A nhắc hóa đơn đã có source và QA Android local ngày27/10; xem [kết quả thực hiện](BILL-REMINDERS.md). Bảng dưới là snapshot trước triển khai. Đợt B/C, nghiệm thu máy thật và tích hợp dự báo/backup vẫn chưa hoàn thành.
 
 Đối chiếu kế hoạch gốc PLAN-2026-10-21-BANK-MIC-RECURRING-BETA.md, sprint18/10, nhật ký, source và bằng chứng QA. Đây là bản chụp kết quả rà soát; kế hoạch tổng thể gốc ở thư mục dự án bên ngoài hai repo. Không thay hành vi app, chạy lại test hoặc phát hành trong lần rà này.

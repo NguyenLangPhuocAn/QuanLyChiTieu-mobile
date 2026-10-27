@@ -20,12 +20,15 @@ const proof = {
   date: '2026-10-27', package: 'com.mobile.dev', activeOwnerSet: Boolean(owner), nativeMirrorPresent: Boolean(book), enabled,
   billCount: book?.bills.length ?? 0,
   eligibleBillCount: book?.bills.filter(b => !b.paused && !b.archived && b.reminderEnabled).length ?? 0,
+  trackedStartDateCount: book?.bills.filter(b => b.startDate).length ?? 0,
   handledPeriodCount: book?.periods.length ?? 0,
   durableSentKeyCount: sentCount, postedDay: strings.postedDay || null, alarmVisible,
   privateNamesAmountsTokensIncluded: false,
 };
 const name = process.argv[2];
 if (!/^[a-z0-9-]+$/.test(name || '')) throw new Error('Use a lowercase evidence name.');
-const output = path.join(__dirname, 'evidence/2026-10-27-bill-reminders', `${name}.json`);
+const evidenceSet = process.env.NOVA_QA_EVIDENCE_SET || '2026-10-27-bill-reminders';
+if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(evidenceSet)) throw new Error('Invalid QA folder.');
+const output = path.join(__dirname, 'evidence', evidenceSet, `${name}.json`);
 fs.writeFileSync(output, JSON.stringify(proof, null, 2));
 console.log(JSON.stringify(proof));

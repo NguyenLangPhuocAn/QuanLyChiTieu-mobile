@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Gợi ý khoản chi lặp — source 27/10/2026
+
+- Trong Hóa đơn định kỳ, bấm Kiểm tra để tìm khoản có ít nhất3lần chi theo tuần/tháng/năm; xem ngày, tiền và nội dung gốc trước khi quyết định.
+- Theo dõi mở form và yêu cầu xác nhận; Không định kỳ/Để sau7ngày/Hiện lại được lưu theo tài khoản và backend.
+- Lịch từ gợi ý theo dõi từ kỳ tới, giữ ngày gốc qua tháng ngắn/năm nhuận; không tạo kỳ quá hạn cũ, giao dịch hoặc tự đánh dấu đã trả.
+- Giới hạn lịch sử3năm/2.000khoản, báo rõ chưa tải hết; chỉ đọc khi yêu cầu, bỏ kết quả muộn, chống bấm tìm/lưu trùng. Sau tạo lịch thu gọn kết quả, mở lại không cần tải lại.
+- Jest96/96, JVM11/11, MetroQA3/3; debug local và Nest/MySQL QA thật. Chi tiết/giới hạn ở qa/BILL-SUGGESTIONS.md. Chưa phát hành APK production.
+
 ## Nhắc hóa đơn — source 27/10/2026
 
 - Nhắc trước3ngày,1ngày và đúng hạn; gộp các khoản cùng ngày, chọn giờ nhận và tắt riêng từng lịch.

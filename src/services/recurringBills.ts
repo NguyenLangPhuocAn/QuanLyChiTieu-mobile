@@ -3,6 +3,10 @@ import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from '../utils/mapTransactions';
 import { getCashFlowType } from '../utils/transactionClassification';
 import {
+  isSuggestionKey,
+  type BillSuggestionDecision,
+} from '../utils/billSuggestions';
+import {
   isBillDate,
   isBillDueDate,
   validateBillInput,
@@ -79,6 +83,23 @@ const read = async (key: string): Promise<BillBook> => {
         transactions.add(payment.id);
       } else if (period.status !== 'SKIPPED' || period.payment) throw corrupt();
     }
+    if (value.suggestions !== undefined) {
+      if (!Array.isArray(value.suggestions)) throw corrupt();
+      const keys = new Set<string>();
+      for (const decision of value.suggestions) {
+        if (
+          !isSuggestionKey(decision?.key) ||
+          keys.has(decision.key) ||
+          !['IGNORED', 'LATER', 'TRACKED'].includes(decision.status) ||
+          (decision.status === 'LATER' &&
+            (!decision.until || !isBillDate(decision.until))) ||
+          (decision.status === 'TRACKED' &&
+            !value.bills.some(b => b.id === decision.billId))
+        )
+          throw corrupt();
+        keys.add(decision.key);
+      }
+    }
     return value;
   } catch {
     throw corrupt();
@@ -135,9 +156,23 @@ export const recurringBillsService = {
     await queues.get(key);
     return read(key);
   },
-  save(scope: BillScope, input: BillInput, id?: string) {
+  save(
+    scope: BillScope,
+    input: BillInput,
+    id?: string,
+    suggestionKey?: string,
+  ) {
     const validated = validateBillInput(input);
+    if (suggestionKey !== undefined && (!isSuggestionKey(suggestionKey) || id))
+      throw new Error('Gợi ý chưa hợp lệ.');
     return mutate(scope, book => {
+      if (
+        suggestionKey &&
+        book.suggestions?.some(
+          item => item.key === suggestionKey && item.status === 'TRACKED',
+        )
+      )
+        return;
       const existing = id ? findBill(book, id) : undefined;
       if (
         book.bills.some(
@@ -154,6 +189,7 @@ export const recurringBillsService = {
         existing &&
         book.periods.some(period => period.billId === existing.id) &&
         (existing.anchorDate !== validated.anchorDate ||
+          existing.startDate !== validated.startDate ||
           existing.cycle !== validated.cycle ||
           existing.currency !== validated.currency)
       )
@@ -161,15 +197,59 @@ export const recurringBillsService = {
           'Lịch đã có kỳ xử lý. Hãy tạo lịch mới để đổi chu kỳ, ngày gốc hoặc tiền tệ.',
         );
       if (existing) Object.assign(existing, validated);
-      else
-        book.bills.push({
+      else {
+        const bill = {
           ...validated,
           id: `bill_${Date.now().toString(36)}_${Math.random()
             .toString(36)
             .slice(2)}`,
           paused: false,
           archived: false,
-        });
+        };
+        book.bills.push(bill);
+        if (suggestionKey)
+          book.suggestions = [
+            ...(book.suggestions ?? []).filter(
+              item => item.key !== suggestionKey,
+            ),
+            { key: suggestionKey, status: 'TRACKED', billId: bill.id },
+          ];
+      }
+    });
+  },
+  decideSuggestion(
+    scope: BillScope,
+    key: string,
+    status: 'IGNORED' | 'LATER',
+    until?: string,
+  ) {
+    if (
+      !isSuggestionKey(key) ||
+      !['IGNORED', 'LATER'].includes(status) ||
+      (status === 'LATER' && (!until || !isBillDate(until)))
+    )
+      throw new Error('Lựa chọn gợi ý chưa hợp lệ.');
+    return mutate(scope, book => {
+      if (
+        book.suggestions?.some(
+          item => item.key === key && item.status === 'TRACKED',
+        )
+      )
+        throw new Error('Khoản này đã được theo dõi.');
+      const decision: BillSuggestionDecision =
+        status === 'LATER' ? { key, status, until } : { key, status };
+      book.suggestions = [
+        ...(book.suggestions ?? []).filter(item => item.key !== key),
+        decision,
+      ];
+    });
+  },
+  restoreSuggestion(scope: BillScope, key: string) {
+    if (!isSuggestionKey(key)) throw new Error('Gợi ý chưa hợp lệ.');
+    return mutate(scope, book => {
+      book.suggestions = book.suggestions?.filter(
+        item => item.key !== key || item.status === 'TRACKED',
+      );
     });
   },
   setPaused(scope: BillScope, id: string, paused: boolean) {

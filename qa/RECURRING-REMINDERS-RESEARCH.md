@@ -1,5 +1,7 @@
 # Nhắc các khoản dễ bỏ sót — nghiên cứu 26/10/2026
 
+**Tiếp tục27/10:** gợi ý theo tuần/tháng/năm, bằng chứng và Theo dõi/Không định kỳ/Để sau đã có source; xem [BILL-SUGGESTIONS](BILL-SUGGESTIONS.md). Chưa có chu kỳ quý, tự gộp tên không rõ, kiểm lại thanh toán gốc, cảnh báo bất thường hoặc tích hợp backup/dự báo; không coi toàn bộ nghiên cứu đã hoàn thành.
+
 **Cập nhật27/10:** nhắc lịch đã xác nhận (đợt A) đã có source/QA, xem [BILL-REMINDERS](BILL-REMINDERS.md). Phát hiện ứng viên/bất thường dưới đây vẫn là đề xuất, không tự gửi nhắc từ suy đoán.
 
 Trạng thái: đã khảo sát nguồn chính thức và rà source; các hành vi dưới đây là **đề xuất**, chưa được triển khai hoặc phát hành. Mục tiêu là chủ động tìm khoản người dùng có thể quên, thay vì chỉ nhắc lịch họ đã nhập.

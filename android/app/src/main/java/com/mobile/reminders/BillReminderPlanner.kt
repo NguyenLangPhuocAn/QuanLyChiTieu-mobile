@@ -8,7 +8,7 @@ import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 
 // No Android dependencies: the exact recurrence/deduplication logic is unit tested on the JVM.
-data class ReminderBill(val id: String, val anchor: LocalDate, val cycle: String)
+data class ReminderBill(val id: String, val anchor: LocalDate, val cycle: String, val startDate: LocalDate = anchor)
 data class ReminderEntry(val billId: String, val due: LocalDate, val lead: Int) {
   val key: String get() = "$billId|$due|$lead"
   val day: LocalDate get() = due.minusDays(lead.toLong())
@@ -39,6 +39,7 @@ object BillReminderPlanner {
     for (index in start..11000L) {
       val date = due(bill, index)
       if (date.isAfter(to.plusDays(3))) break
+      if (date.isBefore(bill.startDate)) continue
       if ("${bill.id}|$date" in handled) continue
       for (lead in leads) {
         val entry = ReminderEntry(bill.id, date, lead)

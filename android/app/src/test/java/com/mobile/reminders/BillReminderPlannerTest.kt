@@ -6,6 +6,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class BillReminderPlannerTest {
+  @Test fun trackingStartExcludesHistoricalPeriodsButStillRemindsBeforeFirstFutureDue() {
+    val b = ReminderBill("future", LocalDate.parse("2026-01-31"), "MONTHLY", LocalDate.parse("2026-11-30"))
+    val entries = BillReminderPlanner.entries(listOf(b), emptySet(), LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"))
+    assertTrue(entries.none { it.due.isBefore(LocalDate.parse("2026-11-30")) })
+    assertTrue(entries.any { it.day == LocalDate.parse("2026-11-27") && it.lead == 3 })
+    assertTrue(entries.any { it.due == LocalDate.parse("2026-12-31") })
+  }
   private val zone = ZoneId.of("Asia/Ho_Chi_Minh")
   private val day = LocalDate.parse("2026-10-27")
   private fun at(date: LocalDate = day, hour: Int = 8) = date.atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()

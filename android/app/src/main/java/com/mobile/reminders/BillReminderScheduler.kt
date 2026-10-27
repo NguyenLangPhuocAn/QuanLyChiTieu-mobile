@@ -95,10 +95,12 @@ object BillReminderScheduler {
       check(id.matches(Regex("[A-Za-z0-9_-]{1,160}")) && ids.add(id))
       val anchor = LocalDate.parse(row.getString("anchorDate"))
       check(anchor.year in 2000..2199)
+      val startDate = if (row.has("startDate")) LocalDate.parse(row.getString("startDate")) else anchor
+      check(startDate.year in 2000..2199 && !startDate.isBefore(anchor))
       val cycle = row.getString("cycle")
       check(cycle in listOf("WEEKLY", "MONTHLY", "YEARLY"))
       if (!row.getBoolean("paused") && !row.getBoolean("archived") && row.getBoolean("reminderEnabled")) {
-        bills.add(ReminderBill(id, anchor, cycle))
+        bills.add(ReminderBill(id, anchor, cycle, startDate))
       }
     }
     val handled = mutableSetOf<String>()

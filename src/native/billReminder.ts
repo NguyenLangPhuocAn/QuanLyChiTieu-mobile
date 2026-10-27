@@ -33,6 +33,7 @@ export const billReminderPayload = (book: BillBook) =>
       id: bill.id,
       cycle: bill.cycle,
       anchorDate: bill.anchorDate,
+      startDate: bill.startDate,
       paused: bill.paused,
       archived: bill.archived,
       reminderEnabled: bill.reminderEnabled !== false,

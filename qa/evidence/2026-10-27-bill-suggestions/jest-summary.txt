@@ -1,0 +1,7 @@
+PASS src/services/__tests__/financialPlanning.test.ts
+
+Test Suites: 11 passed, 11 total
+Tests:       96 passed, 96 total
+Snapshots:   0 total
+Time:        28.199 s, estimated 33 s
+Ran all test suites matching /__tests__\\BillSuggestionsFlow.test.tsx|__tests__\\billSuggestions.test.ts|__tests__\\billSuggestionHistory.test.ts|__tests__\\recurringBills.test.ts|__tests__\\RecurringBillsScreen.test.tsx|__tests__\\billReminderSession.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\BillReminderSettings.test.tsx|__tests__\\App.test.tsx|__tests__\\AuthContext.test.tsx|src\\services\\__tests__\\financialPlanning.test.ts/i.

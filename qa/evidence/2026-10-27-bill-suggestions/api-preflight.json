@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-27",
+  "environment": "isolated local Nest/MySQL source",
+  "userId": 2,
+  "healthStatus": 200,
+  "loginStatus": 201,
+  "transactionsStatus": 200,
+  "transactionCount": 9,
+  "complete": true,
+  "authSecretsRecorded": false
+}

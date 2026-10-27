@@ -17,10 +17,14 @@ if (action !== 'screen') {
 const attributes = xml => [...xml.matchAll(/<node\s+([^>]+)>?/g)].map(node => Object.fromEntries([...node[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])));
 const currentXml = () => {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
     const result = call('shell', 'uiautomator', 'dump', '/sdcard/nova-qa-window.xml');
     if (result.includes('ERROR') || !result.includes('dumped to')) continue;
     const xml = call('shell', 'cat', '/sdcard/nova-qa-window.xml');
     if (xml.includes('<hierarchy')) return xml;
+    } catch {
+      // The emulator can kill UiAutomator during a transition; never read the old dump.
+    }
   }
   throw new Error('Android UI dump failed; do not reuse a stale UI tree.');
 };

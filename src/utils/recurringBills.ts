@@ -1,8 +1,11 @@
+import type { BillSuggestionDecision } from './billSuggestions';
+
 export type BillCycle = 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 export type BillInput = {
   label: string;
   cycle: BillCycle;
   anchorDate: string;
+  startDate?: string;
   kind: 'FIXED' | 'VARIABLE';
   minAmount: number;
   maxAmount: number;
@@ -33,6 +36,7 @@ export type BillBook = {
   version: 1;
   bills: RecurringBill[];
   periods: BillPeriod[];
+  suggestions?: BillSuggestionDecision[];
 };
 export type BillOccurrence = {
   bill: RecurringBill;
@@ -55,6 +59,12 @@ const moneyValid = (value: number) =>
   Math.abs(value * 100 - Math.round(value * 100)) < 0.00001;
 
 export const validateBillInput = (input: BillInput): BillInput => {
+  if (
+    input.startDate !== undefined &&
+    (!isBillDate(input.startDate) ||
+      !isBillDueDate({ ...input, startDate: undefined }, input.startDate))
+  )
+    throw new Error('Ngày bắt đầu theo dõi chưa thuộc chu kỳ hóa đơn.');
   if (
     input.reminderEnabled !== undefined &&
     typeof input.reminderEnabled !== 'boolean'
@@ -134,6 +144,7 @@ export const billDueDate = (
 };
 
 export const isBillDueDate = (bill: BillInput, dueDate: string) => {
+  if (bill.startDate && dueDate < bill.startDate) return false;
   if (!isBillDate(dueDate) || dueDate < bill.anchorDate) return false;
   const [year, month] = dueDate.split('-').map(Number);
   const [anchorYear, anchorMonth] = bill.anchorDate.split('-').map(Number);
@@ -167,6 +178,7 @@ export const billOccurrences = (
     for (let index = 0; index <= 11000; index += 1) {
       const dueDate = billDueDate(bill, index);
       if (dueDate > to) break;
+      if (bill.startDate && dueDate < bill.startDate) continue;
       if (dueDate < from) continue;
       const period = periods.get(`${bill.id}:${dueDate}`);
       if ((bill.paused || bill.archived) && !period) continue;

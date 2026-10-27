@@ -22,6 +22,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
+import BillSuggestions from '../../components/BillSuggestions';
+import type { BillSuggestion } from '../../utils/billSuggestions';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -58,7 +60,9 @@ const cycleNames: Record<BillCycle, string> = {
   YEARLY: 'Hằng năm',
 };
 const dateLabel = (date: string) => date.split('-').reverse().join('/');
-const amountLabel = (bill: RecurringBill) =>
+const amountLabel = (
+  bill: Pick<RecurringBill, 'kind' | 'minAmount' | 'maxAmount' | 'currency'>,
+) =>
   bill.kind === 'FIXED'
     ? formatCurrency(bill.minAmount, bill.currency)
     : `${formatCurrency(bill.minAmount, bill.currency)} – ${formatCurrency(
@@ -70,6 +74,8 @@ type Editor = {
   label: string;
   cycle: BillCycle;
   anchorDate: string;
+  startDate?: string;
+  reminderEnabled?: boolean;
   kind: 'FIXED' | 'VARIABLE';
   min: string;
   max: string;
@@ -95,6 +101,15 @@ function RecurringBillsContent({
   const [book, setBook] = useState<BillBook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const scrollRef = useRef<ScrollView>(null);
+  const editorIsOpen = Boolean(editor);
+  useEffect(() => {
+    if (editorIsOpen) scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, [editorIsOpen]);
+  const [sourceSuggestion, setSourceSuggestion] =
+    useState<BillSuggestion | null>(null);
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [visible, setVisible] = useState(20);
@@ -315,6 +330,7 @@ function RecurringBillsContent({
     );
   };
   const editBill = (bill?: RecurringBill) => {
+    setSourceSuggestion(null);
     setShowDate(false);
     setEditor(
       bill
@@ -338,6 +354,8 @@ function RecurringBillsContent({
         label: editor.label,
         cycle: editor.cycle,
         anchorDate: editor.anchorDate,
+        startDate: editor.startDate,
+        reminderEnabled: editor.reminderEnabled,
         kind: editor.kind,
         minAmount: Number(parsePositiveMoneyInput(editor.min)),
         maxAmount: Number(
@@ -348,14 +366,41 @@ function RecurringBillsContent({
         currency: editor.currency,
         note: editor.note,
       });
-      execute(
-        () => recurringBillsService.save(scope, input, editor.id),
-        () => {
-          setEditor(null);
-          setShowDate(false);
-          setTab('BILLS');
-        },
-      );
+      const persist = () =>
+        execute(
+          () =>
+            recurringBillsService.save(
+              scope,
+              input,
+              editor.id,
+              sourceSuggestion?.key,
+            ),
+          () => {
+            setEditor(null);
+            setSourceSuggestion(null);
+            setShowDate(false);
+            setTab('BILLS');
+          },
+        );
+      if (sourceSuggestion)
+        Alert.alert(
+          'Tạo lịch theo dõi?',
+          `${input.label}\n${amountLabel(input)}\n${
+            cycleNames[input.cycle]
+          } · Theo dõi từ ${dateLabel(
+            input.startDate ?? input.anchorDate,
+          )}\nChỉ tạo lịch dự kiến, không tạo giao dịch hoặc đánh dấu các khoản cũ đã trả. Áp dụng cài đặt nhắc hóa đơn hiện tại.`,
+          [
+            { text: 'Hủy', style: 'cancel' },
+            {
+              text: 'Tạo lịch',
+              onPress: () => {
+                if (editorRef.current === editor) persist();
+              },
+            },
+          ],
+        );
+      else persist();
     } catch (reason) {
       Alert.alert(
         'Kiểm tra lịch hóa đơn',
@@ -364,7 +409,18 @@ function RecurringBillsContent({
     }
   };
   const change = (patch: Partial<Editor>) =>
-    setEditor(value => (value ? { ...value, ...patch } : null));
+    setEditor(value =>
+      value
+        ? {
+            ...value,
+            ...((patch.anchorDate && patch.anchorDate !== value.anchorDate) ||
+            (patch.cycle && patch.cycle !== value.cycle)
+              ? { startDate: undefined }
+              : {}),
+            ...patch,
+          }
+        : null,
+    );
   const updateMoney = (field: 'min' | 'max', value: string) =>
     change({
       [field]: normalizeMoneyInputForCurrency(value, editor?.currency),
@@ -387,6 +443,7 @@ function RecurringBillsContent({
         </View>
       </View>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
@@ -450,12 +507,19 @@ function RecurringBillsContent({
                     style={styles.smallButton}
                     onPress={() => {
                       setEditor(null);
+                      setSourceSuggestion(null);
                       setShowDate(false);
                     }}
                   >
                     <X size={22} color="#79563D" />
                   </TouchableOpacity>
                 </View>
+                {sourceSuggestion ? (
+                  <Text style={styles.muted}>
+                    Gợi ý từ {sourceSuggestion.evidence.length} lần chi đã tải.
+                    Hãy kiểm tra tên, chu kỳ và khoảng tiền trước khi tạo lịch.
+                  </Text>
+                ) : null}
                 <FormField
                   label="Tên hóa đơn"
                   accessibilityLabel="Tên hóa đơn"
@@ -482,7 +546,17 @@ function RecurringBillsContent({
                     </TouchableOpacity>
                   ))}
                 </View>
-                <Text style={styles.label}>Ngày đến hạn đầu tiên</Text>
+                <Text style={styles.label}>
+                  {editor.startDate
+                    ? 'Ngày gốc của chu kỳ'
+                    : 'Ngày đến hạn đầu tiên'}
+                </Text>
+                {editor.startDate ? (
+                  <Text style={styles.muted}>
+                    Theo dõi từ {dateLabel(editor.startDate)}. Không thêm các kỳ
+                    cũ trước ngày này.
+                  </Text>
+                ) : null}
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel="Chọn ngày đến hạn đầu tiên"
@@ -591,6 +665,25 @@ function RecurringBillsContent({
                 />
               </View>
             )}
+            {!reminderFilter ? (
+              <BillSuggestions
+                scope={scope}
+                token={token}
+                today={today}
+                book={book}
+                hidden={Boolean(editor)}
+                onBookChange={load}
+                onFollow={candidate => {
+                  setSourceSuggestion(candidate);
+                  setShowDate(false);
+                  setEditor({
+                    ...candidate.input,
+                    min: String(candidate.input.minAmount),
+                    max: String(candidate.input.maxAmount),
+                  });
+                }}
+              />
+            ) : null}
             <View style={styles.row}>
               {(['PENDING', 'DONE', 'BILLS'] as const).map(value => (
                 <TouchableOpacity
@@ -746,8 +839,13 @@ function RecurringBillsContent({
                       <Text style={styles.amount}>{amountLabel(bill)}</Text>
                       <Text style={styles.muted}>
                         {cycleNames[bill.cycle]} · từ{' '}
-                        {dateLabel(bill.anchorDate)}
+                        {dateLabel(bill.startDate ?? bill.anchorDate)}
                       </Text>
+                      {bill.startDate ? (
+                        <Text style={styles.muted}>
+                          Ngày gốc chu kỳ: {dateLabel(bill.anchorDate)}
+                        </Text>
+                      ) : null}
                       {bill.note ? (
                         <Text style={styles.muted}>{bill.note}</Text>
                       ) : null}
