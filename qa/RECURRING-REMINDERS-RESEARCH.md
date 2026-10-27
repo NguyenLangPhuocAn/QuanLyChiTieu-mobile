@@ -2,6 +2,8 @@
 
 Trạng thái: đã khảo sát nguồn chính thức và rà source; các hành vi dưới đây là **đề xuất**, chưa được triển khai hoặc phát hành. Mục tiêu là chủ động tìm khoản người dùng có thể quên, thay vì chỉ nhắc lịch họ đã nhập.
 
+Rà soát trạng thái27/10: [kết quả kiểm tra plan và thứ tự thực hiện](PLAN-REVIEW-2026-10-27.md). Không dùng việc có detector/nhắc chung để kết luận nhắc từng hóa đơn đã hoạt động.
+
 ## Nguồn tham khảo và điều rút ra
 
 - [Rocket Money: quản lý hóa đơn và thuê bao](https://help.rocketmoney.com/en/articles/2185531-managing-your-bills-and-subscriptions): phân tích lịch sử giao dịch để phát hiện khoản lặp; khoản không có trong nguồn dữ liệu vẫn cần thêm tay. Nova không có kết nối ngân hàng như sản phẩm này, nên chỉ dùng giao dịch đã được người dùng lưu/nhập hợp lệ và lịch đã xác nhận.
