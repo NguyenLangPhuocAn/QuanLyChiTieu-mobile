@@ -1,0 +1,7 @@
+[Nest] 9844  - 10/28/2026, 1:45:22 AM    WARN [TransactionsService] Transaction saved, but budget notification generation failed.
+
+Test Suites: 2 passed, 2 total
+Tests:       23 passed, 23 total
+Snapshots:   0 total
+Time:        50.704 s
+Ran all test suites matching src/transactions/payment-links.spec.ts|src/transactions/transactions.service.spec.ts.

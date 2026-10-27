@@ -23,6 +23,10 @@ import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
 import BillSuggestions from '../../components/BillSuggestions';
+import BillPaymentReview from '../../components/BillPaymentReview';
+import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
+import { refreshPaymentLink } from '../../services/billPaymentChecks';
+import type { BillPaymentTarget } from '../../utils/billPaymentChecks';
 import type { BillSuggestion } from '../../utils/billSuggestions';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
@@ -50,6 +54,7 @@ import {
   type BillBook,
   type BillCycle,
   type BillOccurrence,
+  type BillPayment,
   type RecurringBill,
 } from '../../utils/recurringBills';
 
@@ -130,6 +135,11 @@ function RecurringBillsContent({
     getTransactionDateKey(new Date().toISOString()),
   );
   const { run, busy } = useSingleFlight();
+  const paymentChecks = useBillPaymentChecks(
+    book,
+    token,
+    tab === 'DONE' && !editor,
+  );
   const active = useRef(false);
   const pickerRevision = useRef(0);
   const loadRevision = useRef(0);
@@ -308,7 +318,7 @@ function RecurringBillsContent({
       reopen ? 'Mở lại kỳ hóa đơn?' : 'Bỏ qua kỳ này?',
       `${item.bill.label} · ${dateLabel(item.dueDate)}\n${
         reopen
-          ? 'Gỡ trạng thái xử lý của kỳ này. Giao dịch gốc được giữ nguyên.'
+          ? 'Chỉ gỡ trạng thái xử lý trên máy, không tạo, sửa hoặc xóa giao dịch. Kỳ chưa trả có thể được nhắc lại theo cài đặt.'
           : 'Chỉ bỏ qua kỳ này. Các kỳ tiếp theo vẫn giữ lịch.'
       }`,
       [
@@ -322,9 +332,42 @@ function RecurringBillsContent({
                     scope,
                     item.bill.id,
                     item.dueDate,
+                    item.payment,
                   )
                 : recurringBillsService.skip(scope, item.bill.id, item.dueDate),
             ),
+        },
+      ],
+    );
+  };
+  const confirmPaymentRefresh = (
+    target: BillPaymentTarget,
+    current: BillPayment,
+  ) => {
+    const isCurrent = paymentChecks.capture();
+    const old = target.period.payment;
+    Alert.alert(
+      'Cập nhật liên kết?',
+      `${target.bill.label} · kỳ ${dateLabel(
+        target.period.dueDate,
+      )}\nĐã lưu: ${formatCurrency(old.amount, old.currency)} · ${dateLabel(
+        old.date,
+      )}\n${old.note || 'Không có ghi chú'}\nHiện tại: ${formatCurrency(
+        current.amount,
+        current.currency,
+      )} · ${dateLabel(current.date)}\n${
+        current.note || 'Không có ghi chú'
+      }\nChỉ cập nhật thông tin liên kết trên máy; không tạo hoặc sửa giao dịch, không trừ tiền.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Cập nhật',
+          onPress: () => {
+            if (isCurrent())
+              execute(() =>
+                refreshPaymentLink(scope, token, target, current, isCurrent),
+              );
+          },
         },
       ],
     );
@@ -726,6 +769,33 @@ function RecurringBillsContent({
                   xử lý. Lịch tạm dừng ẩn các kỳ chưa trả; khi bật lại, các kỳ
                   này xuất hiện lại.
                 </Text>
+                {tab === 'DONE' && paymentChecks.targets.length ? (
+                  <View style={styles.card}>
+                    <Text style={styles.heading}>Đối chiếu thanh toán</Text>
+                    <Text style={styles.muted}>
+                      {paymentChecks.loading
+                        ? `Đang kiểm tra ${paymentChecks.progress}/${paymentChecks.targets.length} liên kết…`
+                        : 'Kiểm tra giao dịch gốc đã sửa hoặc không còn truy cập được. Không tự gỡ liên kết hay ghi tiền.'}
+                    </Text>
+                    <ActionButton
+                      label={
+                        paymentChecks.loading
+                          ? 'Dừng kiểm tra liên kết'
+                          : 'Kiểm tra liên kết'
+                      }
+                      secondary
+                      disabled={busy}
+                      onPress={
+                        paymentChecks.loading
+                          ? paymentChecks.cancel
+                          : paymentChecks.check
+                      }
+                    />
+                    {paymentChecks.error ? (
+                      <Text style={styles.error}>{paymentChecks.error}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
                 {!displayed.length ? (
                   <Text style={styles.empty}>
                     {tab === 'PENDING'
@@ -754,7 +824,7 @@ function RecurringBillsContent({
                             PENDING:
                               item.dueDate === today ? 'Hôm nay' : 'Sắp tới',
                             OVERDUE: 'Quá hạn',
-                            PAID: 'Đã trả',
+                            PAID: 'Đã liên kết',
                             SKIPPED: 'Đã bỏ qua',
                           }[item.status]
                         }
@@ -780,6 +850,12 @@ function RecurringBillsContent({
                         · {dateLabel(item.payment.date)}
                       </Text>
                     ) : null}
+                    <BillPaymentReview
+                      item={item}
+                      results={paymentChecks.results}
+                      busy={busy || paymentChecks.loading}
+                      onRefresh={confirmPaymentRefresh}
+                    />
                     {['PENDING', 'OVERDUE'].includes(item.status) ? (
                       <View style={styles.row}>
                         <View style={styles.grow}>

@@ -63,6 +63,17 @@ const buildTransactionQuery = (query?: TransactionQuery) => {
 };
 
 export const transactionsService = {
+  getLinkedPayments(token: string, ids: number[]) {
+    return apiRequest<{
+      requestedIds: number[];
+      missingIds: number[];
+      data: ApiTransaction[];
+    }>(`/transactions/linked-payments?ids=${ids.join(',')}`, {
+      method: 'GET',
+      token,
+    });
+  },
+
   getAll(token: string, walletIdOrQuery?: number | TransactionQuery) {
     const query =
       typeof walletIdOrQuery === 'number'
@@ -85,10 +96,7 @@ export const transactionsService = {
     );
   },
 
-  create(
-    token: string,
-    payload: CreateTransactionPayload,
-  ) {
+  create(token: string, payload: CreateTransactionPayload) {
     return apiRequest<ApiTransaction>('/transactions', {
       method: 'POST',
       token,

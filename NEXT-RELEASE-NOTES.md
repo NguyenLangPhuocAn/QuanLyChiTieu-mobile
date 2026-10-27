@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Đối chiếu liên kết thanh toán — source 28/10/2026
+
+- Trong Hóa đơn định kỳ → Đã xử lý, bấm Kiểm tra liên kết để biết nguồn còn khớp, đã đổi hoặc không còn truy cập được. Giữ thông tin cũ để đối chiếu, không tự bỏ lịch sử hoặc ghi tiền.
+- Cập nhật cần xem trước/xác nhận và đọc lại nguồn trước ghi; mở lại kỳ cũng có xác nhận. Chống áp dụng snapshot/xác nhận cũ khi liên kết đổi, hủy/ra nền/rời màn/đổi tài khoản.
+- API JWT đọc tối đa100ID/lượt bằng một truy vấn có giới hạn chủ sở hữu. Lỗi mạng hoặc server cũ không bị hiểu là giao dịch đã xóa.
+- Mobile109/109, backend23/23, MetroQA3/3; Android source local/Nest/MySQL thật,64ảnh gốc. Endpoint chưa deploy production, chưa phát hành APK. Chi tiết qa/PAYMENT-LINK-CHECKS.md.
+
 ## Gợi ý khoản chi lặp — source 27/10/2026
 
 - Trong Hóa đơn định kỳ, bấm Kiểm tra để tìm khoản có ít nhất3lần chi theo tuần/tháng/năm; xem ngày, tiền và nội dung gốc trước khi quyết định.

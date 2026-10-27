@@ -3,6 +3,11 @@ import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from '../utils/mapTransactions';
 import { getCashFlowType } from '../utils/transactionClassification';
 import {
+  currentBillPayment,
+  paymentKey,
+  type BillPaymentTarget,
+} from '../utils/billPaymentChecks';
+import {
   isSuggestionKey,
   type BillSuggestionDecision,
 } from '../utils/billSuggestions';
@@ -13,6 +18,7 @@ import {
   type BillBook,
   type BillInput,
   type BillPeriod,
+  type BillPayment,
 } from '../utils/recurringBills';
 
 export type BillScope = { userId: number; server: string };
@@ -283,13 +289,60 @@ export const recurringBillsService = {
       if (!current) book.periods.push({ billId, dueDate, status: 'SKIPPED' });
     });
   },
-  reopen(scope: BillScope, billId: string, dueDate: string) {
+  reopen(
+    scope: BillScope,
+    billId: string,
+    dueDate: string,
+    expected?: BillPayment,
+  ) {
     return mutate(scope, book => {
       if (!book.bills.some(bill => bill.id === billId))
         throw new Error('Lịch hóa đơn không còn tồn tại.');
+      if (expected) {
+        const current = book.periods.find(
+          p => p.billId === billId && p.dueDate === dueDate,
+        );
+        if (
+          current?.status !== 'PAID' ||
+          paymentKey(current.payment) !== paymentKey(expected)
+        )
+          throw new Error(
+            'Liên kết vừa thay đổi. Hãy tải lại trước khi mở kỳ.',
+          );
+      }
       book.periods = book.periods.filter(
         item => item.billId !== billId || item.dueDate !== dueDate,
       );
+    });
+  },
+  refreshPayment(
+    scope: BillScope,
+    target: BillPaymentTarget,
+    transaction: ApiTransaction,
+    isCurrent: () => boolean,
+  ) {
+    return mutate(scope, book => {
+      if (!isCurrent()) throw new Error('Đã dừng cập nhật liên kết.');
+      const bill = book.bills.find(b => b.id === target.bill.id);
+      const current = book.periods.find(
+        p => p.billId === target.bill.id && p.dueDate === target.period.dueDate,
+      );
+      if (
+        !bill ||
+        current?.status !== 'PAID' ||
+        paymentKey(current.payment) !== paymentKey(target.period.payment)
+      )
+        throw new Error(
+          'Liên kết vừa thay đổi. Hãy tải lại trước khi cập nhật.',
+        );
+      const payment = currentBillPayment(
+        { bill, period: current },
+        transaction,
+      );
+      if (!payment)
+        throw new Error('Giao dịch không còn phù hợp với kỳ hóa đơn.');
+      // Keep the same transaction reservation and period; no money/API writes.
+      current.payment = payment;
     });
   },
   linkPayment(

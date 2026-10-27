@@ -1,0 +1,7 @@
+PASS __tests__/billReminderLinking.test.ts
+
+Test Suites: 13 passed, 13 total
+Tests:       109 passed, 109 total
+Snapshots:   0 total
+Time:        56.679 s
+Ran all test suites matching /__tests__\\billPaymentChecks.test.ts|__tests__\\BillPaymentReviewFlow.test.tsx|__tests__\\recurringBills.test.ts|__tests__\\RecurringBillsScreen.test.tsx|__tests__\\BillSuggestionsFlow.test.tsx|__tests__\\billSuggestions.test.ts|__tests__\\billSuggestionHistory.test.ts|__tests__\\billReminderSession.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\BillReminderSettings.test.tsx|__tests__\\App.test.tsx|__tests__\\AuthContext.test.tsx|src\\services\\__tests__\\financialPlanning.test.ts/i.

@@ -17,7 +17,7 @@ const alarms = call('shell', 'dumpsys', 'alarm');
 const alarmLines = alarms.split('\n');
 const alarmVisible = alarmLines.some((line, index) => line.includes('tag=*walarm*:com.mobile.action.BILL_REMINDER') && alarmLines[index - 1]?.includes('com.mobile.dev'));
 const proof = {
-  date: '2026-10-27', package: 'com.mobile.dev', activeOwnerSet: Boolean(owner), nativeMirrorPresent: Boolean(book), enabled,
+  date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()), package: 'com.mobile.dev', activeOwnerSet: Boolean(owner), nativeMirrorPresent: Boolean(book), enabled,
   billCount: book?.bills.length ?? 0,
   eligibleBillCount: book?.bills.filter(b => !b.paused && !b.archived && b.reminderEnabled).length ?? 0,
   trackedStartDateCount: book?.bills.filter(b => b.startDate).length ?? 0,

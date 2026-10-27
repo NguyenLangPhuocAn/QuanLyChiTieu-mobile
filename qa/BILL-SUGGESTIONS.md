@@ -29,7 +29,7 @@
 
 ## Còn phải làm
 
-- Kiểm lại liên kết khi giao dịch thanh toán gốc sửa/xóa (đợt B phần2); hiện PAID vẫn là snapshot local.
+- Cập nhật28/10: đã có đối chiếu liên kết theo yêu cầu và cập nhật sau xác nhận; xem [PAYMENT-LINK-CHECKS.md](PAYMENT-LINK-CHECKS.md). Thông tin PAID vẫn lưu local, không phải xác minh liên tục hoặc đồng bộ giữa thiết bị.
 - Chu kỳ quý, kỳ bị thiếu, tự gộp tên dịch vụ biến đổi và nhiều gói không có định danh chưa được hỗ trợ. Không suy kỳ quý thành tháng hoặc khẳng định chi thói quen là nghĩa vụ. Các trường hợp này dùng nhập lịch thủ công.
 - Cảnh báo tăng giá/nghi trùng kỳ/tổng hợp thuê bao, backup/sync book và nối lịch tiền/chi an toàn còn thuộc đợt C. Detector và quyết định cũ của dự báo chưa được di chuyển sang book mới.
 - Chưa nghiệm thu máy vật lý, lịch sử lớn/nhiều trang và ngoại tệ trên thiết bị, reboot/OEM dài ngày hoặc Gemini/ngân hàng/mic/OCR/4G trong batch này. Không lấy QA local hoặc test mock thay bằng chứng các phần đó.
