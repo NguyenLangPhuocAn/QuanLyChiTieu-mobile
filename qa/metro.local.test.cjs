@@ -17,3 +17,10 @@ test('production API configuration remains remote', () => {
   assert.equal(config.mode, 'remote');
   assert.match(config.remoteBaseUrl, /^https:\/\//);
 });
+test('QA bundle download uses the supported plain response without changing other requests', () => {
+  const middleware = config.server.enhanceMiddleware(request => request.headers.accept, {});
+  const bundle = { url: '/index.bundle?platform=android', headers: { accept: 'multipart/mixed' } };
+  assert.equal(middleware(bundle, {}, () => {}), 'application/javascript');
+  const asset = { url: '/assets/icon.png', headers: { accept: 'image/png' } };
+  assert.equal(middleware(asset, {}, () => {}), 'image/png');
+});

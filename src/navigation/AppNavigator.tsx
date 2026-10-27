@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -47,6 +47,8 @@ import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
 import { Colors } from '../constants/Colors';
+import { createBillReminderLinking } from '../services/billReminderLinking';
+import { getApiBaseUrl } from '../services/api';
 
 // Xuất kiểu route dùng chung để các màn hình truyền tham số điều hướng an toàn.
 export type RootStackParamList = {
@@ -116,7 +118,7 @@ export type RootStackParamList = {
   DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
   FinancialInbox: undefined;
   PersonalBackup: undefined;
-  RecurringBills: undefined;
+  RecurringBills: { reminderDate?: string } | undefined;
   FinancialCenter: { wallets?: Wallet[] } | undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
@@ -159,6 +161,23 @@ const AppNavigator = () => {
     signOut,
   } = useAuth();
   const mustChangePassword = Boolean(user?.must_change_password);
+  const server = getApiBaseUrl();
+  const linking = useMemo(
+    () =>
+      isAuthenticated &&
+      user?.id &&
+      !mustChangePassword &&
+      !isCurrencySetupRequired
+        ? createBillReminderLinking({ userId: user.id, server })
+        : undefined,
+    [
+      isAuthenticated,
+      user?.id,
+      server,
+      mustChangePassword,
+      isCurrencySetupRequired,
+    ],
+  );
 
   if (isRestoringSession) {
     return (
@@ -192,7 +211,7 @@ const AppNavigator = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {isAuthenticated && mustChangePassword ? (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen
@@ -255,7 +274,10 @@ const AppNavigator = () => {
           />
           <Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
           <Stack.Screen name="FinancialPlan" component={FinancialPlanScreen} />
-          <Stack.Screen name="RecurringBills" component={RecurringBillsScreen} />
+          <Stack.Screen
+            name="RecurringBills"
+            component={RecurringBillsScreen}
+          />
           <Stack.Screen
             name="CurrencyPicker"
             component={CurrencyPickerScreen}

@@ -1,0 +1,14 @@
+PASS __tests__/RecurringBillsScreen.test.tsx (37.817 s)
+PASS __tests__/App.test.tsx (13.717 s)
+PASS __tests__/BillReminderSettings.test.tsx
+PASS __tests__/AuthContext.test.tsx
+PASS __tests__/billReminderLinking.test.ts
+PASS __tests__/billReminderSession.test.ts
+PASS __tests__/recurringBills.test.ts
+PASS src/services/__tests__/financialPlanning.test.ts
+
+Test Suites: 8 passed, 8 total
+Tests:       72 passed, 72 total
+Snapshots:   0 total
+Time:        56.326 s
+Ran all test suites matching /billReminderSession.test.ts|billReminderLinking.test.ts|BillReminderSettings.test.tsx|RecurringBillsScreen.test.tsx|recurringBills.test.ts|financialPlanning.test.ts|App.test.tsx|AuthContext.test.tsx/i.

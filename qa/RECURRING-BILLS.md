@@ -1,5 +1,7 @@
 # Hóa đơn định kỳ — kiểm tra source 26/10/2026
 
+**Cập nhật sau mốc bên dưới, 27/10:** đã triển khai nhắc Android từng hóa đơn và thử thông báo ngoài app trên emulator local. Xem [biên bản mới](BILL-REMINDERS.md). Nội dung26/10 dưới đây giữ nguyên như bằng chứng lịch sử, không phải trạng thái chức năng mới nhất.
+
 Lối vào: Tài khoản → Hóa đơn định kỳ. Phạm vi hiện tại là lịch và theo dõi thanh toán local; chưa có nhắc hạn Android cho từng hóa đơn, API lịch trên backend hoặc APK production mới. Ngày 26/10 đã cài bản debug riêng `com.mobile.dev` để thử source qua Metro local.
 
 ## Kết quả tự động

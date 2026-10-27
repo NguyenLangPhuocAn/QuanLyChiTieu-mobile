@@ -83,6 +83,10 @@ def appVersionCode = providers.gradleProperty("VERSION_CODE").getOrElse("8").toI
 def appVersionName = providers.gradleProperty("VERSION_NAME").getOrElse("1.2.3")
 
 android {
+    compileOptions {
+        // java.time is also used by reminders on the supported API 24/25 devices.
+        coreLibraryDesugaringEnabled true
+    }
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
@@ -136,6 +140,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    testImplementation("junit:junit:4.13.2")
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 

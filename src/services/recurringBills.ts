@@ -12,6 +12,7 @@ import {
 } from '../utils/recurringBills';
 
 export type BillScope = { userId: number; server: string };
+const listeners = new Set<(scope: BillScope) => void>();
 const keyFor = (scope: BillScope) => {
   if (!Number.isSafeInteger(scope.userId) || scope.userId <= 0 || !scope.server)
     throw new Error('Chưa xác định được tài khoản.');
@@ -94,6 +95,7 @@ const mutate = <T>(
       const book = await read(key);
       const result = change(book);
       await AsyncStorage.setItem(key, JSON.stringify(book));
+      listeners.forEach(listener => listener(scope));
       return result;
     });
   const tail = operation.then(
@@ -122,6 +124,12 @@ const identity = (input: BillInput) =>
   }`;
 
 export const recurringBillsService = {
+  subscribe(listener: (scope: BillScope) => void) {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
   async load(scope: BillScope) {
     const key = keyFor(scope);
     await queues.get(key);
@@ -167,6 +175,13 @@ export const recurringBillsService = {
   setPaused(scope: BillScope, id: string, paused: boolean) {
     return mutate(scope, book => {
       findBill(book, id).paused = paused;
+    });
+  },
+  setReminder(scope: BillScope, id: string, enabled: boolean) {
+    if (typeof enabled !== 'boolean')
+      throw new Error('Trạng thái nhắc chưa hợp lệ.');
+    return mutate(scope, book => {
+      findBill(book, id).reminderEnabled = enabled;
     });
   },
   archive(scope: BillScope, id: string) {

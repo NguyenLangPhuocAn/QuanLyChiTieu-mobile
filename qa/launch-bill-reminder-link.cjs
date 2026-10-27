@@ -1,0 +1,13 @@
+const path = require('node:path');
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
+const adb = path.join(process.env.ANDROID_HOME || path.join(os.homedir(), 'AppData/Local/Android/Sdk'), 'platform-tools/adb.exe');
+const call = (...args) => execFileSync(adb, ['-s', 'emulator-5554', ...args], { encoding: 'utf8', windowsHide: true });
+const xml = call('shell', 'run-as', 'com.mobile.dev', 'cat', 'shared_prefs/bill_reminders_v1.xml');
+const owner = xml.match(/<string name="active">([a-f0-9]{64})<\/string>/)?.[1];
+const day = xml.match(/<string name="postedDay">(\d{4}-\d{2}-\d{2})<\/string>/)?.[1];
+if (!owner || !day) throw new Error('Only a previously posted local QA reminder is allowed.');
+const url = `quanlychitieu://bills?scope=${owner}&reminderDate=${day}`;
+const result = call('shell', `am start -W -a android.intent.action.VIEW -n com.mobile.dev/com.mobile.MainActivity -d "${url}"`);
+if (!result.includes('Status: ok') || result.includes('Error')) throw new Error('The synthetic reminder intent did not launch successfully.');
+console.log(JSON.stringify({ package: 'com.mobile.dev', replayedPostedReminderDay: day, syntheticIntent: true }));

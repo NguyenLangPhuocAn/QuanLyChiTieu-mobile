@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Nhắc hóa đơn — source 27/10/2026
+
+- Nhắc trước3ngày,1ngày và đúng hạn; gộp các khoản cùng ngày, chọn giờ nhận và tắt riêng từng lịch.
+- Thông báo không lộ tên/số tiền; bấm mở nhóm hóa đơn ngày nhắc. Không tự tạo khoản chi hoặc đổi số dư.
+- Lưu mốc đã gửi theo tài khoản, loại kỳ đã trả/bỏ qua/lịch dừng hoặc xóa; tái đặt nhắc khi mở lại app và Android nhận boot/đổi giờ.
+- Đã thử emulator local: quyền thông báo, nhận ngoài app khi JS dừng, bấm mở nhóm và bỏ qua một kỳ. Jest72/72, JVM10/10, Metro3/3; SQL QA giữ2giao dịch/ví6.590.000đ. Chi tiết và giới hạn trong qa/BILL-REMINDERS.md.
+- Chờ điện thoại thật/OEM/reboot; giờ nhận có thể trễ do giới hạn Android. Chưa phát hành APK trong đợt này.
+
 ## Hóa đơn định kỳ — source 26/10/2026
 
 - Thêm **Tài khoản → Hóa đơn định kỳ**: lịch tuần/tháng/năm, tiền cố định hoặc khoảng dự kiến, giữ đúng ngày gốc qua tháng ngắn/năm nhuận.

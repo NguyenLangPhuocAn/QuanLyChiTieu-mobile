@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
+import BillReminderSettings from '../../components/BillReminderSettings';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -37,6 +44,7 @@ import {
   billDateOffset,
   billOccurrences,
   validateBillInput,
+  isBillDate,
   type BillBook,
   type BillCycle,
   type BillOccurrence,
@@ -79,6 +87,7 @@ type Picker = {
 
 function RecurringBillsContent({
   navigation,
+  route,
   scope,
   token,
   currency,
@@ -89,6 +98,18 @@ function RecurringBillsContent({
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [visible, setVisible] = useState(20);
+  const [reminderFilter, setReminderFilter] = useState(() => {
+    const date = route.params?.reminderDate;
+    return date && isBillDate(date) ? date : null;
+  });
+  useEffect(() => {
+    const date = route.params?.reminderDate;
+    setReminderFilter(date && isBillDate(date) ? date : null);
+    if (date && isBillDate(date)) {
+      setTab('PENDING');
+      setVisible(20);
+    }
+  }, [route.params?.reminderDate]);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [today, setToday] = useState(() =>
     getTransactionDateKey(new Date().toISOString()),
@@ -148,11 +169,23 @@ function RecurringBillsContent({
         : [],
     [book, today],
   );
-  const displayed = occurrences.filter(item =>
-    tab === 'DONE'
-      ? ['PAID', 'SKIPPED'].includes(item.status)
-      : ['PENDING', 'OVERDUE'].includes(item.status),
-  );
+  const displayed = occurrences
+    .filter(item =>
+      tab === 'DONE'
+        ? ['PAID', 'SKIPPED'].includes(item.status)
+        : ['PENDING', 'OVERDUE'].includes(item.status),
+    )
+    .filter(
+      item =>
+        !reminderFilter ||
+        tab !== 'PENDING' ||
+        (!item.bill.paused &&
+          !item.bill.archived &&
+          item.bill.reminderEnabled !== false &&
+          [0, 1, 3].some(
+            lead => item.dueDate === billDateOffset(reminderFilter, lead),
+          )),
+    );
   if (tab === 'DONE') displayed.reverse();
   const closePicker = () => {
     pickerRevision.current += 1;
@@ -359,7 +392,6 @@ function RecurringBillsContent({
       >
         <Text style={styles.muted}>
           Lưu riêng trên máy theo tài khoản. Lịch dự kiến không thay đổi số dư.
-          Bản này chưa gửi thông báo nhắc.
         </Text>
         {error ? (
           <View style={styles.card}>
@@ -379,11 +411,32 @@ function RecurringBillsContent({
         ) : null}
         {book && !error ? (
           <>
+            {!editor && !reminderFilter ? (
+              <BillReminderSettings scope={scope} book={book} />
+            ) : null}
+            {reminderFilter ? (
+              <View style={styles.card}>
+                <Text style={styles.muted}>
+                  Các khoản từ lời nhắc ngày {dateLabel(reminderFilter)}. Kỳ đã
+                  xử lý được giữ trong Đã xử lý.
+                </Text>
+                <ActionButton
+                  label="Xem tất cả kỳ"
+                  secondary
+                  onPress={() => {
+                    setReminderFilter(null);
+                    navigation.setParams({ reminderDate: undefined });
+                  }}
+                />
+              </View>
+            ) : null}
             {!editor ? (
-              <ActionButton
-                label="Thêm lịch hóa đơn"
-                onPress={() => editBill()}
-              />
+              !reminderFilter ? (
+                <ActionButton
+                  label="Thêm lịch hóa đơn"
+                  onPress={() => editBill()}
+                />
+              ) : null
             ) : (
               <View style={styles.card} pointerEvents={busy ? 'none' : 'auto'}>
                 <View style={styles.row}>
@@ -555,6 +608,10 @@ function RecurringBillsContent({
                   onPress={() => {
                     setTab(value);
                     setVisible(20);
+                    if (reminderFilter && value !== 'PENDING') {
+                      setReminderFilter(null);
+                      navigation.setParams({ reminderDate: undefined });
+                    }
                   }}
                 >
                   <Text style={styles.label}>
@@ -694,6 +751,24 @@ function RecurringBillsContent({
                       {bill.note ? (
                         <Text style={styles.muted}>{bill.note}</Text>
                       ) : null}
+                      <ActionButton
+                        label={
+                          bill.reminderEnabled === false
+                            ? 'Bật nhắc lịch này'
+                            : 'Tắt nhắc lịch này'
+                        }
+                        secondary
+                        disabled={busy}
+                        onPress={() =>
+                          execute(() =>
+                            recurringBillsService.setReminder(
+                              scope,
+                              bill.id,
+                              bill.reminderEnabled === false,
+                            ),
+                          )
+                        }
+                      />
                       <View style={styles.row}>
                         <ActionButton
                           label="Sửa lịch"

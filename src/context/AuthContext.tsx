@@ -19,6 +19,7 @@ import { authService } from '../services/auth';
 import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
 import { GOOGLE_WEB_CLIENT_ID } from '../config/google';
 import { bankNotificationReader } from '../native/bankNotificationReader';
+import { billReminderSession } from '../services/billReminderSession';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
@@ -137,6 +138,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   };
 
   const clearSession = () => {
+    billReminderSession.set(null).catch(() => undefined);
     sessionVersionRef.current += 1;
     invalidateAuthSession();
     tokenRef.current = null;

@@ -8,6 +8,7 @@ export type BillInput = {
   maxAmount: number;
   currency: string;
   note: string;
+  reminderEnabled?: boolean;
 };
 export type RecurringBill = BillInput & {
   id: string;
@@ -54,6 +55,11 @@ const moneyValid = (value: number) =>
   Math.abs(value * 100 - Math.round(value * 100)) < 0.00001;
 
 export const validateBillInput = (input: BillInput): BillInput => {
+  if (
+    input.reminderEnabled !== undefined &&
+    typeof input.reminderEnabled !== 'boolean'
+  )
+    throw new Error('Trạng thái nhắc hóa đơn chưa hợp lệ.');
   if (
     typeof input.label !== 'string' ||
     !input.label.trim() ||

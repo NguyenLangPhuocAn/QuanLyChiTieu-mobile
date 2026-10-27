@@ -7,7 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class FinancialReminderPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-    listOf(FinancialReminderModule(reactContext))
+    listOf(FinancialReminderModule(reactContext), BillReminderModule(reactContext))
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext,

@@ -41,6 +41,7 @@
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="quanlychitieu" android:host="payment-result" />
+            <data android:scheme="quanlychitieu" android:host="bills" />
         </intent-filter>
       </activity>
       <service
@@ -73,5 +74,13 @@
           android:name="android.support.FILE_PROVIDER_PATHS"
           android:resource="@xml/app_update_file_paths" />
       </provider>
+      <receiver android:name=".reminders.BillReminderReceiver" android:exported="false">
+        <intent-filter>
+          <action android:name="android.intent.action.BOOT_COMPLETED" />
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+          <action android:name="android.intent.action.TIME_SET" />
+          <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+        </intent-filter>
+      </receiver>
     </application>
 </manifest>

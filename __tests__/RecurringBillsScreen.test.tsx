@@ -7,10 +7,12 @@ import { recurringBillsService as service } from '../src/services/recurringBills
 import { transactionsService } from '../src/services/transactions';
 import { getTransactionDateKey } from '../src/utils/mapTransactions';
 import type { BillInput } from '../src/utils/recurringBills';
+import { billDateOffset } from '../src/utils/recurringBills';
 
 jest.setTimeout(20000);
 let mockToken = 'token';
 let mockUserId = 99;
+let mockRouteParams: { reminderDate?: string } | undefined;
 
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
@@ -53,8 +55,8 @@ let renderer: TestRenderer.ReactTestRenderer | undefined;
 const screen = () => (
   <RecurringBillsScreen
     {...({
-      navigation: { goBack: jest.fn() },
-      route: {},
+      navigation: { goBack: jest.fn(), setParams: jest.fn() },
+      route: { params: mockRouteParams },
     } as unknown as React.ComponentProps<typeof RecurringBillsScreen>)}
   />
 );
@@ -80,6 +82,7 @@ const confirm = () => {
 beforeEach(async () => {
   mockToken = 'token';
   mockUserId = 99;
+  mockRouteParams = undefined;
   await AsyncStorage.removeItem(key);
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -310,9 +313,45 @@ it('shows a retryable network error without claiming that no payments exist', as
   expect(content).toContain('Chưa tải được giao dịch');
   expect(content).not.toContain('Chưa có khoản chi phù hợp');
   await act(async () => press('Thử tải giao dịch'));
+  expect(transactionsService.getPage).toHaveBeenLastCalledWith(
+    'token',
+    expect.objectContaining({ page: 1 }),
+  );
   expect(
     renderer!.root.findAllByProps({
       accessibilityLabel: 'Liên kết giao dịch 77',
     }).length,
   ).toBeGreaterThan(0);
+});
+
+it('allows opting one bill out of reminders without pausing or changing payments', async () => {
+  await service.save(scope, bill);
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Tắt nhắc lịch này'));
+  expect((await service.load(scope)).bills[0]).toMatchObject({
+    reminderEnabled: false,
+    paused: false,
+  });
+  expect((await service.load(scope)).periods).toEqual([]);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('opens the notification day group and lets the user return to all periods', async () => {
+  await service.save(scope, {
+    ...bill,
+    label: 'Due tomorrow',
+    anchorDate: billDateOffset(today, 1),
+  });
+  await service.save(scope, {
+    ...bill,
+    label: 'Later bill',
+    anchorDate: billDateOffset(today, 10),
+  });
+  mockRouteParams = { reminderDate: today };
+  await mount();
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Due tomorrow');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Later bill');
+  await act(async () => press('Xem tất cả kỳ'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Later bill');
 });
