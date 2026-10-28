@@ -37,6 +37,7 @@ export type BillBook = {
   bills: RecurringBill[];
   periods: BillPeriod[];
   suggestions?: BillSuggestionDecision[];
+  reviewedAlerts?: string[];
 };
 export type BillOccurrence = {
   bill: RecurringBill;

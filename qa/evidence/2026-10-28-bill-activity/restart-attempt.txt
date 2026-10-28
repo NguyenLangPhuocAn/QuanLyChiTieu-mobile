@@ -1,0 +1,5 @@
+Android debug package only: com.mobile.dev.
+Home -> am kill -> pidof still 1357; am start brought existing task forward.
+run-as kill -9 1357 reported unknown pid; subsequent pidof still 1357.
+No cold process restart established. No production app affected.
+Evidence 64 is resume, not a passed cold restart test.

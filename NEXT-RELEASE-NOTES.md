@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+
+## Cảnh báo khoản định kỳ và tổng 30 ngày — source 28/10/2026
+
+- Hóa đơn định kỳ → Kiểm tra: xem khoản tăng ít nhất 10% so với trung vị ba kỳ ổn định, vượt mức dự kiến; xem khoản có thể ghi lặp (khác ID, cùng kỳ/tiền tệ/tiền, tối đa ba ngày). Có giao dịch nguồn và giải thích, không tự xóa/gộp hoặc ghi tiền.
+- Đã kiểm tra/Hiện lại lưu riêng theo tài khoản/backend; nguồn hoặc ngữ cảnh đổi sẽ hiện cảnh báo mới. Bỏ phản hồi muộn khi ra nền/rời màn/đổi tài khoản. Dùng chung lần tải lịch sử với gợi ý, không thêm API tự chạy nền.
+- Lịch đã tạo có tổng 30 ngày theo mức người dùng đặt, tách tiền tệ; loại kỳ quá hạn/đã xử lý/lịch dừng. Chưa tự điều chỉnh theo cảnh báo hoặc nối vào chi an toàn.
+- Mobile Jest129/129 qua15bộ (20ca mới), MetroQA3/3, TypeScript/ESLint đạt; Android source local/Nest/MySQL QA riêng. Chi tiết qa/BILL-ACTIVITY.md. Chưa phát hành APK/web hoặc thay server ổn định.
+
 ## Đối chiếu liên kết thanh toán — source 28/10/2026
 
 - Trong Hóa đơn định kỳ → Đã xử lý, bấm Kiểm tra liên kết để biết nguồn còn khớp, đã đổi hoặc không còn truy cập được. Giữ thông tin cũ để đối chiếu, không tự bỏ lịch sử hoặc ghi tiền.

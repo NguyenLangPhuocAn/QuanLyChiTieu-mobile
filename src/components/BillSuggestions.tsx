@@ -1,5 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  AppState,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import BillActivityFindings from './BillActivityFindings';
 import { ActionButton } from './FormControls';
 import { loadBillSuggestionHistory } from '../services/billSuggestionHistory';
 import {
@@ -52,13 +66,36 @@ export default function BillSuggestions({
   const working = useRef(false);
   const searching = useRef(false);
   const live = useRef(true);
+  const foreground = useRef(
+    AppState.currentState !== 'background' &&
+      AppState.currentState !== 'inactive',
+  );
   const generation = useRef(0);
+  useFocusEffect(
+    useCallback(() => {
+      live.current = true;
+      searching.current = false;
+      setLoading(false);
+      setHistory(null);
+      setError(null);
+      return () => {
+        live.current = false;
+        generation.current += 1;
+      };
+    }, []),
+  );
   useEffect(() => {
-    live.current = true;
-    return () => {
-      live.current = false;
-      generation.current += 1;
-    };
+    const listener = AppState.addEventListener('change', state => {
+      foreground.current = state === 'active';
+      if (!foreground.current) {
+        generation.current += 1;
+        searching.current = false;
+        setLoading(false);
+        setHistory(null);
+        setError(null);
+      }
+    });
+    return () => listener.remove();
   }, []);
   useEffect(() => {
     if (hidden) {
@@ -78,10 +115,11 @@ export default function BillSuggestions({
     item => suggestionVisibility(item, book, today) === 'HIDDEN',
   );
   const search = async () => {
-    if (searching.current) return;
+    if (searching.current || !live.current || !foreground.current) return;
     searching.current = true;
     const request = ++generation.current;
-    const current = () => live.current && request === generation.current;
+    const current = () =>
+      live.current && foreground.current && request === generation.current;
     setLoading(true);
     setError(null);
     setHistory(null);
@@ -135,11 +173,12 @@ export default function BillSuggestions({
       if (live.current) setSaving(false);
     }
   };
+  const renderGeneration = generation.current;
   if (hidden) return null;
   return (
     <View style={styles.section}>
       <View style={styles.row}>
-        <Text style={styles.title}>Khoản có thể lặp</Text>
+        <Text style={styles.title}>Kiểm tra khoản định kỳ</Text>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={loading ? 'Dừng tìm khoản lặp' : 'Tìm khoản lặp'}
@@ -186,9 +225,25 @@ export default function BillSuggestions({
             />
           ) : (
             <>
+              <BillActivityFindings
+                key={renderGeneration}
+                book={book}
+                rows={history.rows}
+                today={today}
+                scope={scope}
+                onBookChange={onBookChange}
+                isCurrent={() =>
+                  live.current &&
+                  foreground.current &&
+                  !hidden &&
+                  renderGeneration === generation.current
+                }
+              />
               {!visible.length ? (
                 <Text style={styles.detail}>
-                  {candidates.length ? 'Không còn gợi ý mới trong lần kiểm tra này.' : 'Chưa tìm được khoản lặp có ít nhất 3 lần chi trong phần dữ liệu đã kiểm tra. Bạn vẫn có thể tự thêm lịch.'}
+                  {candidates.length
+                    ? 'Không còn gợi ý mới trong lần kiểm tra này.'
+                    : 'Chưa tìm được khoản lặp có ít nhất 3 lần chi trong phần dữ liệu đã kiểm tra. Bạn vẫn có thể tự thêm lịch.'}
                 </Text>
               ) : null}
               {visible.slice(0, count).map(candidate => (

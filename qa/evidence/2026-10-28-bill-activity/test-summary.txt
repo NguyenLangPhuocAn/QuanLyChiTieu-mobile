@@ -1,0 +1,16 @@
+
+Test Suites: 15 passed, 15 total
+Tests:       129 passed, 129 total
+Snapshots:   0 total
+Time:        32.161 s, estimated 56 s
+Ran all test suites matching /__tests__\\billActivity.test.ts|__tests__\\BillActivityFlow.test.tsx|__tests__\\billPaymentChecks.test.ts|__tests__\\BillPaymentReviewFlow.test.tsx|__tests__\\recurringBills.test.ts|__tests__\\RecurringBillsScreen.test.tsx|__tests__\\BillSuggestionsFlow.test.tsx|__tests__\\billSuggestions.test.ts|__tests__\\billSuggestionHistory.test.ts|__tests__\\billReminderSession.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\BillReminderSettings.test.tsx|__tests__\\App.test.tsx|__tests__\\AuthContext.test.tsx|src\\services\\__tests__\\financialPlanning.test.ts/i.
+
+Metro QA:
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 919.1622

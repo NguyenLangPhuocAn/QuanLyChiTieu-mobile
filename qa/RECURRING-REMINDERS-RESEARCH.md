@@ -1,5 +1,7 @@
 # Nhắc các khoản dễ bỏ sót — nghiên cứu 26/10/2026
 
+**Cập nhật28/10 — C1:** đã có cảnh báo tăng tiền/nghi ghi lặp có bằng chứng, Đã kiểm tra/Hiện lại và tổng dự kiến30ngày. Xem [BILL-ACTIVITY](BILL-ACTIVITY.md). Đối chiếu nguồn B2 xem [PAYMENT-LINK-CHECKS](PAYMENT-LINK-CHECKS.md). Các đoạn mô tả chưa có bên dưới là khảo sát lịch sử; C2 backup/sync/nối dự báo vẫn chưa xong.
+
 **Tiếp tục27/10:** gợi ý theo tuần/tháng/năm, bằng chứng và Theo dõi/Không định kỳ/Để sau đã có source; xem [BILL-SUGGESTIONS](BILL-SUGGESTIONS.md). Chưa có chu kỳ quý, tự gộp tên không rõ, kiểm lại thanh toán gốc, cảnh báo bất thường hoặc tích hợp backup/dự báo; không coi toàn bộ nghiên cứu đã hoàn thành.
 
 **Cập nhật27/10:** nhắc lịch đã xác nhận (đợt A) đã có source/QA, xem [BILL-REMINDERS](BILL-REMINDERS.md). Phát hiện ứng viên/bất thường dưới đây vẫn là đề xuất, không tự gửi nhắc từ suy đoán.

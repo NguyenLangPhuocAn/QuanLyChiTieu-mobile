@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from '../utils/mapTransactions';
 import { getCashFlowType } from '../utils/transactionClassification';
+import { billActivityMerchant, readBillAlertKey } from '../utils/billActivity';
 import {
   currentBillPayment,
   paymentKey,
@@ -13,6 +14,7 @@ import {
 } from '../utils/billSuggestions';
 import {
   isBillDate,
+  billDateOffset,
   isBillDueDate,
   validateBillInput,
   type BillBook,
@@ -104,6 +106,17 @@ const read = async (key: string): Promise<BillBook> => {
         )
           throw corrupt();
         keys.add(decision.key);
+      }
+    }
+    if (value.reviewedAlerts !== undefined) {
+      if (
+        !Array.isArray(value.reviewedAlerts) ||
+        new Set(value.reviewedAlerts).size !== value.reviewedAlerts.length
+      )
+        throw corrupt();
+      for (const alertValue of value.reviewedAlerts) {
+        const parsed = readBillAlertKey(alertValue);
+        if (!parsed || !ids.has(parsed[2])) throw corrupt();
       }
     }
     return value;
@@ -256,6 +269,66 @@ export const recurringBillsService = {
       book.suggestions = book.suggestions?.filter(
         item => item.key !== key || item.status === 'TRACKED',
       );
+    });
+  },
+  reviewAlert(
+    scope: BillScope,
+    key: string,
+    reviewed: boolean,
+    isCurrent: () => boolean,
+  ) {
+    const parsed = readBillAlertKey(key);
+    if (!parsed || typeof reviewed !== 'boolean')
+      throw new Error('Cảnh báo chưa hợp lệ.');
+    return mutate(scope, book => {
+      if (!isCurrent()) throw new Error('Đã dừng lưu lựa chọn.');
+      const bill = findBill(book, parsed[2]);
+      if (
+        bill.paused ||
+        bill.cycle !== parsed[3] ||
+        bill.currency !== parsed[4] ||
+        Math.round(bill.maxAmount * (bill.currency === 'VND' ? 1 : 100)) !==
+          parsed[6] ||
+        billActivityMerchant(book, bill) !== parsed[7] ||
+        bill.anchorDate !== parsed[8]
+      )
+        throw new Error(
+          'Lịch vừa thay đổi. Hãy kiểm tra lại trước khi ẩn cảnh báo.',
+        );
+      const existing = (book.reviewedAlerts ?? []).filter(item => item !== key);
+      if (reviewed) {
+        const cutoff = billDateOffset(
+          parsed[5],
+          bill.cycle === 'YEARLY' ? -800 : -180,
+        );
+        const eventOf = (
+          parts: NonNullable<ReturnType<typeof readBillAlertKey>>,
+        ) =>
+          JSON.stringify([
+            parts[1],
+            parts[2],
+            parts[3],
+            parts[4],
+            parts[5],
+            parts[7],
+            parts[1] === 'DUPLICATE'
+              ? Math.min(...parts[9].map(row => row[0]))
+              : null,
+          ]);
+        const own = existing.filter(item => {
+          const previous = readBillAlertKey(item)!;
+          return (
+            previous[2] === bill.id &&
+            previous[5] >= cutoff &&
+            eventOf(previous) !== eventOf(parsed)
+          );
+        });
+        book.reviewedAlerts = [
+          ...existing.filter(item => readBillAlertKey(item)![2] !== bill.id),
+          ...own,
+          key,
+        ];
+      } else book.reviewedAlerts = existing;
     });
   },
   setPaused(scope: BillScope, id: string, paused: boolean) {

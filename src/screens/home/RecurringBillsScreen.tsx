@@ -23,6 +23,7 @@ import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
 import BillSuggestions from '../../components/BillSuggestions';
+import BillUpcomingSummary from '../../components/BillUpcomingSummary';
 import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
@@ -895,6 +896,7 @@ function RecurringBillsContent({
               </>
             ) : (
               <>
+                <BillUpcomingSummary book={book} today={today} />
                 {!book.bills.some(bill => !bill.archived) ? (
                   <Text style={styles.empty}>
                     Thêm tiền nhà, điện, nước hoặc thuê bao để theo dõi kỳ tới.
