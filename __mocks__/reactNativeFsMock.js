@@ -1,6 +1,8 @@
 module.exports = {
   DocumentDirectoryPath: '/tmp',
   DownloadDirectoryPath: '/tmp',
+  stat: jest.fn(() => Promise.resolve({ size: 0 })),
+  readFile: jest.fn(() => Promise.resolve('')),
   mkdir: jest.fn(() => Promise.resolve()),
   exists: jest.fn(() => Promise.resolve(false)),
   unlink: jest.fn(() => Promise.resolve()),

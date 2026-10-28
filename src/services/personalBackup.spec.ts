@@ -11,37 +11,47 @@ import {
 } from './personalBackup';
 
 describe('personalBackupService', () => {
-  it('sends the password as a multipart field instead of a URL query', () => {
+  it('previews the ordinary file without a password field', () => {
     const file = { uri: 'file:///backup', name: 'a.stcn-backup', type: 'x' };
-    personalBackupService.preview('token', file, 'mat-khau-rat-manh');
+    personalBackupService.preview('token', file);
     expect(apiUploadRequest).toHaveBeenCalledWith(
       '/personal-backup/preview',
       'token',
       file,
       'POST',
       120000,
-      { password: 'mat-khau-rat-manh' },
     );
   });
 
-  it('exports with a JSON body and restores only selected rows', () => {
+  it('exports without passwords and restores only selected rows with the preview checksum', () => {
     const file = { uri: 'file:///backup', name: 'a.stcn-backup', type: 'x' };
-    personalBackupService.export('token', 'mat-khau-rat-manh');
+    personalBackupService.export('token');
     expect(apiRequest).toHaveBeenCalledWith('/personal-backup/export', {
       method: 'POST',
       token: 'token',
-      body: { password: 'mat-khau-rat-manh' },
       timeoutMs: 120000,
     });
-    personalBackupService.restore('token', file, 'mat-khau-rat-manh', [1, 3]);
+    personalBackupService.restore('token', file, [1, 3], 'a'.repeat(64));
     expect(apiUploadRequest).toHaveBeenLastCalledWith(
-      '/personal-backup/restore?rows=1%2C3',
+      '/personal-backup/restore?rows=1%2C3&fileHash=' + 'a'.repeat(64),
       'token',
       file,
       'POST',
       120000,
-      { password: 'mat-khau-rat-manh' },
     );
+  });
+
+  it('rejects restore without a preview checksum before contacting the API', () => {
+    jest.clearAllMocks();
+    expect(() =>
+      personalBackupService.restore(
+        'token',
+        { uri: 'file:///x', name: 'x', type: 'x' },
+        [1],
+        '',
+      ),
+    ).toThrow('xem trước');
+    expect(apiUploadRequest).not.toHaveBeenCalled();
   });
 
   it('only selects ready rows that the user can currently review', () => {

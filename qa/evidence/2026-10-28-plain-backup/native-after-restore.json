@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-28",
+  "package": "com.mobile.dev",
+  "activeOwnerSet": true,
+  "nativeMirrorPresent": true,
+  "enabled": false,
+  "billCount": 3,
+  "eligibleBillCount": 0,
+  "trackedStartDateCount": 0,
+  "handledPeriodCount": 2,
+  "durableSentKeyCount": 0,
+  "postedDay": null,
+  "alarmVisible": false,
+  "privateNamesAmountsTokensIncluded": false
+}

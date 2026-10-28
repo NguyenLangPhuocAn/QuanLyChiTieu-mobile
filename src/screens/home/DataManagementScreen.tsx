@@ -21,7 +21,6 @@ import {
   Database,
   Download,
   FileSpreadsheet,
-  LockKeyhole,
   Pencil,
   RefreshCw,
   Trash2,
@@ -384,7 +383,8 @@ const DataManagementScreen = () => {
                   {excelPreview.result.unsupported}
                 </Text>
                 <Text style={styles.previewNotice}>
-                  Chưa có dữ liệu nào được ghi. Dòng trùng và dòng lỗi không thể chọn.
+                  Chưa có dữ liệu nào được ghi. Dòng trùng và dòng lỗi không thể
+                  chọn.
                 </Text>
               </View>
               <TouchableOpacity
@@ -411,9 +411,14 @@ const DataManagementScreen = () => {
                 <TouchableOpacity
                   key={row.row}
                   accessibilityRole={isReady ? 'checkbox' : 'text'}
-                  accessibilityState={isReady ? { checked: selected } : undefined}
+                  accessibilityState={
+                    isReady ? { checked: selected } : undefined
+                  }
                   disabled={!isReady}
-                  style={[styles.previewRow, !isReady && styles.previewRowMuted]}
+                  style={[
+                    styles.previewRow,
+                    !isReady && styles.previewRowMuted,
+                  ]}
                   onPress={() => toggleExcelRow(row.row)}
                 >
                   {isReady ? (
@@ -423,7 +428,9 @@ const DataManagementScreen = () => {
                         selected && styles.previewCheckboxSelected,
                       ]}
                     >
-                      {selected ? <Text style={styles.previewCheck}>✓</Text> : null}
+                      {selected ? (
+                        <Text style={styles.previewCheck}>✓</Text>
+                      ) : null}
                     </View>
                   ) : (
                     <View style={styles.previewStatusIcon}>
@@ -708,13 +715,12 @@ const DataManagementScreen = () => {
           onPress={() => navigation.navigate('PersonalBackup')}
         >
           <View style={styles.actionIcon}>
-            <LockKeyhole size={22} color={Colors.primary} />
+            <Download size={22} color={Colors.primary} />
           </View>
           <View style={styles.actionCopy}>
-            <Text style={styles.cardTitle}>Backup cá nhân mã hóa</Text>
+            <Text style={styles.cardTitle}>Backup cá nhân</Text>
             <Text style={styles.cardText}>
-              Tạo file có mật khẩu hoặc xem trước từng giao dịch trước khi khôi
-              phục.
+              Lưu file hoặc xem trước từng giao dịch trước khi khôi phục.
             </Text>
           </View>
         </TouchableOpacity>
@@ -758,7 +764,6 @@ const DataManagementScreen = () => {
             </Text>
           </View>
         </TouchableOpacity>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -961,7 +966,11 @@ const styles = StyleSheet.create({
     borderTopColor: '#F5E3D3',
     paddingTop: 10,
   },
-  previewRowMuted: { backgroundColor: '#FFF3E8', borderRadius: 14, padding: 10 },
+  previewRowMuted: {
+    backgroundColor: '#FFF3E8',
+    borderRadius: 14,
+    padding: 10,
+  },
   previewRowHeader: {
     flexDirection: 'row',
     alignItems: 'center',

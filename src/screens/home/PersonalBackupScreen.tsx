@@ -1,24 +1,18 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import {
-  ArrowLeft,
-  Check,
-  Download,
-  LockKeyhole,
-  Upload,
-} from 'lucide-react-native';
+import { ArrowLeft, Check, Download, Upload } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -31,151 +25,199 @@ import {
   personalBackupService,
   type BackupPreview,
 } from '../../services/personalBackup';
+import { getApiBaseUrl } from '../../services/api';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 
 const PersonalBackupScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token } = useAuth();
-  const [exportPassword, setExportPassword] = useState('');
-  const [exportConfirm, setExportConfirm] = useState('');
-  const [importPassword, setImportPassword] = useState('');
+  const { token, user } = useAuth();
+  const identity = String(user?.id) + '|' + getApiBaseUrl();
+  const session = useRef({ token, identity });
+  session.current = { token, identity };
+  const alive = useRef(false),
+    revision = useRef(0),
+    working = useRef(false),
+    nativePicker = useRef(false);
   const [file, setFile] = useState<PickedDocument | null>(null);
   const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [visibleRowCount, setVisibleRowCount] = useState(200);
-  const [busy, setBusy] = useState<'export' | 'preview' | 'restore' | null>(
-    null,
+  const [busy, setBusy] = useState<
+    'export' | 'preview' | 'restore' | 'file' | null
+  >(null);
+  const invalidate = useCallback(() => {
+    revision.current += 1;
+    setPreview(null);
+    setSelectedRows([]);
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      alive.current = true;
+      return () => {
+        alive.current = false;
+        revision.current += 1;
+      };
+    }, []),
   );
-
-  const exportBackup = async () => {
-    if (!token || busy) return;
-    if (exportPassword.length < 8) {
-      Alert.alert('Mật khẩu chưa đủ mạnh', 'Hãy dùng ít nhất 8 ký tự.');
-      return;
-    }
-    if (exportPassword !== exportConfirm) {
-      Alert.alert('Mật khẩu chưa khớp', 'Hãy nhập lại đúng mật khẩu backup.');
-      return;
-    }
-    setBusy('export');
+  useEffect(() => {
+    invalidate();
+    setFile(null);
+  }, [identity, invalidate]);
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', state => {
+      if (state !== 'active' && !nativePicker.current) invalidate();
+    });
+    return () => listener.remove();
+  }, [invalidate]);
+  const operate = async (
+    kind: NonNullable<typeof busy>,
+    action: (current: () => boolean, accessToken: string) => Promise<void>,
+  ) => {
+    if (working.current || !alive.current || !session.current.token) return;
+    working.current = true;
+    setBusy(kind);
+    const rev = revision.current,
+      owner = session.current.identity;
+    const current = () =>
+      alive.current &&
+      revision.current === rev &&
+      session.current.identity === owner;
     try {
-      const result = await personalBackupService.export(token, exportPassword);
-      const savedFile = await localDocumentPicker.saveBase64File(
-        result.filename,
-        result.mimeType,
-        result.base64,
-      );
-      if (!savedFile) return;
-      setExportPassword('');
-      setExportConfirm('');
-      Alert.alert(
-        'Đã tạo backup mã hóa',
-        `${result.summary.transactions} giao dịch · ${result.summary.wallets} ví\nĐã lưu file ${savedFile.name} vào thư mục bạn chọn.\n\nHãy giữ mật khẩu riêng; ứng dụng không thể lấy lại mật khẩu này.`,
-      );
+      await action(current, session.current.token);
     } catch (error) {
-      Alert.alert(
-        'Chưa tạo được backup',
-        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
-      );
+      if (current())
+        Alert.alert(
+          'Chưa thực hiện được',
+          getUserFriendlyErrorMessage(error, 'Kiểm tra file và thử lại.'),
+        );
     } finally {
-      setBusy(null);
+      working.current = false;
+      if (alive.current) setBusy(null);
     }
   };
-
-  const chooseFile = async () => {
-    if (busy) return;
-    try {
-      const picked = await localDocumentPicker.pickBackupFile();
-      if (!picked) return;
-      setFile(picked);
-      setPreview(null);
-      setSelectedRows([]);
-      setVisibleRowCount(200);
-    } catch (error) {
-      Alert.alert(
-        'Chưa chọn được file',
-        getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
-      );
-    }
-  };
-
-  const previewBackup = async () => {
-    if (!token || !file || importPassword.length < 8 || busy) return;
-    setBusy('preview');
-    try {
-      const result = await personalBackupService.preview(
-        token,
-        file,
-        importPassword,
-      );
+  const exportBackup = () =>
+    operate('export', async (current, accessToken) => {
+      const result = await personalBackupService.export(accessToken);
+      if (!current()) return;
+      nativePicker.current = true;
+      let saved;
+      try {
+        saved = await localDocumentPicker.saveBase64File(
+          result.filename,
+          result.mimeType,
+          result.base64,
+        );
+      } finally {
+        nativePicker.current = false;
+      }
+      if (current() && saved)
+        Alert.alert(
+          'Đã tạo file backup',
+          result.summary.transactions +
+            ' giao dịch · ' +
+            result.summary.wallets +
+            ' ví\nĐã lưu file ' +
+            saved.name +
+            '.',
+        );
+    });
+  const chooseFile = () =>
+    operate('file', async current => {
+      nativePicker.current = true;
+      let picked;
+      try {
+        picked = await localDocumentPicker.pickBackupFile();
+      } finally {
+        nativePicker.current = false;
+      }
+      if (current() && picked) {
+        invalidate();
+        setFile(picked);
+        setVisibleRowCount(200);
+      }
+    });
+  const previewBackup = () => {
+    if (!file) return;
+    invalidate();
+    return operate('preview', async (current, accessToken) => {
+      const result = await personalBackupService.preview(accessToken, file);
+      if (!current()) return;
+      if (!/^[a-f0-9]{64}$/.test(result.metadata?.fileHash ?? ''))
+        throw new Error(
+          'Máy chủ chưa hỗ trợ file backup mới. Chưa thể khôi phục.',
+        );
       setPreview(result);
       setSelectedRows([]);
       setVisibleRowCount(200);
-    } catch (error) {
-      Alert.alert(
-        'Không đọc được backup',
-        getUserFriendlyErrorMessage(error, 'Kiểm tra mật khẩu và file backup.'),
-      );
-    } finally {
-      setBusy(null);
-    }
+    });
   };
-
   const toggleRow = (row: number) => {
+    if (working.current) return;
     setSelectedRows(current =>
       current.includes(row)
         ? current.filter(value => value !== row)
         : [...current, row],
     );
   };
-
   const selectVisibleReadyRows = () => {
-    if (!preview) return;
-    setSelectedRows(
-      getVisibleReadyBackupRowNumbers(preview.rows, visibleRowCount),
-    );
+    if (preview && !working.current)
+      setSelectedRows(
+        getVisibleReadyBackupRowNumbers(preview.rows, visibleRowCount),
+      );
   };
-
   const restoreSelected = () => {
-    if (!token || !file || !preview || selectedRows.length === 0 || busy)
+    if (
+      !token ||
+      !file ||
+      !preview ||
+      selectedRows.length === 0 ||
+      working.current
+    )
       return;
+    const rev = revision.current,
+      owner = identity,
+      chosen = [...selectedRows],
+      chosenFile = file,
+      chosenPreview = preview;
     Alert.alert(
       'Khôi phục giao dịch đã chọn?',
-      `Ứng dụng sẽ thêm ${selectedRows.length} giao dịch mới. Dữ liệu hiện tại không bị ghi đè; dòng trùng sẽ bị bỏ qua.`,
+      'Ứng dụng sẽ thêm ' +
+        chosen.length +
+        ' giao dịch mới. Dữ liệu hiện tại không bị ghi đè; dòng trùng sẽ bị bỏ qua.',
       [
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Khôi phục',
-          onPress: async () => {
-            setBusy('restore');
-            try {
+          onPress: () => {
+            if (
+              !alive.current ||
+              revision.current !== rev ||
+              session.current.identity !== owner
+            )
+              return;
+            operate('restore', async (current, accessToken) => {
               const result = await personalBackupService.restore(
-                token,
-                file,
-                importPassword,
-                selectedRows,
+                accessToken,
+                chosenFile,
+                chosen,
+                chosenPreview.metadata.fileHash,
               );
+              if (!current()) return;
+              invalidate();
+              setFile(null);
               Alert.alert(
                 'Đã khôi phục',
-                `Đã thêm ${result.restored} giao dịch · Bỏ qua ${result.skipped} · Lỗi ${result.failed}.`,
+                'Đã thêm ' +
+                  result.restored +
+                  ' giao dịch · Bỏ qua ' +
+                  result.skipped +
+                  ' · Lỗi ' +
+                  result.failed +
+                  '.',
               );
-              setPreview(null);
-              setSelectedRows([]);
-              setFile(null);
-              setImportPassword('');
-            } catch (error) {
-              Alert.alert(
-                'Chưa khôi phục được',
-                getUserFriendlyErrorMessage(
-                  error,
-                  'Dữ liệu hiện tại chưa bị thay đổi.',
-                ),
-              );
-            } finally {
-              setBusy(null);
-            }
+            });
           },
         },
       ],
@@ -200,12 +242,10 @@ const PersonalBackupScreen = () => {
       >
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
-            <LockKeyhole size={25} color={Colors.primary} />
+            <Download size={25} color={Colors.primary} />
           </View>
           <View style={styles.flex}>
-            <Text style={styles.heroTitle}>
-              Dữ liệu được khóa bằng mật khẩu
-            </Text>
+            <Text style={styles.heroTitle}>Sao lưu dữ liệu cá nhân</Text>
             <Text style={styles.heroText}>
               File chứa ví, danh mục, giao dịch, hashtag và chi tiết món. Số dư
               không được ghi đè khi khôi phục.
@@ -216,24 +256,11 @@ const PersonalBackupScreen = () => {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Tạo file backup</Text>
           <Text style={styles.cardText}>
-            Mật khẩu chỉ dùng để mở file này. Hãy lưu ở nơi an toàn.
+            Lưu file thường, không cần mật khẩu, để nhập lại dữ liệu khi cần.
           </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Mật khẩu từ 8 ký tự"
-            secureTextEntry
-            value={exportPassword}
-            onChangeText={setExportPassword}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Nhập lại mật khẩu"
-            secureTextEntry
-            value={exportConfirm}
-            onChangeText={setExportConfirm}
-          />
           <TouchableOpacity
             style={styles.primaryButton}
+            accessibilityLabel="Tải file backup"
             onPress={exportBackup}
             disabled={Boolean(busy)}
           >
@@ -242,7 +269,7 @@ const PersonalBackupScreen = () => {
             ) : (
               <Download size={19} color="#FFF" />
             )}
-            <Text style={styles.primaryText}>Tải backup mã hóa</Text>
+            <Text style={styles.primaryText}>Tải file backup</Text>
           </TouchableOpacity>
         </View>
 
@@ -253,6 +280,7 @@ const PersonalBackupScreen = () => {
           </Text>
           <TouchableOpacity
             style={styles.secondaryButton}
+            accessibilityLabel="Chọn file backup cá nhân"
             onPress={chooseFile}
             disabled={Boolean(busy)}
           >
@@ -261,20 +289,11 @@ const PersonalBackupScreen = () => {
               {file?.name ?? 'Chọn file .stcn-backup'}
             </Text>
           </TouchableOpacity>
-          <TextInput
-            style={styles.input}
-            placeholder="Mật khẩu của file backup"
-            secureTextEntry
-            value={importPassword}
-            onChangeText={setImportPassword}
-          />
           <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              (!file || importPassword.length < 8) && styles.disabled,
-            ]}
+            style={[styles.primaryButton, !file && styles.disabled]}
+            accessibilityLabel="Xem trước backup cá nhân"
             onPress={previewBackup}
-            disabled={!file || importPassword.length < 8 || Boolean(busy)}
+            disabled={!file || Boolean(busy)}
           >
             {busy === 'preview' ? (
               <ActivityIndicator color="#FFF" />
@@ -301,6 +320,7 @@ const PersonalBackupScreen = () => {
             <View style={styles.selectionActions}>
               <TouchableOpacity
                 style={styles.selectionButton}
+                accessibilityLabel="Chọn dòng backup đang hiện"
                 onPress={selectVisibleReadyRows}
               >
                 <Text style={styles.selectionButtonText}>
@@ -365,6 +385,7 @@ const PersonalBackupScreen = () => {
                 styles.primaryButton,
                 selectedRows.length === 0 && styles.disabled,
               ]}
+              accessibilityLabel="Khôi phục backup đã chọn"
               onPress={restoreSelected}
               disabled={selectedRows.length === 0 || Boolean(busy)}
             >

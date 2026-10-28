@@ -1,0 +1,43 @@
+{
+  "server": "http://127.0.0.1:3301",
+  "isolatedQa": true,
+  "userId": 5,
+  "before": {
+    "transactions": 0,
+    "balance": 1000000
+  },
+  "afterPreview": {
+    "transactions": 0,
+    "balance": 1000000
+  },
+  "preview": {
+    "total": 2,
+    "ready": 1,
+    "duplicate": 1,
+    "invalid": 0
+  },
+  "changedFile": 400,
+  "unauthorized": 401,
+  "restore": {
+    "restored": 1,
+    "failed": 0,
+    "skipped": 0,
+    "errors": []
+  },
+  "after": {
+    "transactions": 1,
+    "balance": 921000
+  },
+  "repeat": {
+    "total": 2,
+    "ready": 0,
+    "duplicate": 2,
+    "invalid": 0
+  },
+  "export": {
+    "status": 201,
+    "readableJSON": true,
+    "transactions": 1
+  },
+  "productionTouched": false
+}

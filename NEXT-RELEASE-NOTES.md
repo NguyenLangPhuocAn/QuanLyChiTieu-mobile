@@ -1,6 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
 
+## Sao lưu file thường — 28/10/2026 (C2a)
+
+- Theo yêu cầu mới: bỏ mã hóa và toàn bộ ô mật khẩu ở Backup cá nhân và sao lưu lịch hóa đơn. File mới là JSON thường. Không còn tạo hoặc mở backup mã hóa cũ.
+- Lịch hóa đơn: lưu/chọn file Android, xem trước số lịch/kỳ, xác nhận thay toàn bộ lịch local. Hoạt động không cần API/mạng; giữ kỳ liên kết/bỏ qua, lựa chọn gợi ý/cảnh báo. Kiểm tra tài khoản/máy chủ khai trong file, dữ liệu local/file đổi sau xem trước và phiên bị hủy. Tắt nhắc từng lịch sau khôi phục, không ghi giao dịch hoặc đổi số dư. Đây là file người dùng sửa được, không phải xác thực tính toàn vẹn bằng mã hóa.
+- Backup giao dịch: xuất file JSON, xem trước/chọn/xác nhận dòng cần nhập; chặn trùng trong file và dữ liệu đang có. Kiểm tra lại checksum file trước ghi, giữ idempotency. Sửa lỗi ngày ISO trong backup không khớp ngày lịch YYYY-MM-DD mà luồng giao dịch yêu cầu; chống trùng theo ngày lịch. Chỉ nhập thu/chi thường vào ví/danh mục đã có; ảnh, chuyển ví, tiết kiệm và vay/nợ chưa phục hồi bằng luồng này. Cần API mới, chưa deploy.
+- Kiểm thử: mobile135/135 qua16bộ, backend24/24 qua2bộ, Metro4/4; TypeScript và ESLint file đổi đạt. Android local com.mobile.dev lưu/đọc file lịch3lịch/2kỳ, Hủy rồi xác nhận khôi phục; nhắc tắt. API3301/MySQL QA5: preview không ghi tiền, nhập1khoản79.000đ, ví1.000.000→921.000đ; xem lại không còn dòng hợp lệ, nhập lại bị chặn.
+- Chưa phát hành APK, cập nhật web hoặc thay server ổn định. C2 còn đồng bộ tự động và nối lịch tiền/chi an toàn; P3 vẫn đang làm. Máy thật/OEM/4G chưa nghiệm thu. Biên bản mobile/qa/BILL-BOOK-BACKUP.md.
+
 ## Cảnh báo khoản định kỳ và tổng 30 ngày — source 28/10/2026
 
 - Hóa đơn định kỳ → Kiểm tra: xem khoản tăng ít nhất 10% so với trung vị ba kỳ ổn định, vượt mức dự kiến; xem khoản có thể ghi lặp (khác ID, cùng kỳ/tiền tệ/tiền, tối đa ba ngày). Có giao dịch nguồn và giải thích, không tự xóa/gộp hoặc ghi tiền.

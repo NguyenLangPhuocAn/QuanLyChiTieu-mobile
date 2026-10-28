@@ -1,0 +1,1 @@
+{"fixture":"bill-book-backup-2026-10-28","login":201,"export":201,"preview":201,"bills":3,"periods":2,"wrongPassword":400,"unauthorized":401,"tampered":400,"wrongAccount":400,"largeBookBytes":159976,"largePreview":201,"ciphertextContainsPlaintext":false,"noFinancialOrBillDatabaseWrites":true}

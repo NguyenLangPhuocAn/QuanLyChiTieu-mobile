@@ -38,9 +38,7 @@ const corrupt = () =>
   new Error(
     'Dữ liệu hóa đơn trên máy chưa đọc được. Giữ nguyên dữ liệu; hãy thử lại hoặc liên hệ hỗ trợ.',
   );
-const read = async (key: string): Promise<BillBook> => {
-  const raw = await AsyncStorage.getItem(key);
-  if (raw === null) return empty();
+export const parseBillBook = (raw: string): BillBook => {
   try {
     const value = JSON.parse(raw) as BillBook;
     if (
@@ -124,6 +122,10 @@ const read = async (key: string): Promise<BillBook> => {
     throw corrupt();
   }
 };
+const read = async (key: string): Promise<BillBook> => {
+  const raw = await AsyncStorage.getItem(key);
+  return raw === null ? empty() : parseBillBook(raw);
+};
 const mutate = <T>(
   scope: BillScope,
   change: (book: BillBook) => T,
@@ -164,6 +166,28 @@ const identity = (input: BillInput) =>
   }`;
 
 export const recurringBillsService = {
+  restoreBackup(
+    scope: BillScope,
+    expected: string,
+    imported: string,
+    isCurrent: () => boolean,
+  ) {
+    const validated = parseBillBook(imported);
+    return mutate(scope, book => {
+      if (!isCurrent())
+        throw new Error('Phiên khôi phục đã đóng. Hãy xem trước lại.');
+      if (JSON.stringify(book) !== expected)
+        throw new Error(
+          'Lịch trên máy đã thay đổi. Hãy xem trước lại trước khi khôi phục.',
+        );
+      // Keep account-local global preferences; restored schedules require deliberate re-enabling.
+      for (const bill of validated.bills) bill.reminderEnabled = false;
+      book.bills = validated.bills;
+      book.periods = validated.periods;
+      book.suggestions = validated.suggestions;
+      book.reviewedAlerts = validated.reviewedAlerts;
+    });
+  },
   subscribe(listener: (scope: BillScope) => void) {
     listeners.add(listener);
     return () => {

@@ -24,6 +24,7 @@ import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
 import BillSuggestions from '../../components/BillSuggestions';
 import BillUpcomingSummary from '../../components/BillUpcomingSummary';
+import BillBookBackup from '../../components/BillBookBackup';
 import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
@@ -514,6 +515,9 @@ function RecurringBillsContent({
           <>
             {!editor && !reminderFilter ? (
               <BillReminderSettings scope={scope} book={book} />
+            ) : null}
+            {!editor && !reminderFilter ? (
+              <BillBookBackup scope={scope} onRestored={load} />
             ) : null}
             {reminderFilter ? (
               <View style={styles.card}>

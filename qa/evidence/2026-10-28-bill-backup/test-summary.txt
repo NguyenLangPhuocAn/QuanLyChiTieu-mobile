@@ -1,0 +1,33 @@
+Mobile full regression:
+
+Test Suites: 18 passed, 18 total
+Tests:       143 passed, 143 total
+Snapshots:   0 total
+Time:        59.217 s
+Ran all test suites matching /__tests__\\billBookBackup.test.ts|__tests__\\BillBookBackupFlow.test.tsx|__tests__\\billActivity.test.ts|__tests__\\BillActivityFlow.test.tsx|__tests__\\billPaymentChecks.test.ts|__tests__\\BillPaymentReviewFlow.test.tsx|__tests__\\recurringBills.test.ts|__tests__\\RecurringBillsScreen.test.tsx|__tests__\\BillSuggestionsFlow.test.tsx|__tests__\\billSuggestions.test.ts|__tests__\\billSuggestionHistory.test.ts|__tests__\\billReminderSession.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\BillReminderSettings.test.tsx|__tests__\\App.test.tsx|__tests__\\AuthContext.test.tsx|src\\services\\__tests__\\financialPlanning.test.ts|src\\services\\personalBackup.spec.ts/i.
+
+Metadata test rerun:
+
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        6.792 s
+Ran all test suites matching /__tests__\\billBookBackup.test.ts/i.
+
+Backend full regression:
+
+Test Suites: 6 passed, 6 total
+Tests:       33 passed, 33 total
+Snapshots:   0 total
+Time:        19.797 s, estimated 65 s
+Ran all test suites matching src/personal-backup/bill-book-backup.spec.ts|src/personal-backup/bill-book-backup.body-parser.spec.ts|src/personal-backup/personal-backup.crypto.spec.ts|src/personal-backup/personal-backup.service.spec.ts|src/transactions/payment-links.spec.ts|src/transactions/transactions.service.spec.ts.
+
+Metro QA:
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1233.1201

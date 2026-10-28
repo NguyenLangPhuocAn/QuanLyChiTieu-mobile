@@ -1,0 +1,7 @@
+[Nest] 10668  - 10/28/2026, 6:57:46 PM    WARN [TransactionsService] Transaction saved, but budget notification generation failed.
+
+Test Suites: 2 passed, 2 total
+Tests:       24 passed, 24 total
+Snapshots:   0 total
+Time:        5.115 s
+Ran all test suites matching personal-backup|transactions.service.

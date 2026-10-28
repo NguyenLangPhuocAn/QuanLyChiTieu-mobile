@@ -1,0 +1,16 @@
+{
+  "bill": {
+    "bytes": 1192,
+    "format": "SO_THU_CHI_NOVA_BILL_BOOK",
+    "version": 2,
+    "bills": 3,
+    "periods": 2,
+    "readableUTF8JSON": true
+  },
+  "personal": {
+    "bytes": 3048,
+    "format": "SO_THU_CHI_NOVA_PERSONAL_BACKUP",
+    "transactions": 9,
+    "readableUTF8JSON": true
+  }
+}

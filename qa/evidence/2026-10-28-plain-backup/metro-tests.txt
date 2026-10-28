@@ -1,0 +1,12 @@
+✔ QA backup resolves only its explicit 3301 API module and keeps local config override (11.7844ms)
+✔ QA Metro redirects only the API config to local (10.9957ms)
+✔ production API configuration remains remote (9.0784ms)
+✔ QA bundle download uses the supported plain response without changing other requests (0.9831ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8443.5594

@@ -3,7 +3,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const adb = path.join(process.env.ANDROID_HOME || path.join(os.homedir(), 'AppData/Local/Android/Sdk'), 'platform-tools/adb.exe');
-const call = (...args) => execFileSync(adb, ['-s', 'emulator-5554', ...args], { encoding: 'utf8', windowsHide: true });
+const call = (...args) => execFileSync(adb, ['-s', 'emulator-5554', ...args], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
 const evidenceSet = process.env.NOVA_QA_EVIDENCE_SET || '2026-10-26-recurring';
 if (!/^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$/.test(evidenceSet)) throw new Error('Invalid QA evidence folder name.');
 const output = path.join(__dirname, 'evidence', evidenceSet);
@@ -11,7 +11,7 @@ fs.mkdirSync(output, { recursive: true });
 const [action, ...args] = process.argv.slice(2);
 if (action !== 'screen') {
   const focus = call('shell', 'dumpsys', 'window').split('\n').filter(line => /mCurrentFocus=/.test(line)).join('\n');
-  if (!/com\.mobile\.dev|permissioncontroller|NotificationShade|com\.android\.systemui/.test(focus))
+  if (!/com\.mobile\.dev|permissioncontroller|NotificationShade|com\.android\.systemui|com\.(?:google\.android|android)\.documentsui/.test(focus))
     throw new Error('QA app/system dialog is not focused; inspect a new screenshot before acting.');
 }
 const attributes = xml => [...xml.matchAll(/<node\s+([^>]+)>?/g)].map(node => Object.fromEntries([...node[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])));
