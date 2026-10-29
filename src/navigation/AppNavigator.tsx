@@ -78,6 +78,8 @@ export type RootStackParamList = {
         editTransaction?: TransactionItem;
         widgetType?: 'INCOME' | 'EXPENSE';
         widgetEvent?: string;
+        widgetAction?: 'FORM' | 'VOICE' | 'CAMERA';
+        widgetCategoryId?: number;
       }
     | undefined;
   Wallets:

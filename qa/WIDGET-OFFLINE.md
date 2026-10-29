@@ -1,10 +1,16 @@
 # Widget và ngoại tuyến — 29/10/2026
 
+## Bổ sung widget29/10 đợt2
+
+Chọn Thu/Chi ngay trên widget, bấm tên danh mục để chọn từ danh sách đã tải; mỗi loại nhớ lựa chọn riêng. Bấm Thêm giao dịch để mở form, mic để nghe/xem trước hoặc camera để chụp/quét. Tất cả vẫn cần kiểm tra và bấm Lưu. Ảnh quét không tự đính kèm; muốn lưu ảnh thì bấm Thêm ảnh hóa đơn thủ công. Snapshot native nay có ID/tên/loại danh mục để chọn, không có token, ghi chú hoặc tên/số dư ví. Native chooser không gọi API, không ghi tiền.
+
+Biên bản mới: evidence/2026-10-29-widget-input/README.md. Các kết quả widget hai nút phía dưới là mốc ban đầu trước mở rộng. Phần offline/auth/sync vẫn giữ nguyên.
+
 ## Luồng sử dụng
 
 Đăng nhập online một lần và tải ví/danh mục. Sau đó mất mạng vẫn mở được hồ sơ trên máy và ghi thu/chi thường vào hàng chờ. Không phải đăng nhập mới bằng mật khẩu offline và không cấp quyền API bằng hồ sơ local. Khi có mạng/app mở lại, xác thực server rồi POST cùng client_request_id (hoặc source_ref ngân hàng), server idempotency xử lý trùng và cập nhật DB/số dư; chỉ sau xác nhận mới xóa bản nháp.
 
-Android: Tài khoản → Dữ liệu và xuất nhập → Thêm widget Nova. Hoặc nhấn giữ launcher → Widget → Nova · Thu chi nhanh. Thu/Chi mở form, không tự ghi tiền; form có ví mặc định để kiểm tra/chọn lại, khi đang có form chưa lưu sẽ giữ form cũ và báo. Widget hiển thị thu/chi thường của hôm nay trong dữ liệu đã tải, theo tiền tệ tài khoản, không phải số dư ngân hàng. Bấm Hiện tiền để bỏ che; đăng xuất/đổi tài khoản xóa dữ liệu hiển thị của widget. Snapshot quá ngày báo chưa cập nhật.
+Android: Tài khoản → Dữ liệu và xuất nhập → Thêm widget Nova. Hoặc nhấn giữ launcher → Widget → Nova · Thu chi nhanh. Thêm giao dịch mở form; không tự ghi tiền. Form có ví mặc định để kiểm tra/chọn lại, khi đang có form chưa lưu sẽ giữ form cũ và báo. Widget hiển thị thu/chi thường của hôm nay trong dữ liệu đã tải, theo tiền tệ tài khoản, không phải số dư ngân hàng. Bấm Hiện tiền để bỏ che; đăng xuất/đổi tài khoản xóa dữ liệu hiển thị của widget. Snapshot quá ngày báo chưa cập nhật.
 
 ## Quy tắc dữ liệu
 
@@ -16,7 +22,7 @@ Android: Tài khoản → Dữ liệu và xuất nhập → Thêm widget Nova. H
 
 ## Thiết kế native
 
-RemoteViews/AppWidgetProvider và PendingIntent bất biến, chỉ mở MainActivity tường minh. Snapshot native chỉ có tổng tiền và số chờ, không chứa token/tên/ghi chú. Widget xử lý toggle khi appJS không chạy; nhận mạng từ ConnectivityManager, không polling. Scope/account xác thực trước khi chuyển URL sang form; URL không mang số tiền hoặc wallet.
+RemoteViews/AppWidgetProvider và PendingIntent bất biến, chỉ mở activity tường minh. Snapshot native có tổng tiền, số chờ và ID/tên/loại danh mục; không chứa JWT, ghi chú hoặc tên/số dư ví. Widget xử lý toggle/chọn danh mục khi appJS không chạy; nhận mạng từ ConnectivityManager, không polling. Liên kết được kiểm tra scope/account và mã riêng của widget trong native trước khi chuyển sang form/mic/camera; URL không mang số tiền hoặc wallet. Mã riêng không được đưa vào log/bằng chứng.
 
 Nguồn kỹ thuật: [Android app widgets](https://developer.android.com/develop/ui/views/appwidgets), [cập nhật widget](https://developer.android.com/develop/ui/views/appwidgets/advanced). Tham khảo chức năng nhập nhanh từ [Money Lover](https://moneylover.zendesk.com/hc/en-us/sections/34632713589401-New-features); giao diện dùng theme Nova hiện có.
 

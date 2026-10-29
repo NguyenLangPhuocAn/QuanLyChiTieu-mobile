@@ -1,5 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Widget chọn danh mục, mic và camera — 29/10/2026, đợt2
+
+- Widget2hàng có Thu/Chi, danh mục theo loại từ dữ liệu đã tải, nút Thêm giao dịch, mic và camera. Nhớ danh mục riêng theo widget/loại; đổi tài khoản/backend xóa lựa chọn. Bộ chọn chạy native, chọn xong trở lại launcher. Form kiểm tra danh mục theo dữ liệu hiện có; không truyền số tiền hay ví từ widget, không tự ghi tiền.
+- Mic mở phần nghe/xem trước ngay trong form, có sửa câu và Hủy. Khi điền, giữ danh mục widget nếu còn phù hợp với loại Thu/Chi; vẫn cần người dùng chọn/kiểm tra ví rồi Lưu. Chưa nghiệm thu nghe tiếng Việt thật trên điện thoại.
+- Kiểm tra nguồn liên kết bằng mã ngẫu nhiên riêng của widget ở native trước khi chuyển sang form/mic/camera. Đổi tài khoản/backend hoặc xóa widget vô hiệu mã cũ; không dựa vào userId/backend có thể đoán để mở phần cứng. Không đưa mã riêng này vào nhật ký hoặc bằng chứng.
+- Camera mở chụp ảnh rồi gọi OCR hiện có. Ảnh quét chỉ phục vụ trích xuất, không tự đi vào ảnh đính kèm ở luồng thêm giao dịch/widget/chatbot. Tên món/tổng tiền vẫn có thể điền vào form để kiểm tra. Thêm ảnh thủ công và ảnh đã chủ động đính kèm giữ riêng; quét không tự thay ảnh này. Giữ danh mục widget trước gợi ý OCR khác loại.
+- Kiểm thử cuối: mobile76/76 qua8bộ (8ca bổ sung), TypeScript/ESLint đạt; debug QA install/test thành công2m53s, JVM11/11 planner hiện có. Android13 local: chọn2loại/danh mục, nhớ lựa chọn qua reboot, form Lương QA đúng Khoản thu; mic xin quyền và nhánh từ chối/nhập câu mẫu25k giữ Đi lại QA; camera emulated chụp/Done/trả về, OCR báo lỗi vì QA không có khóa; panel ảnh vẫn trống, thêm ảnh thủ công vẫn có lựa chọn. QA7 vẫn0giao dịch/ví1triệu, fixture trước không đổi.
+- Không gọi Gemini thật hoặc nghiệm thu nhận dạng giọng nói thật, không coi OCR mock là đọc hóa đơn thật. Có lỗi SystemUI của emulator và một lượt test timeout5s; reboot emulator, cuối cùng chạy lại với timeout30s mỗi test đạt76/76. Chưa phát hành APK/web, không deploy hoặc đổi server ổn định. Bằng chứng: mobile/qa/evidence/2026-10-29-widget-input/README.md. C2b lịch tiền/chi an toàn và đồng bộ lịch giữa thiết bị vẫn còn.
+
 ## Widget và giao dịch ngoại tuyến — source 29/10/2026
 
 - Thêm widget Android Nova · Thu chi nhanh ở màn hình chính ngoài app: hai nút Chi/Thu mở form để người dùng chọn ví, nhập tiền và xác nhận. Mặc định che số tiền, có Hiện/Ẩn. Widget chỉ phản chiếu dữ liệu đã tải theo tiền tệ, không cộng số tiền của bản nháp vào số đã xác nhận; chuyển ngày khi chưa có dữ liệu mới báo chưa cập nhật.

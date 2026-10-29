@@ -1,0 +1,29 @@
+FAIL __tests__/MainScreenDrafts.test.tsx (97.579 s)
+  ● previews speech then fills a draft without saving or choosing a wallet
+
+    thrown: "Exceeded timeout of 5000 ms for a hook.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      183 |       node.findAllByType(Text).some(text => text.props.children === label),
+      184 |     )!;
+    > 185 | beforeEach(async () => {
+          | ^
+      186 |   mockSpeechEvents = {};
+      187 |   mockUser = null;
+      188 |   jest.useFakeTimers();
+
+      at Object.beforeEach (__tests__/MainScreenDrafts.test.tsx:185:1)
+
+PASS __tests__/App.test.tsx (23.563 s)
+PASS __tests__/AuthContext.test.tsx
+PASS __tests__/api.test.ts
+PASS __tests__/OfflineSessionSync.test.tsx
+PASS __tests__/widget.test.ts
+PASS src/services/__tests__/offlineTransactionQueue.test.ts
+PASS __tests__/billReminderLinking.test.ts
+
+Test Suites: 1 failed, 7 passed, 8 total
+Tests:       1 failed, 72 passed, 73 total
+Snapshots:   0 total
+Time:        128.129 s
+Ran all test suites matching /__tests__\\AuthContext.test.tsx|__tests__\\OfflineSessionSync.test.tsx|__tests__\\api.test.ts|__tests__\\widget.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\MainScreenDrafts.test.tsx|__tests__\\App.test.tsx|src\\services\\__tests__\\offlineTransactionQueue.test.ts/i.

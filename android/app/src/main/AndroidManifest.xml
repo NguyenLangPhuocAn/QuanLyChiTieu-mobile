@@ -87,5 +87,6 @@
         <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
         <meta-data android:name="android.appwidget.provider" android:resource="@xml/nova_home_widget_info" />
       </receiver>
+      <activity android:name=".widgets.NovaWidgetCategoryActivity" android:exported="false" android:theme="@style/WidgetCategoryTheme" android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true" />
     </application>
 </manifest>

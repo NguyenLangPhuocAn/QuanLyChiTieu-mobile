@@ -1,0 +1,14 @@
+PASS __tests__/MainScreenDrafts.test.tsx (39.735 s)
+PASS __tests__/App.test.tsx (29.596 s)
+PASS __tests__/AuthContext.test.tsx
+PASS src/services/__tests__/offlineTransactionQueue.test.ts
+PASS __tests__/api.test.ts
+PASS __tests__/OfflineSessionSync.test.tsx
+PASS __tests__/widget.test.ts
+PASS __tests__/billReminderLinking.test.ts
+
+Test Suites: 8 passed, 8 total
+Tests:       76 passed, 76 total
+Snapshots:   0 total
+Time:        72.506 s
+Ran all test suites matching /__tests__\\AuthContext.test.tsx|__tests__\\OfflineSessionSync.test.tsx|__tests__\\api.test.ts|__tests__\\widget.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\MainScreenDrafts.test.tsx|__tests__\\App.test.tsx|src\\services\\__tests__\\offlineTransactionQueue.test.ts/i.

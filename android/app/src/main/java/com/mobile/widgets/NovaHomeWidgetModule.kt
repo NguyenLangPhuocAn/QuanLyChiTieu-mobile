@@ -10,6 +10,9 @@ import android.os.Build
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
+import org.json.JSONArray
+import android.net.Uri
+import java.security.MessageDigest
 
 class NovaHomeWidgetModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -42,10 +45,20 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
       val p = NovaWidgetProvider.prefs(context)
       if (scope == p.getString("scope", null)) {
         val value = JSONObject(json)
-        // Deliberately mirror only display summaries. Never tokens, notes or names.
+        // Display totals and category choices only, never tokens, notes or wallet names.
+        val categories = JSONArray()
+        val input = value.optJSONArray("categories") ?: JSONArray()
+        for (i in 0 until input.length()) {
+          val category = input.optJSONObject(i) ?: continue
+          val id = category.optLong("id")
+          val name = category.optString("name").trim().take(80)
+          val type = category.optString("type")
+          if (id > 0 && name.isNotEmpty() && type in listOf("EXPENSE", "INCOME"))
+            categories.put(JSONObject().put("id", id).put("name", name).put("type", type))
+        }
         val safe = JSONObject().put("day", value.getString("day")).put("expense", value.getString("expense").take(80))
           .put("income", value.getString("income").take(80)).put("pending", value.getInt("pending"))
-          .put("hasData", value.optBoolean("hasData"))
+          .put("hasData", value.optBoolean("hasData")).put("categories", categories)
         p.edit().putString("snapshot", safe.toString()).commit(); NovaWidgetProvider.render(context)
       }
       promise.resolve(null)
@@ -55,5 +68,20 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
     val manager = AppWidgetManager.getInstance(context)
     promise.resolve(Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported &&
       manager.requestPinAppWidget(ComponentName(context,NovaWidgetProvider::class.java),null,null))
+  }
+  @ReactMethod fun validateLink(scope: String, url: String, promise: Promise) {
+    val valid = runCatching {
+      val uri = Uri.parse(url)
+      val p = NovaWidgetProvider.prefs(context)
+      val id = uri.getQueryParameter("widget")?.toIntOrNull() ?: -1
+      val expected = p.getString("link_nonce_$id", null)
+      val received = uri.getQueryParameter("nonce")
+      val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
+      uri.scheme == "quanlychitieu" && uri.host == "quick-entry" && id in ids &&
+        scope == p.getString("scope", null) && scope == uri.getQueryParameter("scope") &&
+        expected != null && received != null &&
+        MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), received.toByteArray(Charsets.UTF_8))
+    }.getOrDefault(false)
+    promise.resolve(valid)
   }
 }

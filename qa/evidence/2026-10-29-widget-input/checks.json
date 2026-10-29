@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-29",
+  "jest": {
+    "passed": 76,
+    "suites": 8,
+    "testTimeoutMs": 30000
+  },
+  "typescriptExit": 0,
+  "eslintChangedFilesExit": 0,
+  "nativeExistingPlanner": {
+    "tests": 11,
+    "failures": 0,
+    "errors": 0
+  },
+  "realMicrophoneRecognitionTested": false,
+  "realGeminiTested": false,
+  "productionRelease": false
+}

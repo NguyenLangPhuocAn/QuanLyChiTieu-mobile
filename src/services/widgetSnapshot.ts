@@ -34,6 +34,16 @@ export const buildWidgetSnapshot = (
     pending,
     updatedAt: data?.updatedAt ?? null,
     currency,
+    categories: (data?.categories ?? [])
+      .filter(
+        c =>
+          Number.isSafeInteger(c.id) &&
+          c.id > 0 &&
+          c.name.trim() &&
+          ['EXPENSE', 'INCOME'].includes(c.type) &&
+          (!c.cash_flow_group || c.cash_flow_group === 'NORMAL'),
+      )
+      .map(c => ({ id: c.id, name: c.name.trim().slice(0, 80), type: c.type })),
     hasData:
       !!data && new Date(data.updatedAt).toDateString() === now.toDateString(),
   };

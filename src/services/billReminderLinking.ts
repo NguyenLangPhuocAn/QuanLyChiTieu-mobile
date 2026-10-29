@@ -4,6 +4,8 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import type { BillScope } from './recurringBills';
 import { billReminder } from '../native/billReminder';
 import { widgetLink } from './widgetLinking';
+import { widgetScope } from './widgetSnapshot';
+import { homeWidget } from '../native/homeWidget';
 
 export const createBillReminderLinking = (
   scope: BillScope,
@@ -16,7 +18,12 @@ export const createBillReminderLinking = (
   async getInitialURL() {
     const url = await Linking.getInitialURL();
     const quick = url ? widgetLink(scope, url) : null;
-    if (quick) return quick;
+    if (quick)
+      return (await homeWidget
+        .validateLink(widgetScope(scope), url!)
+        .catch(() => false))
+        ? quick
+        : null;
     return url && billReminder.isSupported
       ? billReminder.validatedLink(scope, url).catch(() => null)
       : null;
@@ -26,7 +33,12 @@ export const createBillReminderLinking = (
     const subscription = Linking.addEventListener('url', ({ url }) => {
       const quick = widgetLink(scope, url);
       if (quick) {
-        if (active) listener(quick);
+        homeWidget
+          .validateLink(widgetScope(scope), url)
+          .then(valid => {
+            if (active && valid) listener(quick);
+          })
+          .catch(() => undefined);
         return;
       }
       if (!billReminder.isSupported) return;

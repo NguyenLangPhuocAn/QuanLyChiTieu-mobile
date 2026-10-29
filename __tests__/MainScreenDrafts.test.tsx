@@ -3,7 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { Alert, Text, TextInput, TouchableOpacity } from 'react-native';
 import MainScreen from '../src/screens/home/MainScreen';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
@@ -36,6 +36,7 @@ jest.mock('../src/services/bankNotificationExtraction', () => ({
 }));
 
 let mockUser: { id: number; currency_default: string } | null = null;
+const mockSetParams = jest.fn();
 let mockShake: () => void;
 let mockSpeechEvents: Record<string, (event?: any) => void> = {};
 jest.mock('rn-speech-recognition', () => ({
@@ -54,7 +55,7 @@ jest.mock('rn-speech-recognition', () => ({
 }));
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: jest.fn() }),
+  useNavigation: () => ({ navigate: jest.fn(), setParams: mockSetParams }),
   useFocusEffect: () => undefined,
   useIsFocused: () => true,
 }));
@@ -63,7 +64,10 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/context/FinanceContext', () => {
   const stable = {
-    categories: [{ id: 4, name: 'Ăn uống', type: 'EXPENSE' }],
+    categories: [
+      { id: 4, name: 'Ăn uống', type: 'EXPENSE' },
+      { id: 5, name: 'Lương', type: 'INCOME' },
+    ],
     tags: [],
     transactions: [],
     budgets: [],
@@ -118,6 +122,7 @@ jest.mock('../src/services/transactions', () => ({
     getAll: jest.fn().mockResolvedValue([]),
     analyzeReceipt: jest.fn(),
     create: jest.fn(),
+    uploadReceipt: jest.fn(),
   },
 }));
 jest.mock('../src/services/categories', () => ({
@@ -956,6 +961,154 @@ it('allows manually entering receipt items and updates their total', async () =>
       .some(node => node.props.children === formatCurrency(12000, 'VND')),
   ).toBe(true);
 });
+
+it('uses the widget category only when it belongs to the chosen income or expense type', async () => {
+  await act(async () =>
+    tree.update(
+      <MainScreen
+        route={
+          {
+            params: {
+              widgetType: 'INCOME',
+              widgetCategoryId: 5,
+              widgetEvent: 'income',
+            },
+          } as any
+        }
+      />,
+    ),
+  );
+  expect(
+    tree.root.findAllByType(Text).some(node => node.props.children === 'Lương'),
+  ).toBe(true);
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Khoản thu'),
+  ).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Đóng bản nháp giao dịch' })
+      .props.onPress(),
+  );
+  await act(async () =>
+    tree.update(
+      <MainScreen
+        route={
+          {
+            params: {
+              widgetType: 'INCOME',
+              widgetCategoryId: 4,
+              widgetEvent: 'stale',
+            },
+          } as any
+        }
+      />,
+    ),
+  );
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => ['Lương', 'Ăn uống'].includes(node.props.children)),
+  ).toBe(false);
+});
+
+it('starts voice from the widget once and keeps speech as an unsaved preview', async () => {
+  await act(async () =>
+    tree.update(
+      <MainScreen
+        route={
+          {
+            params: {
+              widgetType: 'EXPENSE',
+              widgetCategoryId: 4,
+              widgetEvent: 'voice',
+              widgetAction: 'VOICE',
+            },
+          } as any
+        }
+      />,
+    ),
+  );
+  const speech = require('rn-speech-recognition').RNSpeechRecognitionModule;
+  expect(speech.start).toHaveBeenCalledTimes(1);
+  expect(
+    tree.root.findByProps({
+      accessibilityLabel: 'Điền câu đã nghe vào giao dịch',
+    }),
+  ).toBeTruthy();
+  await act(async () => {
+    mockSpeechEvents.result({
+      results: [{ transcript: 'Chi 25 nghìn đi ăn hôm nay' }],
+    });
+    mockSpeechEvents.end();
+  });
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Điền câu đã nghe vào giao dịch' })
+      .props.onPress(),
+  );
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Ăn uống'),
+  ).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['EXPENSE', 4],
+  ['INCOME', 5],
+] as const)(
+  'keeps widget %s/category while scanning without attaching or uploading the photo',
+  async (type, categoryId) => {
+    (launchCamera as jest.Mock).mockResolvedValue({
+      assets: [{ uri: 'file:///widget-camera.jpg', type: 'image/jpeg' }],
+    });
+    (transactionsService.analyzeReceipt as jest.Mock).mockResolvedValue({
+      amount: 12000,
+      currency: 'VND',
+      note: 'Cà phê',
+      receipt_items: [{ name: 'Cà phê', amount: 12000 }],
+      warnings: [],
+      suggested_category: { id: 4 },
+    });
+    (transactionsService.create as jest.Mock).mockResolvedValue({ id: 20 });
+    await act(async () =>
+      tree.update(
+        <MainScreen
+          route={
+            {
+              params: {
+                widgetType: type,
+                widgetCategoryId: categoryId,
+                widgetEvent: 'camera',
+                widgetAction: 'CAMERA',
+              },
+            } as any
+          }
+        />,
+      ),
+    );
+    expect(launchCamera).toHaveBeenCalledTimes(1);
+    expect(transactionsService.analyzeReceipt).toHaveBeenCalledTimes(1);
+    expect(amount()).toBe('12.000');
+    expect(button('Đổi ảnh')).toBeUndefined();
+    expect(transactionsService.create).not.toHaveBeenCalled();
+    await act(async () => button('Lưu giao dịch').props.onPress());
+    expect(transactionsService.create).toHaveBeenCalledWith(
+      'test-token',
+      expect.objectContaining({
+        type,
+        category_id: categoryId,
+        amount: '12000',
+        receipt_items: [{ name: 'Cà phê', amount: 12000 }],
+      }),
+    );
+    expect(transactionsService.uploadReceipt).not.toHaveBeenCalled();
+  },
+);
 
 it('shows selectable hashtags even without recent tag history', async () => {
   await act(async () => {

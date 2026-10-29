@@ -11,7 +11,7 @@ fs.mkdirSync(output, { recursive: true });
 const [action, ...args] = process.argv.slice(2);
 if (action !== 'screen') {
   const focus = call('shell', 'dumpsys', 'window').split('\n').filter(line => /mCurrentFocus=/.test(line)).join('\n');
-  if (!/com\.mobile\.dev|permissioncontroller|NotificationShade|com\.android\.systemui|com\.(?:google\.android|android)\.documentsui|com\.google\.android\.apps\.nexuslauncher|com\.android\.launcher3/.test(focus))
+  if (!/com\.mobile\.dev|permissioncontroller|NotificationShade|com\.android\.systemui|com\.(?:google\.android|android)\.documentsui|com\.google\.android\.apps\.nexuslauncher|com\.android\.launcher3|com\.android\.camera2/.test(focus))
     throw new Error('QA app/system dialog is not focused; inspect a new screenshot before acting.');
 }
 const attributes = xml => [...xml.matchAll(/<node\s+([^>]+)>?/g)].map(node => Object.fromEntries([...node[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(match => [match[1], match[2]])));

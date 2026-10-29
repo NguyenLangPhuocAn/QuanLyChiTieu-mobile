@@ -219,6 +219,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [widgetAction, setWidgetAction] = useState<'VOICE' | 'CAMERA' | null>(
+    null,
+  );
+  const hasWidgetCategory = useRef(false);
   const [transactionAmount, setTransactionAmount] = useState('');
   const [isChatDraft, setIsChatDraft] = useState(false);
   const [receiptPickerRequested, setReceiptPickerRequested] = useState(false);
@@ -607,7 +611,14 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     const type = route?.params?.widgetType;
     if (!route?.params?.widgetEvent || !type) return;
     if (!normalTransactionCategories.length) return;
-    navigation.setParams({ widgetType: undefined, widgetEvent: undefined });
+    const categoryId = Number(route?.params?.widgetCategoryId);
+    const action = route?.params?.widgetAction;
+    navigation.setParams({
+      widgetType: undefined,
+      widgetEvent: undefined,
+      widgetCategoryId: undefined,
+      widgetAction: undefined,
+    });
     if (isModalVisible) {
       Alert.alert(
         'Đang có giao dịch chưa lưu',
@@ -616,16 +627,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       return;
     }
     resetTransactionForm();
+    setIsChatDraft(true);
     setTransactionEntryType(type);
-    setSelectedTransactionCategory(
-      normalTransactionCategories.find(c => c.type === type) ?? null,
+    hasWidgetCategory.current = normalTransactionCategories.some(
+      c => c.type === type && c.id === categoryId,
     );
+    setSelectedTransactionCategory(
+      normalTransactionCategories.find(
+        c => c.type === type && c.id === categoryId,
+      ) ?? null,
+    );
+    setWidgetAction(action === 'VOICE' || action === 'CAMERA' ? action : null);
     setIsModalVisible(true);
     // Only a new widget event opens a form. Loading categories may complete later.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     route?.params?.widgetEvent,
     route?.params?.widgetType,
+    route?.params?.widgetCategoryId,
+    route?.params?.widgetAction,
     normalTransactionCategories,
   ]);
 
@@ -696,6 +716,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
+    hasWidgetCategory.current = false;
+    setWidgetAction(null);
     latestBank.cancel();
     bankFormVersion.current += 1;
     pendingBankReplacement.current = null;
@@ -800,7 +822,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     if (result.transaction_date) {
       setTransactionDate(parseDateKey(result.transaction_date));
     }
-    if (result.suggested_category) {
+    if (result.suggested_category && !hasWidgetCategory.current) {
       const category = normalTransactionCategories.find(
         item => item.id === result.suggested_category?.id,
       );
@@ -849,10 +871,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         return false;
       }
 
-      if (mode === 'chatbot') {
-        setReceiptFile(file);
-        setIsReceiptDetailsExpanded(true);
-      }
       applyReceiptOcrResult(result);
       if (user?.id) {
         setActiveFinancialDraftId(null);
@@ -896,7 +914,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           : `${getUserFriendlyErrorMessage(
               error,
               'Vui lòng thử ảnh rõ hơn.',
-            )}\nẢnh vẫn được giữ và bạn có thể nhập thông tin giao dịch thủ công.`,
+            )}\nBạn có thể thử lại hoặc nhập thông tin giao dịch thủ công.`,
       );
       return false;
     } finally {
@@ -973,7 +991,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       name: asset.fileName ?? fallbackName,
       type: type || 'image/jpeg',
     };
-    if (mode === 'form') {
+    if (mode === 'form' && !scanWithAi) {
       setReceiptFile(nextFile);
       setIsReceiptDetailsExpanded(true);
     }
@@ -1003,6 +1021,22 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const handlePickReceipt = () => openReceiptPicker('form', false);
+  const widgetActionRef = useRef<(action: 'VOICE' | 'CAMERA') => void>(
+    () => undefined,
+  );
+  widgetActionRef.current = action => {
+    if (action === 'VOICE') {
+      setIsVoiceEntryVisible(true);
+      transactionVoice.toggle('').catch(() => undefined);
+    } else {
+      pickReceipt('camera', 'form', true).catch(() => undefined);
+    }
+  };
+  useEffect(() => {
+    if (!isModalVisible || !widgetAction) return;
+    setWidgetAction(null);
+    widgetActionRef.current(widgetAction);
+  }, [isModalVisible, widgetAction]);
   const handleAnalyzeReceipt = () => {
     if (receiptFile) {
       analyzeReceiptFile(receiptFile).catch(() => undefined);
@@ -1646,7 +1680,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                         chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
                       }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
                   : isChatDraft
-                  ? `Bản nháp từ chatbot${
+                  ? `Bản nháp${
                       chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
                     }. Kiểm tra thông tin rồi bấm Lưu.`
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
@@ -1737,9 +1771,14 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                         setActiveBankNotificationReviewReason(null);
                         setRequiresBankDirectionConfirmation(false);
                         setActiveFinancialDraftId(null);
-                        setIsChatDraft(false);
+                        setIsChatDraft(true);
                         setSelectedWalletId(null);
-                        setSelectedTransactionCategory(null);
+                        setSelectedTransactionCategory(
+                          hasWidgetCategory.current &&
+                            selectedTransactionCategory?.type === next.type
+                            ? selectedTransactionCategory
+                            : null,
+                        );
                         setIsVoiceEntryVisible(false);
                         transactionVoice.cancel();
                       }}
