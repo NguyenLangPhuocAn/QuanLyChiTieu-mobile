@@ -87,6 +87,10 @@
         <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
         <meta-data android:name="android.appwidget.provider" android:resource="@xml/nova_home_widget_info" />
       </receiver>
+      <receiver android:name=".widgets.NovaMiniWidgetProvider" android:label="Nova · Mini 1×1" android:exported="false">
+        <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+        <meta-data android:name="android.appwidget.provider" android:resource="@xml/nova_mini_widget_info" />
+      </receiver>
       <activity android:name=".widgets.NovaWidgetCategoryActivity" android:exported="false" android:theme="@style/WidgetCategoryTheme" android:excludeFromRecents="true" android:taskAffinity="" android:noHistory="true" />
       <activity android:name=".widgets.NovaWidgetEntryActivity" android:exported="false" android:theme="@style/WidgetEntryTheme" android:excludeFromRecents="true" android:taskAffinity="${applicationId}.widget" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" />
     </application>

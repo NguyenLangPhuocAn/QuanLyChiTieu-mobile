@@ -3,7 +3,7 @@ const native = NativeModules.NovaHomeWidget as
   | {
       activate(scope: string | null): Promise<void>;
       update(scope: string, json: string): Promise<void>;
-      requestPin(): Promise<boolean>;
+      requestPin(kind: 'mini' | 'full'): Promise<boolean>;
       isConnected(): Promise<boolean>;
       validateLink(scope: string, url: string): Promise<boolean>;
       closeQuickEntry(result: string): Promise<boolean>;
@@ -17,7 +17,8 @@ export const homeWidget = {
     native?.activate(scope) ?? Promise.resolve(),
   update: (scope: string, data: unknown) =>
     native?.update(scope, JSON.stringify(data)) ?? Promise.resolve(),
-  requestPin: () => native?.requestPin() ?? Promise.resolve(false),
+  requestPin: (kind: 'mini' | 'full' = 'full') =>
+    native?.requestPin(kind) ?? Promise.resolve(false),
   connected: () => native?.isConnected() ?? Promise.resolve(true),
   validateLink: (scope: string, url: string) =>
     native?.validateLink?.(scope, url) ?? Promise.resolve(false),

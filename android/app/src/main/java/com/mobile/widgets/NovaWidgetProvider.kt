@@ -17,7 +17,7 @@ import java.time.LocalDate
 import java.util.UUID
 import java.security.MessageDigest
 
-class NovaWidgetProvider : AppWidgetProvider() {
+open class NovaWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = render(context)
   override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) = render(context)
   override fun onDeleted(context: Context, ids: IntArray) {
@@ -45,6 +45,12 @@ class NovaWidgetProvider : AppWidgetProvider() {
   data class Choice(val id: Long, val name: String)
   companion object {
     fun prefs(context: Context) = context.getSharedPreferences("nova_home_widget_v1", Context.MODE_PRIVATE)
+    // Both variants use the same guarded entry flow, with a nonce per live widget.
+    fun liveWidgetIds(context: Context): IntArray {
+      val manager = AppWidgetManager.getInstance(context)
+      return manager.getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java)) +
+        manager.getAppWidgetIds(ComponentName(context, NovaMiniWidgetProvider::class.java))
+    }
     fun snapshot(context: Context): JSONObject = runCatching {
       JSONObject(prefs(context).getString("snapshot", "{}") ?: "{}")
     }.getOrDefault(JSONObject())
@@ -81,7 +87,7 @@ class NovaWidgetProvider : AppWidgetProvider() {
       val id = uri.getQueryParameter("widget")?.toIntOrNull() ?: -1
       val expected = p.getString("link_nonce_$id", null)
       val received = uri.getQueryParameter("nonce")
-      val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
+      val ids = liveWidgetIds(context)
       uri.scheme == "quanlychitieu" && uri.host == "quick-entry" && id in ids &&
         p.getString("scope", null) != null && p.getString("scope", null) == uri.getQueryParameter("scope") &&
         expected != null && received != null &&
@@ -127,6 +133,13 @@ class NovaWidgetProvider : AppWidgetProvider() {
         for ((viewId, action) in listOf(R.id.widget_add to "FORM", R.id.widget_voice to "VOICE", R.id.widget_camera to "CAMERA")) {
           views.setOnClickPendingIntent(viewId, PendingIntent.getActivity(context, id, entryIntent(context,id,type,action,category?.id), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         }
+        manager.updateAppWidget(id, views)
+      }
+      for (id in manager.getAppWidgetIds(ComponentName(context, NovaMiniWidgetProvider::class.java))) {
+        val views = RemoteViews(context.packageName, R.layout.nova_mini_widget)
+        views.setOnClickPendingIntent(R.id.widget_mini_add, PendingIntent.getActivity(
+          context, id, entryIntent(context, id, "EXPENSE", "FORM", null),
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         manager.updateAppWidget(id, views)
       }
     }

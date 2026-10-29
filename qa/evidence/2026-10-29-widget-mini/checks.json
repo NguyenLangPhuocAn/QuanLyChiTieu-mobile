@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-29",
+  "jest": {
+    "passed": 92,
+    "suites": 12,
+    "newTests": 0
+  },
+  "typescriptExit": 0,
+  "eslintExit": 0,
+  "native": {
+    "initialBuildSeconds": 148,
+    "finalResourceBuildSeconds": 36,
+    "existingPlannerTests": 11,
+    "plannerFailures": 0,
+    "isolatedApp": "com.mobile.dev",
+    "metro": 8081,
+    "qaApi": 3301
+  },
+  "qa8": {
+    "transactions": 0,
+    "balance": 1000000
+  },
+  "productionHealth": 200,
+  "productionRelease": false,
+  "realDeviceTest": false
+}

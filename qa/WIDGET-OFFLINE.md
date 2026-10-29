@@ -1,5 +1,9 @@
 # Widget và ngoại tuyến — 29/10/2026
 
+## Mini 1×1 — đợt 5, 29/10/2026
+
+Nhấn giữ launcher → Widgets → Sổ Thu Chi Nova → Nova · Mini 1×1, hoặc vào Tài khoản → Dữ liệu và xuất nhập → Thêm widget Nova → Mini 1×1. Mini dùng một ô và icon N+, chạm mở khung nhập trên launcher. Có cả lựa chọn bản đầy đủ4×2. Giữ bước chọn ví, kiểm tra/xác nhận; không ghi tiền khi chỉ chạm icon hoặc Hủy. Bản hiện tại mới cài local com.mobile.dev, chưa có trong APK production. Biên bản: evidence/2026-10-29-widget-mini/README.md.
+
 ## Danh mục đầy đủ — đợt 4, 29/10/2026
 
 Bộ chọn panel dùng thẻ/icon cũ, có tìm kiếm và tổng số mục. Danh mục theo tài khoản từ API/cache, không giới hạn ở vài mục thử QA. Để xem bộ mẫu đủ12Chi/5Thu trên local dùng riêng QA8; không chuyển dữ liệu thật vào QA. Bộ chọn native lấy cùng danh sách đã tải. Biên bản: evidence/2026-10-29-widget-categories/README.md.

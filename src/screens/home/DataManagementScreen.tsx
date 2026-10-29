@@ -492,25 +492,32 @@ const DataManagementScreen = () => {
             accessibilityRole="button"
             accessibilityLabel="Thêm widget Nova"
             style={styles.localCard}
-            onPress={async () => {
-              try {
-                if (!(await homeWidget.requestPin()))
+            onPress={() => {
+              const add = async (kind: 'mini' | 'full') => {
+                try {
+                  if (!(await homeWidget.requestPin(kind)))
+                    Alert.alert(
+                      'Thêm widget',
+                      'Nhấn giữ màn hình chính → Widget → Nova, rồi chọn bản Mini hoặc Thu chi nhanh.',
+                    );
+                } catch {
                   Alert.alert(
-                    'Thêm widget',
-                    'Nhấn giữ màn hình chính → Widget → Nova · Thu chi nhanh để thêm.',
+                    'Chưa thêm được widget',
+                    'Thử thêm Nova từ danh sách widget trên màn hình chính.',
                   );
-              } catch {
-                Alert.alert(
-                  'Chưa thêm được widget',
-                  'Thử thêm Nova từ danh sách widget trên màn hình chính.',
-                );
-              }
+                }
+              };
+              Alert.alert('Chọn widget', 'Bạn muốn thêm kiểu nào?', [
+                { text: 'Mini 1×1', onPress: () => add('mini') },
+                { text: 'Bản đầy đủ', onPress: () => add('full') },
+                { text: 'Hủy', style: 'cancel' },
+              ]);
             }}
           >
             <View style={styles.localCopy}>
               <Text style={styles.cardTitle}>Widget màn hình chính</Text>
               <Text style={styles.cardText}>
-                Thêm nhanh khoản chi, khoản thu. Số tiền được che mặc định.
+                Chọn biểu tượng mini 1×1 hoặc bản đầy đủ có thu, chi hôm nay.
               </Text>
               <Text style={styles.cacheMeta}>Thêm widget Nova</Text>
             </View>

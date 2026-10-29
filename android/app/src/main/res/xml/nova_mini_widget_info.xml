@@ -1,0 +1,11 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="48dp"
+    android:minHeight="48dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
+    android:resizeMode="none"
+    android:initialLayout="@layout/nova_mini_widget"
+    android:previewLayout="@layout/nova_mini_widget"
+    android:description="@string/widget_mini_description"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />

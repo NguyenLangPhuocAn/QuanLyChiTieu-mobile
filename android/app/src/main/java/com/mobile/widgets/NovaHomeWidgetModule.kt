@@ -66,10 +66,11 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
       promise.resolve(null)
     } catch (_: Exception) { promise.reject("WIDGET", "Chưa cập nhật được widget.") }
   }
-  @ReactMethod fun requestPin(promise: Promise) {
+  @ReactMethod fun requestPin(kind: String, promise: Promise) {
     val manager = AppWidgetManager.getInstance(context)
     promise.resolve(Build.VERSION.SDK_INT >= 26 && manager.isRequestPinAppWidgetSupported &&
-      manager.requestPinAppWidget(ComponentName(context,NovaWidgetProvider::class.java),null,null))
+      manager.requestPinAppWidget(ComponentName(context,
+        if (kind == "mini") NovaMiniWidgetProvider::class.java else NovaWidgetProvider::class.java),null,null))
   }
   @ReactMethod fun validateLink(scope: String, url: String, promise: Promise) {
     promise.resolve(scope == NovaWidgetProvider.prefs(context).getString("scope", null) && NovaWidgetProvider.validEntry(context, url))

@@ -1,5 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Widget mini 1×1 — 29/10/2026, đợt 5
+
+- Thêm provider riêng Nova · Mini 1×1, icon N+ màu cam, không hiện số tiền. Chạm icon mở NovaWidgetEntryActivity trên launcher, dùng chung form Thu/Chi, danh mục đầy đủ, chọn ví, mic/camera và xem trước/xác nhận; Hủy/Đóng về màn hình chính. Giữ widget Thu chi nhanh 4×2, không giả lập thu gọn bằng cách chiếm ô lớn. Không xin quyền overlay.
+- Trong Dữ liệu và xuất nhập → Thêm widget Nova có lựa chọn Mini hoặc Bản đầy đủ. Bộ kiểm native chỉ nhận ID widget đang tồn tại của hai provider, cùng scope/nonce theo tài khoản. Xóa widget dùng cùng cơ chế xóa lựa chọn/mã riêng; không đưa nonce vào bằng chứng.
+- Kiểm tra Android13 Pixel3a/com.mobile.dev source local: launcher liệt kê1×1 và4×2; thêm mini, chạm mở panel, chuyển Thu/chọn đủ5danh mục, Hủy/Đóng về launcher, mở lại được. Nút trong app gửi đúng yêu cầu ghim từng loại tới launcher. QA8 giữ0giao dịch/ví1triệu, QA7 giữ3/ví1.030.000. Không ghi khoản tiền mới đợt này.
+- Jest92/92 qua12bộ hiện có; TypeScript/ESLint đạt. Build/cài debug QA và JVM11/11 planner đạt2m28s, cập nhật resource cuối/cài lại36s. Không gọi11JVM là test widget mới. Lần mở nguội debug chờ tải bundle Metro; các ảnh chuyển màn/blank không tính là form sẵn sàng. Chưa đo hiệu năng release hoặc thử điện thoại/OEM khác.
+- Đã cập nhật Excel H21/I21, kế hoạch, nhật ký tuần và patch note. Không build/ký/phát hành APK production, cập nhật web, đổi.env hoặc restart backend3000; health200. Còn thử máy thật/mic/OCR AI thật và các đầu việc C2b đã ghi trước. Bằng chứng mobile/qa/evidence/2026-10-29-widget-mini/README.md.
+
+
 ## Danh mục widget theo giao diện cũ — 29/10/2026, đợt 4
 
 - Hai mục QA trước đó thuộc tài khoản thử QA7, không phải danh mục thật bị xóa hoặc giới hạn số lượng trong app. Đổi bộ chọn trong panel từ nút chữ sang thẻ có CategoryIcon gốc, tên, hệ thống/cá nhân và dấu đang chọn như màn Danh mục cũ. Thẻ danh mục đã chọn có icon, Khoản thu/chi và Đổi; ví tách riêng bên dưới.
