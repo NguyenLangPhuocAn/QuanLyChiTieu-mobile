@@ -5,6 +5,7 @@ import {
   type CreateTransactionPayload,
 } from './transactions';
 import { walletsService } from './wallets';
+import { categoriesService } from './categories';
 import {
   offlineTransactionQueue,
   isRetryableOfflineTransactionError,
@@ -19,16 +20,18 @@ export async function refreshWidgetEntryCache(
   current: () => boolean,
 ) {
   const session = captureApiSession();
-  const [data, wallets, page] = await Promise.all([
+  const [data, wallets, page, categories] = await Promise.all([
     dashboardCache.read(userId),
     walletsService.getAll(token),
     transactionsService.getPage(token, { limit: 100, page: 1 }),
+    categoriesService.getAll(token),
   ]);
   if (!current() || !session() || !data) return;
   const ids = new Set(page.data.map(t => t.id));
   await dashboardCache.save(userId, {
     ...data,
     wallets,
+    categories,
     transactions: [
       ...page.data,
       ...data.transactions.filter(t => !ids.has(t.id)),

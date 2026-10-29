@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Danh mục widget theo giao diện cũ — 29/10/2026, đợt 4
+
+- Hai mục QA trước đó thuộc tài khoản thử QA7, không phải danh mục thật bị xóa hoặc giới hạn số lượng trong app. Đổi bộ chọn trong panel từ nút chữ sang thẻ có CategoryIcon gốc, tên, hệ thống/cá nhân và dấu đang chọn như màn Danh mục cũ. Thẻ danh mục đã chọn có icon, Khoản thu/chi và Đổi; ví tách riêng bên dưới.
+- Có tìm kiếm và tổng số danh mục, lấy toàn bộ danh mục thu/chi thường đúng loại từ tài khoản, không cắt còn vài mục. Làm mới API danh mục cùng cache, panel nhận cập nhật mà giữ số tiền đang nhập. Không nhúng danh mục mẫu vào mã chạy ứng dụng.
+- Thêm helper QA catalog riêng: QA8 có12Chi/5Thu bằng icon có sẵn, ví1triệu và0giao dịch. Không đổi/xóa QA7 (giữ3giao dịch/ví1.030.000), không sửa database production. Android local kiểm native đủ12Chi, panel có icon12Chi/5Thu, tìm “hi” ra Bảo hiểm và chọn đúng; không Lưu khoản tiền nào. Để bộ chọn Chi đầy đủ trên emulator cho người dùng xem, vẫn là dữ liệu thử.
+- Jest92/92 qua12bộ (4ca mới), TypeScript/ESLint đạt, node --check helper đạt. Không build/cài lại native vì chỉ đổi JS/QA; dùng com.mobile.dev local/Metro8081/API3301. Không phát hành APK/web/deploy/restart server3000/.env, health200. Bằng chứng mobile/qa/evidence/2026-10-29-widget-categories/README.md. Giới hạn mic/OCR thật/OEM/C2b không đổi.
+
+
 ## Widget nhập ngay trên launcher — 29/10/2026, đợt 3
 
 - Sửa yêu cầu bị hiểu thiếu: Thêm giao dịch/mic/camera mở cửa sổ riêng trên launcher, không đưa người dùng vào Tổng quan. Thu/Chi, danh mục, ví, số tiền/ngày/ghi chú và chi tiết món OCR có thể kiểm tra/sửa; phải chọn ví. Hủy hoặc xác nhận lưu đóng cửa sổ về launcher. Không xin quyền vẽ đè app khác.

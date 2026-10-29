@@ -14,6 +14,8 @@ import { Camera, Mic } from 'lucide-react-native';
 import { launchCamera } from 'react-native-image-picker';
 import { AuthProvider, useAuth } from '../../context/AuthContext';
 import HomeWidgetSession from '../../components/HomeWidgetSession';
+import WidgetCategoryPicker from '../../components/WidgetCategoryPicker';
+import CategoryIcon from '../../components/CategoryIcon';
 import OfflineSessionSync from '../../components/OfflineSessionSync';
 import { homeWidget } from '../../native/homeWidget';
 import { getApiBaseUrl } from '../../services/api';
@@ -160,6 +162,30 @@ function Panel({ entryUrl }: Props) {
     isCurrencySetupRequired,
     user?.must_change_password,
   ]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    const userId = user.id;
+    const refresh = () => {
+      dashboardCache
+        .read(userId)
+        .then(cached => {
+          if (
+            active &&
+            cached &&
+            latest.current.userId === userId &&
+            latest.current.server === server
+          )
+            setData(cached);
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = dashboardCache.subscribe(refresh);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [user?.id, server]);
 
   const scan = async () => {
     if (!token || ocrBusy || saving.current) return;
@@ -351,29 +377,26 @@ function Panel({ entryUrl }: Props) {
             </>
           ) : picker ? (
             <>
-              <Text style={s.label}>
-                {picker === 'wallet'
-                  ? 'Chọn ví'
-                  : type === 'INCOME'
-                  ? 'Danh mục thu'
-                  : 'Danh mục chi'}
-              </Text>
-              {(picker === 'wallet'
-                ? data?.wallets.map(w => ({
-                    id: w.id,
-                    name: `${w.name} · ${w.currency}`,
-                  }))
-                : data?.categories.filter(
-                    c =>
-                      c.type === type &&
-                      (!c.cash_flow_group || c.cash_flow_group === 'NORMAL'),
-                  )
-              )?.map(item =>
-                button(item.name, () => {
-                  if (picker === 'wallet') setWallet(item.id);
-                  else setCategory(item.id);
-                  setPicker(null);
-                }),
+              {picker === 'category' ? (
+                <WidgetCategoryPicker
+                  categories={data?.categories ?? []}
+                  type={type}
+                  selectedId={categoryId}
+                  onSelect={selected => {
+                    setCategory(selected.id);
+                    setPicker(null);
+                  }}
+                />
+              ) : (
+                <>
+                  <Text style={s.label}>Chọn ví</Text>
+                  {data?.wallets.map(w =>
+                    button(`${w.name} · ${w.currency}`, () => {
+                      setWallet(w.id);
+                      setPicker(null);
+                    }),
+                  )}
+                </>
               )}
               {button('Quay lại', () => setPicker(null))}
             </>
@@ -408,20 +431,34 @@ function Panel({ entryUrl }: Props) {
                 style={s.amount}
                 editable={!ocrBusy}
               />
-              <View style={s.row}>
-                {button(
-                  category?.name || 'Chọn danh mục',
-                  () => setPicker('category'),
-                  false,
-                  ocrBusy,
-                )}
-                {button(
-                  wallet ? `${wallet.name} · ${wallet.currency}` : 'Chọn ví',
-                  () => setPicker('wallet'),
-                  false,
-                  ocrBusy,
-                )}
-              </View>
+              <Text style={s.label}>Danh mục</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={category?.name || 'Chọn danh mục'}
+                disabled={ocrBusy}
+                style={s.categoryCard}
+                onPress={() => setPicker('category')}
+              >
+                <View style={s.categoryIcon}>
+                  <CategoryIcon icon={category?.icon} size={24} />
+                </View>
+                <View style={s.categoryCopy}>
+                  <Text style={s.categoryName}>
+                    {category?.name || 'Chọn danh mục'}
+                  </Text>
+                  <Text style={s.muted}>
+                    {type === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
+                  </Text>
+                </View>
+                <Text style={s.buttonText}>Đổi</Text>
+              </TouchableOpacity>
+              <Text style={s.label}>Ví</Text>
+              {button(
+                wallet ? `${wallet.name} · ${wallet.currency}` : 'Chọn ví',
+                () => setPicker('wallet'),
+                false,
+                ocrBusy,
+              )}
               <TextInput
                 accessibilityLabel="Ghi chú widget"
                 placeholder="Ghi chú"
@@ -630,6 +667,26 @@ function WidgetSync() {
   );
 }
 const s = StyleSheet.create({
+  categoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#EBC4A4',
+    borderRadius: 18,
+    backgroundColor: '#FFFDFB',
+  },
+  categoryIcon: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF0E2',
+    borderRadius: 12,
+  },
+  categoryCopy: { flex: 1 },
+  categoryName: { fontWeight: '700', fontSize: 16, color: '#4A2B1A' },
   backdrop: {
     flex: 1,
     justifyContent: 'center',

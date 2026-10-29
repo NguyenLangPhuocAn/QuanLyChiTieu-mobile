@@ -1,5 +1,9 @@
 # Widget và ngoại tuyến — 29/10/2026
 
+## Danh mục đầy đủ — đợt 4, 29/10/2026
+
+Bộ chọn panel dùng thẻ/icon cũ, có tìm kiếm và tổng số mục. Danh mục theo tài khoản từ API/cache, không giới hạn ở vài mục thử QA. Để xem bộ mẫu đủ12Chi/5Thu trên local dùng riêng QA8; không chuyển dữ liệu thật vào QA. Bộ chọn native lấy cùng danh sách đã tải. Biên bản: evidence/2026-10-29-widget-categories/README.md.
+
 ## Cửa sổ nổi trên launcher — đợt 3, 29/10/2026
 
 Nút Thêm giao dịch, mic hoặc camera nay mở khung riêng trên launcher; không mở Tổng quan. Chọn ví, kiểm tra các trường rồi Xác nhận lưu; Hủy/Lưu xong trở về launcher. Thiếu đăng nhập hoặc cache mới cần Mở app để chuẩn bị. Ảnh quét không đính kèm. Các mô tả mở form trong app bên dưới là lịch sử trước đợt sửa này. Bằng chứng mới: evidence/2026-10-29-widget-popup/README.md.

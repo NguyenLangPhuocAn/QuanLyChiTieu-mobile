@@ -39,7 +39,7 @@ jest.mock('../src/native/homeWidget', () => ({
   },
 }));
 jest.mock('../src/services/dashboardCache', () => ({
-  dashboardCache: { read: jest.fn() },
+  dashboardCache: { read: jest.fn(), subscribe: jest.fn(() => jest.fn()) },
 }));
 jest.mock('../src/services/transactions', () => ({
   transactionsService: { analyzeReceipt: jest.fn() },
@@ -156,4 +156,26 @@ it('camera fills editable items and amount but never saves or attaches its photo
   });
   expect(JSON.stringify(payload)).not.toContain('temporary.jpg');
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('PENDING');
+});
+it('updates the complete category cache while keeping the entered amount', async () => {
+  await mount();
+  await fill('Số tiền widget', '25000');
+  jest
+    .mocked(dashboardCache.read)
+    .mockResolvedValue({
+      ...data,
+      categories: [
+        ...data.categories,
+        { id: 35, name: 'Bảo hiểm', type: 'EXPENSE' },
+      ],
+    });
+  await act(async () => {
+    jest.mocked(dashboardCache.subscribe).mock.calls[0][0]();
+  });
+  await press('Đi lại');
+  expect(control('Bảo hiểm')).toBeDefined();
+  await press('Bảo hiểm');
+  expect(control('Số tiền widget').props.value).toBe('25000');
+  expect(control('Bảo hiểm')).toBeDefined();
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
 });

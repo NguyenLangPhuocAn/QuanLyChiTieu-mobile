@@ -10,6 +10,10 @@ import {
   type DashboardCache,
 } from '../src/services/dashboardCache';
 import { walletsService } from '../src/services/wallets';
+import { categoriesService } from '../src/services/categories';
+jest.mock('../src/services/categories', () => ({
+  categoriesService: { getAll: jest.fn() },
+}));
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 jest.mock('../src/services/transactions', () => ({
   transactionsService: { create: jest.fn(), getPage: jest.fn() },
@@ -46,6 +50,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(dashboardCache.read).mockResolvedValue(cache);
   jest.mocked(walletsService.getAll).mockResolvedValue(cache.wallets);
+  jest.mocked(categoriesService.getAll).mockResolvedValue(cache.categories);
 });
 it('requires explicit wallet, correct category, real date and matching OCR currency', () => {
   for (const invalid of [
@@ -127,24 +132,23 @@ it('refreshes widget totals from confirmed server rows after sync, without losin
   jest
     .mocked(dashboardCache.read)
     .mockResolvedValueOnce({ ...cache, transactions: [old, historical] });
-  jest
-    .mocked(transactionsService.getPage)
-    .mockResolvedValueOnce({
-      data: [updated],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+  jest.mocked(transactionsService.getPage).mockResolvedValueOnce({
+    data: [updated],
+    meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  });
   await refreshWidgetEntryCache('token', 7, () => true);
   expect(dashboardCache.save).toHaveBeenCalledWith(
     7,
-    expect.objectContaining({ transactions: [updated, historical] }),
+    expect.objectContaining({
+      transactions: [updated, historical],
+      categories: cache.categories,
+    }),
   );
   jest.mocked(dashboardCache.save).mockClear();
-  jest
-    .mocked(transactionsService.getPage)
-    .mockResolvedValueOnce({
-      data: [updated],
-      meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    });
+  jest.mocked(transactionsService.getPage).mockResolvedValueOnce({
+    data: [updated],
+    meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  });
   await refreshWidgetEntryCache('token', 7, () => false);
   expect(dashboardCache.save).not.toHaveBeenCalled();
 });
