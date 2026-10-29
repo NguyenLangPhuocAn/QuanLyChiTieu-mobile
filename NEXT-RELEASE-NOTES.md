@@ -1,5 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Widget và giao dịch ngoại tuyến — source 29/10/2026
+
+- Thêm widget Android Nova · Thu chi nhanh ở màn hình chính ngoài app: hai nút Chi/Thu mở form để người dùng chọn ví, nhập tiền và xác nhận. Mặc định che số tiền, có Hiện/Ẩn. Widget chỉ phản chiếu dữ liệu đã tải theo tiền tệ, không cộng số tiền của bản nháp vào số đã xác nhận; chuyển ngày khi chưa có dữ liệu mới báo chưa cập nhật.
+- Đăng nhập lần đầu/Google vẫn cần mạng. Sau một lần xác thực, lưu hồ sơ cùng phiên và backend; có thể mở app bằng hồ sơ đã lưu trong khi kiểm tra lại server. Mất mạng giữ chế độ trên máy, không đăng xuất nhầm. Backend/tài khoản khác, phiên bị server từ chối hoặc người dùng đăng xuất không được dùng hồ sơ cũ.
+- Lưu giao dịch thường khi ngoại tuyến tạo bản nháp bền trên máy, chưa đổi số dư. Khi app đang mở và mạng trở lại, hoặc mở app lại, kiểm tra phiên rồi gửi hàng chờ bằng cùng khóa chống trùng. Chỉ xóa bản nháp sau khi server xác nhận. Mạng lỗi/401 dừng lượt gửi và giữ chờ; dữ liệu 400cần kiểm tra. Tách máy chủ, bỏ bản gửi cũ sau đổi tài khoản, không ghi đè hàng chờ hỏng.
+- Bản nháp cũ chưa có thông tin backend phải được người dùng kiểm tra và thử lại; không tự gán sang server hiện tại. Cache cũ thiếu backend được giữ nguyên nhưng cần một lần tải online mới trước khi dùng ngoại tuyến.
+- Giới hạn: chưa đồng bộ khi Android đã force-stop/đóng hẳn app, sẽ tiếp tục ở lần mở sau. Thu/chi thường được xếp hàng; vay/nợ, tạo ví/danh mục, Google, AI/OCR online vẫn cần mạng. Ảnh chưa được giữ để tự upload lại trong hàng chờ; giao dịch có lời nhắc thêm ảnh sau. Widget không tự ghi tiền; form có ví mặc định thông thường để người dùng kiểm tra/chọn lại. C2b lịch tiền/chi an toàn và tự đồng bộ lịch giữa thiết bị vẫn còn.
+
+
 
 ## Sao lưu file thường — 28/10/2026 (C2a)
 

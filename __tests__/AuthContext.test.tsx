@@ -153,8 +153,88 @@ it('keeps a stored session during a server outage and restores it on retry', asy
   expect(await AsyncStorage.getItem('quan_ly_chi_tieu_auth_session')).toBe(
     stored,
   );
-  await act(async () => current.retryRestoreSession());
+  await act(async () => {
+    await current.retryRestoreSession();
+  });
   expect(current.sessionRestoreError).toBeNull();
   expect(current.user?.id).toBe(1);
   expect(current.token).toBe('saved');
+});
+
+const remountStored = async (stored: unknown) => {
+  await act(() => renderer.unmount());
+  await AsyncStorage.setItem(
+    'quan_ly_chi_tieu_auth_session',
+    JSON.stringify(stored),
+  );
+  await act(async () => {
+    renderer = ReactTestRenderer.create(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+  });
+};
+it('opens a verified local profile before a slow/offline API, even if its access token is expired', async () => {
+  let fail!: (error: Error) => void;
+  jest.mocked(authService.getProfile).mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  await remountStored({
+    accessToken: 'saved',
+    refreshToken: 'saved-refresh',
+    accessTokenExpiresAt: 1,
+    user: profile,
+    server: api.getApiBaseUrl(),
+  });
+  expect(current.isAuthenticated).toBe(true);
+  expect(current.isRestoringSession).toBe(false);
+  expect(current.isOfflineSession).toBe(true);
+  await act(async () => fail(new TypeError('Failed to fetch')));
+  expect(current.user?.id).toBe(1);
+  expect(current.sessionRestoreError).toBeNull();
+  await act(async () => {
+    expect(await current.retryRestoreSession()).toBe(true);
+  });
+  expect(current.isOfflineSession).toBe(false);
+});
+it('never reuses another backend profile or restores local access after a confirmed auth rejection', async () => {
+  await remountStored({
+    accessToken: 'saved',
+    refreshToken: 'refresh',
+    accessTokenExpiresAt: 1,
+    user: profile,
+    server: 'https://other.invalid',
+  });
+  expect(current.user).toBeNull();
+  jest
+    .mocked(authService.getProfile)
+    .mockRejectedValueOnce(new api.ApiError('revoked', 401));
+  await remountStored({
+    accessToken: 'saved',
+    refreshToken: 'refresh',
+    accessTokenExpiresAt: 1,
+    user: profile,
+    server: api.getApiBaseUrl(),
+  });
+  expect(current.user).toBeNull();
+  expect(current.isAuthenticated).toBe(false);
+  expect(
+    await AsyncStorage.getItem('quan_ly_chi_tieu_auth_session'),
+  ).toBeNull();
+});
+it('sign out removes both credentials and the offline profile', async () => {
+  await act(async () => current.signIn('one@example.test', 'password'));
+  expect(
+    JSON.parse((await AsyncStorage.getItem('quan_ly_chi_tieu_auth_session'))!)
+      .user.id,
+  ).toBe(1);
+  await act(() => current.signOut());
+  expect(current.user).toBeNull();
+  expect(
+    await AsyncStorage.getItem('quan_ly_chi_tieu_auth_session'),
+  ).toBeNull();
 });

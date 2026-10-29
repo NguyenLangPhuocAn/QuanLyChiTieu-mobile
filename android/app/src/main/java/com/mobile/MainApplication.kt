@@ -10,6 +10,7 @@ import com.mobile.banknotifications.BankNotificationPackage
 import com.mobile.documents.DocumentPickerPackage
 import com.mobile.reminders.FinancialReminderPackage
 import com.mobile.updates.AppUpdatePackage
+import com.mobile.widgets.NovaWidgetPackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -22,6 +23,7 @@ class MainApplication : Application(), ReactApplication {
           add(DocumentPickerPackage())
           add(FinancialReminderPackage())
           add(AppUpdatePackage())
+          add(NovaWidgetPackage())
         },
     )
   }

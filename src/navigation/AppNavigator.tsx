@@ -76,6 +76,8 @@ export type RootStackParamList = {
     | {
         financialDraftId?: string;
         editTransaction?: TransactionItem;
+        widgetType?: 'INCOME' | 'EXPENSE';
+        widgetEvent?: string;
       }
     | undefined;
   Wallets:

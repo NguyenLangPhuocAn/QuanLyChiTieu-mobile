@@ -47,6 +47,7 @@ import {
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
+import { homeWidget } from '../../native/homeWidget';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -485,6 +486,35 @@ const DataManagementScreen = () => {
               )}
             </TouchableOpacity>
           </View>
+        ) : null}
+        {homeWidget.supported ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Thêm widget Nova"
+            style={styles.localCard}
+            onPress={async () => {
+              try {
+                if (!(await homeWidget.requestPin()))
+                  Alert.alert(
+                    'Thêm widget',
+                    'Nhấn giữ màn hình chính → Widget → Nova · Thu chi nhanh để thêm.',
+                  );
+              } catch {
+                Alert.alert(
+                  'Chưa thêm được widget',
+                  'Thử thêm Nova từ danh sách widget trên màn hình chính.',
+                );
+              }
+            }}
+          >
+            <View style={styles.localCopy}>
+              <Text style={styles.cardTitle}>Widget màn hình chính</Text>
+              <Text style={styles.cardText}>
+                Thêm nhanh khoản chi, khoản thu. Số tiền được che mặc định.
+              </Text>
+              <Text style={styles.cacheMeta}>Thêm widget Nova</Text>
+            </View>
+          </TouchableOpacity>
         ) : null}
         <View style={styles.localCard}>
           <View style={styles.localIcon}>

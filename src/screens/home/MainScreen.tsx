@@ -115,6 +115,7 @@ import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
 import type { BankNotificationItem } from '../../types/bankNotification';
 import { useLatestBankNotification } from '../../hooks/useLatestBankNotification';
+import { financeRefresh } from '../../services/financeRefresh';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -194,7 +195,7 @@ type MainScreenProps = NativeStackScreenProps<RootStackParamList, 'Main'>;
 const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token, user } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
   const isScreenFocused = useIsFocused();
   const { run: runSaveTransaction, busy: savingTransaction } =
     useSingleFlight();
@@ -444,6 +445,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   useEffect(() => {
     fetchDashboardData(false).catch(() => undefined);
   }, [fetchDashboardData]);
+  useEffect(
+    () =>
+      financeRefresh.subscribe(() => {
+        fetchDashboardData(false).catch(() => undefined);
+      }),
+    [fetchDashboardData],
+  );
 
   useEffect(() => {
     if (user?.currency_default) {
@@ -515,28 +523,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-
       if (token && user?.id) {
         smartRulesService
           .getRules(user.id)
           .then(setSmartRules)
           .catch(() => undefined);
         (async () => {
-          let syncedDrafts = 0;
-          try {
-            syncedDrafts = (await offlineTransactionQueue.sync(token, user.id))
-              .synced;
-          } catch {
-            // Bản nháp vẫn nằm trong hàng chờ và sẽ được thử lại khi có mạng.
-          }
           await fetchDashboardData(false);
-          if (active && syncedDrafts > 0) {
-            Alert.alert(
-              'Đã đồng bộ bản nháp',
-              `${syncedDrafts} giao dịch ngoại tuyến đã được thêm an toàn.`,
-            );
-          }
         })().catch(() => undefined);
       } else {
         fetchDashboardData(false).catch(() => undefined);
@@ -546,10 +539,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         shouldReopenTransactionForm.current = false;
         setIsModalVisible(true);
       }
-
-      return () => {
-        active = false;
-      };
     }, [fetchDashboardData, token, user?.id]),
   );
 
@@ -613,6 +602,32 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     resetTransactionForm();
     setIsModalVisible(true);
   };
+
+  useEffect(() => {
+    const type = route?.params?.widgetType;
+    if (!route?.params?.widgetEvent || !type) return;
+    if (!normalTransactionCategories.length) return;
+    navigation.setParams({ widgetType: undefined, widgetEvent: undefined });
+    if (isModalVisible) {
+      Alert.alert(
+        'Đang có giao dịch chưa lưu',
+        'Hãy lưu hoặc đóng form hiện tại trước khi thêm giao dịch từ widget.',
+      );
+      return;
+    }
+    resetTransactionForm();
+    setTransactionEntryType(type);
+    setSelectedTransactionCategory(
+      normalTransactionCategories.find(c => c.type === type) ?? null,
+    );
+    setIsModalVisible(true);
+    // Only a new widget event opens a form. Loading categories may complete later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    route?.params?.widgetEvent,
+    route?.params?.widgetType,
+    normalTransactionCategories,
+  ]);
 
   const handleChangeTab = (tab: TabKey) => {
     if (activeTab === tab) {
@@ -1342,13 +1357,22 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       };
       let createdTransaction;
       try {
+        if (isOfflineSession) throw new Error('LOCAL_OFFLINE_SESSION');
         createdTransaction = await transactionsService.create(
           token,
           createPayload,
         );
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
-          await offlineTransactionQueue.enqueue(user.id, createPayload);
+          try {
+            await offlineTransactionQueue.enqueue(user.id, createPayload);
+          } catch (storageError) {
+            Alert.alert(
+              'Chưa lưu được trên máy',
+              getUserFriendlyErrorMessage(storageError, 'Giữ form và thử lại.'),
+            );
+            return;
+          }
           if (activeBankNotificationEventId) {
             await bankNotificationReader
               .markProcessed(user.id, activeBankNotificationEventId)
@@ -1469,6 +1493,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {isOfflineSession ? (
+        <Text accessibilityLiveRegion="polite" style={styles.offlineBanner}>
+          Chế độ trên máy · Giao dịch mới sẽ chờ đồng bộ khi kết nối lại.
+        </Text>
+      ) : null}
       <View style={styles.content}>{renderContent()}</View>
 
       {latestBank.phase === 'ai' ? (
@@ -1556,6 +1585,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   style={styles.backFormButton}
                   accessibilityLabel="Đóng bản nháp giao dịch"
                   disabled={savingTransaction}
+                  accessibilityRole="button"
                   onPress={() => setIsModalVisible(false)}
                 >
                   <ArrowLeft size={18} color="#7A4A28" />
@@ -2500,6 +2530,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 };
 
 const styles = StyleSheet.create({
+  offlineBanner: { padding: 10, backgroundColor: '#FFF0DF', color: '#714427' },
   container: {
     flex: 1,
     backgroundColor: '#FFF3E8',

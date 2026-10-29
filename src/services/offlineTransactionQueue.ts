@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiError } from './api';
+import { ApiError, getApiBaseUrl, captureApiSession } from './api';
 import {
   transactionsService,
   type CreateTransactionPayload,
@@ -11,6 +11,7 @@ export type OfflineTransactionDraftStatus =
   | 'NEEDS_REVIEW';
 
 export type OfflineTransactionDraft = {
+  server?: string;
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -41,8 +42,8 @@ const parseDrafts = (raw: string | null): OfflineTransactionDraft[] => {
   if (!raw) return [];
   try {
     const value = JSON.parse(raw) as unknown;
-    if (!Array.isArray(value)) return [];
-    return value.filter(item => {
+    if (!Array.isArray(value)) throw new Error();
+    const valid = value.filter(item => {
       if (!item || typeof item !== 'object') return false;
       const draft = item as Partial<OfflineTransactionDraft>;
       const payload = draft.payload;
@@ -60,8 +61,12 @@ const parseDrafts = (raw: string | null): OfflineTransactionDraft[] => {
           payload.type,
       );
     }) as OfflineTransactionDraft[];
+    if (valid.length !== value.length) throw new Error();
+    return valid;
   } catch {
-    return [];
+    throw new Error(
+      'Chưa đọc được hàng chờ trên máy. Dữ liệu được giữ nguyên; không tạo bản nháp mới đè lên.',
+    );
   }
 };
 
@@ -72,6 +77,7 @@ export const isRetryableOfflineTransactionError = (error: unknown) =>
   !(error instanceof ApiError) || error.status === 0 || error.status >= 500;
 
 const activeSyncByUser = new Map<number, Promise<OfflineQueueSyncResult>>();
+const listeners = new Set<() => void>();
 const userOperations = new Map<number, Promise<unknown>>();
 
 const withUserLock = <T>(userId: number, operation: () => Promise<T>) => {
@@ -92,11 +98,15 @@ const withUserLock = <T>(userId: number, operation: () => Promise<T>) => {
 const runSync = async (
   token: string,
   userId: number,
+  isCurrent: () => boolean,
 ): Promise<OfflineQueueSyncResult> => {
+  const server = getApiBaseUrl();
   const drafts = parseDrafts(await AsyncStorage.getItem(storageKey(userId)));
   let synced = 0;
 
   for (const draft of drafts) {
+    if (!isCurrent() || getApiBaseUrl() !== server) break;
+    if (draft.server !== server) continue;
     if (draft.status === 'NEEDS_REVIEW') continue;
     draft.status = 'SYNCING';
     draft.updatedAt = new Date().toISOString();
@@ -105,35 +115,68 @@ const runSync = async (
 
     try {
       await transactionsService.create(token, draft.payload);
-      const index = drafts.findIndex(item => item.id === draft.id);
+      const index = drafts.indexOf(draft);
       if (index >= 0) drafts.splice(index, 1);
       synced += 1;
     } catch (error) {
       draft.updatedAt = new Date().toISOString();
       draft.lastError = error instanceof Error ? error.message : 'Lỗi đồng bộ';
-      draft.status = isRetryableOfflineTransactionError(error)
-        ? 'PENDING'
-        : 'NEEDS_REVIEW';
+      const sessionError =
+        error instanceof ApiError &&
+        ([401, 403].includes(error.status) || error.code === 'SESSION_CHANGED');
+      draft.status =
+        isRetryableOfflineTransactionError(error) || sessionError
+          ? 'PENDING'
+          : 'NEEDS_REVIEW';
+      if (draft.status === 'PENDING') {
+        await save(userId, drafts);
+        break;
+      }
     }
     await save(userId, drafts);
   }
 
   return {
     synced,
-    pending: drafts.filter(item => item.status === 'PENDING').length,
-    needsReview: drafts.filter(item => item.status === 'NEEDS_REVIEW').length,
+    pending: drafts.filter(
+      item =>
+        item.server === server && ['PENDING', 'SYNCING'].includes(item.status),
+    ).length,
+    needsReview: drafts.filter(
+      item =>
+        !item.server ||
+        (item.server === server && item.status === 'NEEDS_REVIEW'),
+    ).length,
   };
 };
 
 export const offlineTransactionQueue = {
+  subscribe(listener: () => void) {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
   async list(userId: number) {
-    return parseDrafts(await AsyncStorage.getItem(storageKey(userId)));
+    return parseDrafts(await AsyncStorage.getItem(storageKey(userId)))
+      .filter(d => !d.server || d.server === getApiBaseUrl())
+      .map(d =>
+        d.server
+          ? d
+          : {
+              ...d,
+              status: 'NEEDS_REVIEW' as const,
+              lastError:
+                'Bản nháp cũ chưa xác định máy chủ. Kiểm tra rồi xác nhận thử lại.',
+            },
+      );
   },
 
   async enqueue(
     userId: number,
     payload: CreateTransactionPayload & { client_request_id?: string },
   ) {
+    const server = getApiBaseUrl();
     return withUserLock(userId, async () => {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
@@ -144,13 +187,16 @@ export const offlineTransactionQueue = {
       const requestId = isBankNotification
         ? `bank_${payload.source_ref}`
         : payload.client_request_id ?? createClientRequestId();
-      const existing = drafts.find(item => item.id === requestId);
+      const existing = drafts.find(
+        item => item.id === requestId && item.server === server,
+      );
       if (existing) return existing;
 
       const now = new Date().toISOString();
       const bankPayload = { ...payload };
       delete bankPayload.client_request_id;
       const draft: OfflineTransactionDraft = {
+        server,
         id: requestId,
         createdAt: now,
         updatedAt: now,
@@ -162,6 +208,7 @@ export const offlineTransactionQueue = {
       };
       drafts.push(draft);
       await save(userId, drafts);
+      listeners.forEach(listener => listener());
       return draft;
     });
   },
@@ -173,7 +220,10 @@ export const offlineTransactionQueue = {
       );
       await save(
         userId,
-        drafts.filter(item => item.id !== id),
+        drafts.filter(
+          item =>
+            item.id !== id || (item.server && item.server !== getApiBaseUrl()),
+        ),
       );
     });
   },
@@ -187,8 +237,13 @@ export const offlineTransactionQueue = {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
       );
-      const draft = drafts.find(item => item.id === id);
+      const draft = drafts.find(
+        item =>
+          item.id === id && (!item.server || item.server === getApiBaseUrl()),
+      );
       if (!draft) return null;
+      if (draft.server && draft.server !== getApiBaseUrl()) return null;
+      draft.server = getApiBaseUrl();
       const clientRequestId = draft.payload.client_request_id;
       const updatedPayload = {
         ...draft.payload,
@@ -218,8 +273,13 @@ export const offlineTransactionQueue = {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
       );
-      const draft = drafts.find(item => item.id === id);
+      const draft = drafts.find(
+        item =>
+          item.id === id && (!item.server || item.server === getApiBaseUrl()),
+      );
       if (!draft) return null;
+      if (draft.server && draft.server !== getApiBaseUrl()) return null;
+      draft.server = getApiBaseUrl();
       draft.status = 'PENDING';
       draft.lastError = undefined;
       draft.updatedAt = new Date().toISOString();
@@ -228,14 +288,15 @@ export const offlineTransactionQueue = {
     });
   },
 
-  sync(token: string, userId: number) {
+  sync(token: string, userId: number, isCurrent: () => boolean = () => true) {
+    const sessionIsCurrent = captureApiSession();
     let activeSync = activeSyncByUser.get(userId);
     if (!activeSync) {
-      activeSync = withUserLock(userId, () => runSync(token, userId)).finally(
-        () => {
-          activeSyncByUser.delete(userId);
-        },
-      );
+      activeSync = withUserLock(userId, () =>
+        runSync(token, userId, () => sessionIsCurrent() && isCurrent()),
+      ).finally(() => {
+        activeSyncByUser.delete(userId);
+      });
       activeSyncByUser.set(userId, activeSync);
     }
     return activeSync;

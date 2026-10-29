@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-29",
+  "jest": {
+    "suites": 8,
+    "passed": 68
+  },
+  "typescriptExit": 0,
+  "eslintChangedFilesExit": 0,
+  "nativeExistingPlanner": {
+    "tests": 11,
+    "failures": 0,
+    "errors": 0
+  },
+  "productionRelease": false,
+  "realPhoneTested": false
+}

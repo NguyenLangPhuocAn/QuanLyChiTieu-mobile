@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiError } from '../api';
+import { ApiError, configureAuthSession, getApiBaseUrl } from '../api';
 import { offlineTransactionQueue } from '../offlineTransactionQueue';
 import { transactionsService } from '../transactions';
 
@@ -46,6 +46,19 @@ describe('offlineTransactionQueue', () => {
     expect(repeated.id).toBe(draft.id);
     expect(drafts).toHaveLength(1);
     expect(drafts[0].status).toBe('PENDING');
+  });
+  it('keeps a corrupt queue intact rather than replacing it with an empty queue', async () => {
+    storage.set('quan_ly_chi_tieu_offline_transactions_v1_7', 'broken json');
+    await expect(
+      offlineTransactionQueue.enqueue(7, {
+        wallet_id: 2,
+        amount: '1000',
+        type: 'EXPENSE',
+      }),
+    ).rejects.toThrow('giữ nguyên');
+    expect(storage.get('quan_ly_chi_tieu_offline_transactions_v1_7')).toBe(
+      'broken json',
+    );
   });
 
   it('keeps a bank notification idempotency key without adding a conflicting client key', async () => {
@@ -209,5 +222,73 @@ describe('offlineTransactionQueue', () => {
         client_request_id: 'txn_review_then_edit_12345',
       },
     });
+  });
+
+  it('stops at the first network or auth failure and does not mark drafts as invalid', async () => {
+    for (const id of ['txn_stop_one_123456', 'txn_stop_two_123456'])
+      await offlineTransactionQueue.enqueue(7, {
+        wallet_id: 2,
+        amount: '1000',
+        type: 'EXPENSE',
+        client_request_id: id,
+      });
+    createTransaction.mockRejectedValueOnce(new ApiError('auth expired', 401));
+    expect(await offlineTransactionQueue.sync('token', 7)).toMatchObject({
+      pending: 2,
+      needsReview: 0,
+    });
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    expect(
+      (await offlineTransactionQueue.list(7)).every(
+        d => d.status === 'PENDING',
+      ),
+    ).toBe(true);
+  });
+  it('stops an old-account run before sending its next draft after the API session changes', async () => {
+    for (const id of ['txn_account_one_12345', 'txn_account_two_12345'])
+      await offlineTransactionQueue.enqueue(7, {
+        wallet_id: 2,
+        amount: '1000',
+        type: 'EXPENSE',
+        client_request_id: id,
+      });
+    createTransaction.mockImplementationOnce(async () => {
+      configureAuthSession(null);
+      return { id: 1 };
+    });
+    await offlineTransactionQueue.sync('token', 7, () => true);
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    expect(await offlineTransactionQueue.list(7)).toHaveLength(1);
+  });
+  it('quarantines legacy or foreign-server drafts without silently deleting or sending them', async () => {
+    const draft = await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '1000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_legacy_item_12345',
+    });
+    const legacy = { ...draft };
+    delete legacy.server;
+    storage.set(
+      'quan_ly_chi_tieu_offline_transactions_v1_7',
+      JSON.stringify([
+        legacy,
+        { ...draft, id: 'other', server: 'https://other.invalid' },
+      ]),
+    );
+    expect((await offlineTransactionQueue.list(7))[0].status).toBe(
+      'NEEDS_REVIEW',
+    );
+    await offlineTransactionQueue.sync('token', 7);
+    expect(createTransaction).not.toHaveBeenCalled();
+    await offlineTransactionQueue.retry(7, legacy.id);
+    expect((await offlineTransactionQueue.list(7))[0].server).toBe(
+      getApiBaseUrl(),
+    );
+    createTransaction.mockResolvedValue({ id: 1 });
+    await offlineTransactionQueue.sync('token', 7);
+    expect(
+      JSON.parse(storage.get('quan_ly_chi_tieu_offline_transactions_v1_7')!),
+    ).toHaveLength(1);
   });
 });

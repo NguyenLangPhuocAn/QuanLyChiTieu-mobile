@@ -40,6 +40,10 @@ let authSession: AuthSessionHandlers | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 let sessionRevision = 0;
 let connectedBaseUrl: string | null = null;
+export const captureApiSession = () => {
+  const revision = sessionRevision;
+  return () => revision === sessionRevision;
+};
 
 /** Media loaded after an API response must use the server that answered it. */
 export const getApiBaseUrl = () => connectedBaseUrl ?? API_BASE_URLS[0];

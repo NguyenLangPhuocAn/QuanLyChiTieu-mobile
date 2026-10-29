@@ -14,6 +14,7 @@ import {
   ApiError,
   configureAuthSession,
   invalidateAuthSession,
+  getApiBaseUrl,
 } from '../services/api';
 import { authService } from '../services/auth';
 import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
@@ -30,7 +31,8 @@ type AuthContextValue = {
   refreshToken: string | null;
   isCurrencySetupRequired: boolean;
   sessionRestoreError: string | null;
-  retryRestoreSession: () => Promise<void>;
+  isOfflineSession: boolean;
+  retryRestoreSession: () => Promise<boolean>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (
     email: string,
@@ -69,6 +71,8 @@ type StoredAuthSession = {
   accessToken: string | null;
   refreshToken: string | null;
   accessTokenExpiresAt: number | null;
+  user?: AuthUser | null;
+  server?: string;
 };
 
 export const AuthProvider = ({ children }: React.PropsWithChildren) => {
@@ -82,6 +86,9 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     null,
   );
   const tokenRef = useRef<string | null>(null);
+  const userRef = useRef<AuthUser | null>(null);
+  const [isOfflineSession, setIsOfflineSession] = useState(false);
+  const retryRef = useRef<Promise<boolean> | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
   const accessTokenExpiresAtRef = useRef<number | null>(null);
   const sessionVersionRef = useRef(0);
@@ -133,6 +140,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         accessToken: tokenRef.current,
         refreshToken: refreshTokenRef.current,
         accessTokenExpiresAt: accessTokenExpiresAtRef.current,
+        user: userRef.current,
+        server: getApiBaseUrl(),
       } satisfies StoredAuthSession),
     );
   };
@@ -140,6 +149,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
   const clearSession = () => {
     billReminderSession.set(null).catch(() => undefined);
     sessionVersionRef.current += 1;
+    retryRef.current = null;
     invalidateAuthSession();
     tokenRef.current = null;
     refreshTokenRef.current = null;
@@ -147,14 +157,14 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     setToken(null);
     setRefreshToken(null);
     setUser(null);
+    userRef.current = null;
+    setIsOfflineSession(false);
     setSessionRestoreError(null);
     setIsLoading(false);
     setIsCurrencySetupRequired(false);
     persistSession(null);
     if (bankNotificationReader.isSupported) {
-      bankNotificationReader
-        .setConfiguration(null, [])
-        .catch(() => undefined);
+      bankNotificationReader.setConfiguration(null, []).catch(() => undefined);
     }
   };
 
@@ -185,6 +195,11 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
 
         const stored = JSON.parse(rawSession) as StoredAuthSession;
 
+        if (stored.server && stored.server !== getApiBaseUrl()) {
+          clearSession();
+          return;
+        }
+
         if (
           typeof stored?.accessToken !== 'string' ||
           !stored.accessToken ||
@@ -202,6 +217,23 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         accessTokenExpiresAtRef.current = stored.accessTokenExpiresAt;
         setToken(stored.accessToken);
         setRefreshToken(stored.refreshToken);
+        // A previously verified profile opens local data while the API revalidates.
+        // A first login still needs the server; cached data grants no API authority.
+        if (
+          stored.server === getApiBaseUrl() &&
+          stored.user &&
+          Number.isSafeInteger(stored.user.id) &&
+          stored.user.id > 0 &&
+          typeof stored.user.email === 'string' &&
+          stored.user.profile_setup_completed &&
+          !stored.user.must_change_password
+        ) {
+          userRef.current = stored.user;
+          setUser(stored.user);
+          setIsOfflineSession(true);
+          setIsLoading(false);
+          setIsRestoringSession(false);
+        }
         await hydrateUser(stored.accessToken, version);
       } catch (error) {
         if (isCurrentSession(version)) {
@@ -211,6 +243,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
             (error instanceof ApiError && [401, 403].includes(error.status))
           )
             clearSession();
+          else if (userRef.current) setIsOfflineSession(true);
           else
             setSessionRestoreError(
               'Chưa kết nối được máy chủ để tải tài khoản. Kiểm tra mạng rồi thử lại.',
@@ -242,33 +275,58 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     const profile = await authService.getProfile(nextToken);
     assertCurrentSession(version);
     setUser(profile);
+    userRef.current = profile;
+    setIsOfflineSession(false);
+    setSessionRestoreError(null);
+    persistSession(
+      JSON.stringify({
+        accessToken: tokenRef.current,
+        refreshToken: refreshTokenRef.current,
+        accessTokenExpiresAt: accessTokenExpiresAtRef.current,
+        user: profile,
+        server: getApiBaseUrl(),
+      } satisfies StoredAuthSession),
+    );
 
     setIsCurrencySetupRequired(!profile.profile_setup_completed);
   };
 
-  const retryRestoreSession = async () => {
+  const performRestoreRetry = async () => {
     const version = sessionVersionRef.current;
     const currentToken = tokenRef.current;
     if (!currentToken) {
       clearSession();
-      return;
+      return false;
     }
-    setIsLoading(true);
+    if (!userRef.current) setIsLoading(true);
     setSessionRestoreError(null);
     try {
       await hydrateUser(currentToken, version);
+      return true;
     } catch (error) {
       if (isCurrentSession(version)) {
         if (error instanceof ApiError && [401, 403].includes(error.status))
           clearSession();
+        else if (userRef.current) setIsOfflineSession(true);
         else
           setSessionRestoreError(
             'Chưa kết nối được máy chủ để tải tài khoản. Kiểm tra mạng rồi thử lại.',
           );
       }
+      return false;
     } finally {
       if (isCurrentSession(version)) setIsLoading(false);
     }
+  };
+
+  const retryRestoreSession = () => {
+    if (!retryRef.current) {
+      const pending = performRestoreRetry().finally(() => {
+        if (retryRef.current === pending) retryRef.current = null;
+      });
+      retryRef.current = pending;
+    }
+    return retryRef.current;
   };
 
   const signIn = async (email: string, password: string) => {
@@ -390,6 +448,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       );
       assertCurrentSession(version);
       setUser(updatedUser);
+      userRef.current = updatedUser;
+      saveTokens({});
     } finally {
       if (isCurrentSession(version)) setIsLoading(false);
     }
@@ -414,6 +474,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       );
       assertCurrentSession(version);
       setUser(updatedUser);
+      userRef.current = updatedUser;
+      saveTokens({});
     } finally {
       if (isCurrentSession(version)) setIsLoading(false);
     }
@@ -447,6 +509,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
       });
       assertCurrentSession(version);
       setUser(updatedUser);
+      userRef.current = updatedUser;
+      saveTokens({});
       setIsCurrencySetupRequired(false);
     } finally {
       if (isCurrentSession(version)) setIsLoading(false);
@@ -498,6 +562,8 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
 
       if (response.user) {
         setUser(response.user);
+        userRef.current = response.user;
+        saveTokens({});
         setIsCurrencySetupRequired(!response.user.profile_setup_completed);
         return;
       }
@@ -532,6 +598,7 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
         refreshToken,
         isCurrencySetupRequired,
         sessionRestoreError,
+        isOfflineSession,
         retryRestoreSession,
         signIn,
         signUp,

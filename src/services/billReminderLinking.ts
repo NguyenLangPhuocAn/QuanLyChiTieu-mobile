@@ -3,6 +3,7 @@ import type { LinkingOptions } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import type { BillScope } from './recurringBills';
 import { billReminder } from '../native/billReminder';
+import { widgetLink } from './widgetLinking';
 
 export const createBillReminderLinking = (
   scope: BillScope,
@@ -14,6 +15,8 @@ export const createBillReminderLinking = (
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
+    const quick = url ? widgetLink(scope, url) : null;
+    if (quick) return quick;
     return url && billReminder.isSupported
       ? billReminder.validatedLink(scope, url).catch(() => null)
       : null;
@@ -21,6 +24,11 @@ export const createBillReminderLinking = (
   subscribe(listener) {
     let active = true;
     const subscription = Linking.addEventListener('url', ({ url }) => {
+      const quick = widgetLink(scope, url);
+      if (quick) {
+        if (active) listener(quick);
+        return;
+      }
       if (!billReminder.isSupported) return;
       billReminder
         .validatedLink(scope, url)
