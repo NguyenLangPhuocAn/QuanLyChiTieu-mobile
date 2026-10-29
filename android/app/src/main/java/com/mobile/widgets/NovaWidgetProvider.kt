@@ -15,6 +15,7 @@ import com.mobile.R
 import org.json.JSONObject
 import java.time.LocalDate
 import java.util.UUID
+import java.security.MessageDigest
 
 class NovaWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) = render(context)
@@ -59,6 +60,8 @@ class NovaWidgetProvider : AppWidgetProvider() {
 
     fun entryIntent(context: Context, widgetId: Int, type: String, action: String, categoryId: Long?): Intent {
       val p = prefs(context)
+      if (p.getString("scope", null) == null) return Intent(context, MainActivity::class.java)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
       val nonce = p.getString("link_nonce_$widgetId", null) ?: UUID.randomUUID().toString().also {
         p.edit().putString("link_nonce_$widgetId", it).commit()
       }
@@ -68,9 +71,22 @@ class NovaWidgetProvider : AppWidgetProvider() {
         .appendQueryParameter("widget", widgetId.toString()).appendQueryParameter("nonce", nonce)
         .appendQueryParameter("event", "$widgetId-${System.currentTimeMillis()}-$action")
       if (categoryId != null) uri.appendQueryParameter("category", categoryId.toString())
-      return Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(uri.build())
+      return Intent(context, NovaWidgetEntryActivity::class.java).setAction(Intent.ACTION_VIEW).setData(uri.build())
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
+
+    fun validEntry(context: Context, url: String): Boolean = runCatching {
+      val uri = Uri.parse(url)
+      val p = prefs(context)
+      val id = uri.getQueryParameter("widget")?.toIntOrNull() ?: -1
+      val expected = p.getString("link_nonce_$id", null)
+      val received = uri.getQueryParameter("nonce")
+      val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
+      uri.scheme == "quanlychitieu" && uri.host == "quick-entry" && id in ids &&
+        p.getString("scope", null) != null && p.getString("scope", null) == uri.getQueryParameter("scope") &&
+        expected != null && received != null &&
+        MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), received.toByteArray(Charsets.UTF_8))
+    }.getOrDefault(false)
 
     fun render(context: Context) {
       val p = prefs(context)

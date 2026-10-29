@@ -7,11 +7,18 @@ import { financeRefresh } from '../services/financeRefresh';
 import { getApiBaseUrl } from '../services/api';
 
 // Foreground only: no polling or claim that JS runs after Android force-stop.
-export default function OfflineSessionSync() {
+export default function OfflineSessionSync({
+  onSynced,
+}: { onSynced?: () => Promise<void> } = {}) {
   const { user, token, isRestoringSession, retryRestoreSession } = useAuth();
   const server = getApiBaseUrl();
-  const latest = useRef({ userId: user?.id, token, retryRestoreSession });
-  latest.current = { userId: user?.id, token, retryRestoreSession };
+  const latest = useRef({
+    userId: user?.id,
+    token,
+    retryRestoreSession,
+    onSynced,
+  });
+  latest.current = { userId: user?.id, token, retryRestoreSession, onSynced };
   useEffect(() => {
     if (!user?.id || isRestoringSession) return;
     const userId = user.id;
@@ -33,7 +40,12 @@ export default function OfflineSessionSync() {
           userId,
           current,
         );
-        if (current()) financeRefresh.emit();
+        if (current()) {
+          // Another React root may have drained this same queue first. The widget
+          // still refreshes server totals even when its own sync reports zero.
+          await latest.current.onSynced?.();
+          financeRefresh.emit();
+        }
       } catch {
         /* durable drafts remain; next reconnect/resume retries */
       } finally {

@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useLayoutEffect,
 } from 'react';
 import {
   GoogleSignin,
@@ -21,6 +22,7 @@ import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
 import { GOOGLE_WEB_CLIENT_ID } from '../config/google';
 import { bankNotificationReader } from '../native/bankNotificationReader';
 import { billReminderSession } from '../services/billReminderSession';
+import { createSharedProvider } from './sharedProvider';
 
 type AuthContextValue = {
   isAuthenticated: boolean;
@@ -75,7 +77,10 @@ type StoredAuthSession = {
   server?: string;
 };
 
-export const AuthProvider = ({ children }: React.PropsWithChildren) => {
+const AuthController = ({
+  children,
+  publish,
+}: React.PropsWithChildren<{ publish: (value: AuthContextValue) => void }>) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
@@ -587,35 +592,35 @@ export const AuthProvider = ({ children }: React.PropsWithChildren) => {
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated: Boolean(user && token),
-        isLoading,
-        isRestoringSession,
-        user,
-        token,
-        refreshToken,
-        isCurrencySetupRequired,
-        sessionRestoreError,
-        isOfflineSession,
-        retryRestoreSession,
-        signIn,
-        signUp,
-        signInWithGoogle,
-        updateProfile,
-        refreshProfile,
-        uploadAvatar,
-        completeCurrencySetup,
-        completePasswordSetup,
-        completeResetPassword,
-        signOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const value: AuthContextValue = {
+    isAuthenticated: Boolean(user && token),
+    isLoading,
+    isRestoringSession,
+    user,
+    token,
+    refreshToken,
+    isCurrencySetupRequired,
+    sessionRestoreError,
+    isOfflineSession,
+    retryRestoreSession,
+    signIn,
+    signUp,
+    signInWithGoogle,
+    updateProfile,
+    refreshProfile,
+    uploadAvatar,
+    completeCurrencySetup,
+    completePasswordSetup,
+    completeResetPassword,
+    signOut,
+  };
+  useLayoutEffect(() => {
+    publish(value);
+  });
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+export const AuthProvider = createSharedProvider(AuthContext, AuthController);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

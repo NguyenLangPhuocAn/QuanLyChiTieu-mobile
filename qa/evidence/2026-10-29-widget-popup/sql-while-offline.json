@@ -1,0 +1,1 @@
+{"fixture":"widget-input","userId":7,"walletId":7,"balance":975000,"categories":[{"id":8,"name":"Ăn uống QA","type":"EXPENSE"},{"id":9,"name":"Đi lại QA","type":"EXPENSE"},{"id":10,"name":"Lương QA","type":"INCOME"}],"transactions":[{"id":24,"amount":"-25000","category_id":8,"receipt_image":null}],"count":1,"qaOnly":true}

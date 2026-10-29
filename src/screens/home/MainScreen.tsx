@@ -115,6 +115,7 @@ import type { SmartRule } from '../../types/smartRule';
 import type { Wallet } from '../../types/wallet';
 import type { BankNotificationItem } from '../../types/bankNotification';
 import { useLatestBankNotification } from '../../hooks/useLatestBankNotification';
+import { useWidgetPanelOpen } from '../../services/widgetPanelState';
 import { financeRefresh } from '../../services/financeRefresh';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
@@ -197,6 +198,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user, isOfflineSession } = useAuth();
   const isScreenFocused = useIsFocused();
+  const widgetPanelOpen = useWidgetPanelOpen();
   const { run: runSaveTransaction, busy: savingTransaction } =
     useSingleFlight();
   const {
@@ -301,6 +303,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     useState<string | null>(null);
   const latestBank = useLatestBankNotification(
     isScreenFocused &&
+      !widgetPanelOpen &&
       !savingTransaction &&
       !isOcrLoading &&
       !transactionVoice.isBusy &&

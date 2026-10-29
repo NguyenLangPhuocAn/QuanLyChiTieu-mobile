@@ -1,0 +1,23 @@
+{
+  "date": "2026-10-29",
+  "jest": {
+    "passed": 88,
+    "suites": 11,
+    "added": 12
+  },
+  "typescriptExit": 0,
+  "eslintExit": 0,
+  "androidBuild": "2m33s",
+  "nativeExistingPlanner": {
+    "tests": 11,
+    "failures": 0,
+    "errors": 0
+  },
+  "sqlQa7": {
+    "transactions": 3,
+    "balance": 1030000
+  },
+  "realSpeechTested": false,
+  "realGeminiTested": false,
+  "productionRelease": false
+}

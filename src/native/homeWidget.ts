@@ -6,6 +6,7 @@ const native = NativeModules.NovaHomeWidget as
       requestPin(): Promise<boolean>;
       isConnected(): Promise<boolean>;
       validateLink(scope: string, url: string): Promise<boolean>;
+      closeQuickEntry(result: string): Promise<boolean>;
       addListener(name: string): void;
       removeListeners(count: number): void;
     }
@@ -20,6 +21,8 @@ export const homeWidget = {
   connected: () => native?.isConnected() ?? Promise.resolve(true),
   validateLink: (scope: string, url: string) =>
     native?.validateLink?.(scope, url) ?? Promise.resolve(false),
+  closeQuickEntry: (result = 'CANCEL') =>
+    native?.closeQuickEntry?.(result) ?? Promise.resolve(false),
   subscribe(listener: () => void) {
     if (!native) return () => {};
     const sub = new NativeEventEmitter(

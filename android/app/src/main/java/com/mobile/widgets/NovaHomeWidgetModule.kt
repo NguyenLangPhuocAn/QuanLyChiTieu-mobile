@@ -12,7 +12,9 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
 import org.json.JSONArray
 import android.net.Uri
-import java.security.MessageDigest
+import android.widget.Toast
+import android.content.Intent
+import com.mobile.MainActivity
 
 class NovaHomeWidgetModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -70,18 +72,17 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
       manager.requestPinAppWidget(ComponentName(context,NovaWidgetProvider::class.java),null,null))
   }
   @ReactMethod fun validateLink(scope: String, url: String, promise: Promise) {
-    val valid = runCatching {
-      val uri = Uri.parse(url)
-      val p = NovaWidgetProvider.prefs(context)
-      val id = uri.getQueryParameter("widget")?.toIntOrNull() ?: -1
-      val expected = p.getString("link_nonce_$id", null)
-      val received = uri.getQueryParameter("nonce")
-      val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
-      uri.scheme == "quanlychitieu" && uri.host == "quick-entry" && id in ids &&
-        scope == p.getString("scope", null) && scope == uri.getQueryParameter("scope") &&
-        expected != null && received != null &&
-        MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), received.toByteArray(Charsets.UTF_8))
-    }.getOrDefault(false)
-    promise.resolve(valid)
+    promise.resolve(scope == NovaWidgetProvider.prefs(context).getString("scope", null) && NovaWidgetProvider.validEntry(context, url))
+  }
+  @ReactMethod fun closeQuickEntry(result: String, promise: Promise) {
+    val activity = context.currentActivity
+    if (activity !is NovaWidgetEntryActivity) { promise.resolve(false); return }
+    activity.runOnUiThread {
+      val message = when (result) { "SAVED" -> "Đã lưu giao dịch"; "PENDING" -> "Đã giữ trên máy, chờ đồng bộ"; else -> null }
+      if (message != null) Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+      if (result == "OPEN") activity.startActivity(Intent(activity, MainActivity::class.java))
+      activity.finish()
+      promise.resolve(true)
+    }
   }
 }

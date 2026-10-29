@@ -1,5 +1,15 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Widget nhập ngay trên launcher — 29/10/2026, đợt 3
+
+- Sửa yêu cầu bị hiểu thiếu: Thêm giao dịch/mic/camera mở cửa sổ riêng trên launcher, không đưa người dùng vào Tổng quan. Thu/Chi, danh mục, ví, số tiền/ngày/ghi chú và chi tiết món OCR có thể kiểm tra/sửa; phải chọn ví. Hủy hoặc xác nhận lưu đóng cửa sổ về launcher. Không xin quyền vẽ đè app khác.
+- Có bước Kiểm tra rồi Xác nhận lưu. Khóa nhấn lặp và dùng cùng khóa chống trùng khi mất mạng. Giữ hàng chờ ngoại tuyến, chưa đổi số dư trước server xác nhận; khi mở lại/có mạng đồng bộ và làm mới tổng widget. Sửa trường hợp root khác đã gửi hàng chờ trước nhưng panel chưa làm mới cache.
+- Chia sẻ một controller phiên đăng nhập giữa các React root, không tạo hai luồng refresh/logout. Kiểm nguồn native/scope, giữ bản đang nhập khi bấm widget lặp; tạm ngừng lắc ngân hàng ở MainScreen phía sau panel. Ảnh quét không tự đính kèm hoặc xếp hàng upload.
+- Android local/Nest/MySQL QA: preview0/ví1triệu; Chi25k xác nhận → id24/ví975k. Thu50k và Thu5k giữ ngoại tuyến, mở lại đồng bộ đúng id25/26; cuối3 giao dịch/ví1.030.000. Sau tải source cuối widget Chi25k/Thu55k/0chờ, Hủy/Lưu trở lại launcher. Mic hỏi quyền/từ chối rồi sửa transcript bàn phím; camera emulated chụp/trả về panel/loading và lỗi vì QA không có khóa. Không gọi model/nhận dạng giọng nói thật; QA6 không đổi.
+- Jest cuối88/88 qua11bộ (12ca mới), TypeScript/ESLint đạt; debug local install/test2m33s, JVM11/11 planner hiện có. Biên bản/PNG/XML/SQL: mobile/qa/evidence/2026-10-29-widget-popup/README.md. Giữ cả ảnh trung gian lỗi, chỉ tính 46/49 là giao diện/cache cuối đã kiểm.
+- Chưa phát hành APK/web/deploy hoặc sửa server3000/.env; health200. Còn điện thoại thật/OEM/giọng nói/Gemini/4G, C2b lịch tiền/chi an toàn và đồng bộ lịch, ảnh offline upload. Khung nhập chưa xác nhận chưa có cam kết giữ qua process death.
+
+
 ## Widget chọn danh mục, mic và camera — 29/10/2026, đợt2
 
 - Widget2hàng có Thu/Chi, danh mục theo loại từ dữ liệu đã tải, nút Thêm giao dịch, mic và camera. Nhớ danh mục riêng theo widget/loại; đổi tài khoản/backend xóa lựa chọn. Bộ chọn chạy native, chọn xong trở lại launcher. Form kiểm tra danh mục theo dữ liệu hiện có; không truyền số tiền hay ví từ widget, không tự ghi tiền.

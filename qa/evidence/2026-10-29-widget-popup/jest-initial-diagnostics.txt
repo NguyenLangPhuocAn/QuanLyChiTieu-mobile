@@ -1,0 +1,98 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (13.339 s)
+  ● Console
+
+    console.error
+      Each child in a list should have a unique "key" prop.
+      
+      Check the render method of `Fragment`. It was passed a child from Panel. See https://react.dev/link/warning-keys for more information.
+
+      at node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15850:21
+      at runWithFiberInDEV (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at warnForMissingKey (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:15849:11)
+      at warnOnInvalidKey (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:3703:13)
+      at reconcileChildrenArray (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:3782:31)
+      at reconcileChildFibersImpl (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4097:30)
+      at node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4202:33
+      at reconcileChildren (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:6684:13)
+      at beginWork (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8620:13)
+      at runWithFiberInDEV (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2315:13)
+      at performUnitOfWork (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13224:22)
+      at workLoopSync (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13068:41)
+      at renderRootSync (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:13049:11)
+      at performWorkOnRoot (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12181:11)
+      at performWorkOnRootViaSchedulerTask (node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2908:7)
+      at flushActQueue (node_modules/react/cjs/react.development.js:590:34)
+      at node_modules/react/cjs/react.development.js:847:21
+
+  ● camera fills editable items and amount but never saves or attaches its photo
+
+    TypeError: Cannot read properties of undefined (reading 'mockResolvedValue')
+
+      131 | it('camera fills editable items and amount but never saves or attaches its photo', async () => {
+      132 |   jest
+    > 133 |     .mocked(launchCamera)
+          |                          ^
+      134 |     .mockResolvedValue({
+      135 |       assets: [{ uri: 'file:///temporary.jpg', type: 'image/jpeg' }],
+      136 |     });
+
+      at Object.<anonymous> (__tests__/WidgetQuickEntry.test.tsx:133:26)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+FAIL __tests__/widgetQuickEntry.test.ts
+  ● Test suite failed to run
+
+    ReferenceError: C:\Users\Admin\Documents\QuanLyChiTieu\mobile\__tests__\widgetQuickEntry.test.ts: The module factory of `jest.mock()` is not allowed to reference any out-of-scope variables.
+    Invalid variable access: ApiError
+    Allowed objects: AbortController, AbortSignal, AggregateError, Array, ArrayBuffer, AsyncDisposableStack, Atomics, BigInt, BigInt64Array, BigUint64Array, Blob, Boolean, BroadcastChannel, Buffer, ByteLengthQueuingStrategy, CloseEvent, CompressionStream, CountQueuingStrategy, Crypto, CryptoKey, CustomEvent, DOMException, DataView, Date, DecompressionStream, DisposableStack, Error, EvalError, Event, EventTarget, File, FinalizationRegistry, Float16Array, Float32Array, Float64Array, FormData, Function, Generator, GeneratorFunction, Headers, Infinity, Int16Array, Int32Array, Int8Array, InternalError, Intl, Iterator, JSON, Map, Math, MessageChannel, MessageEvent, MessagePort, NaN, Navigator, Number, Object, Performance, PerformanceEntry, PerformanceMark, PerformanceMeasure, PerformanceObserver, PerformanceObserverEntryList, PerformanceResourceTiming, Promise, Proxy, RangeError, ReadableByteStreamController, ReadableStream, ReadableStreamBYOBReader, ReadableStreamBYOBRequest, ReadableStreamDefaultController, ReadableStreamDefaultReader, ReferenceError, Reflect, RegExp, Request, Response, Set, SharedArrayBuffer, String, SubtleCrypto, SuppressedError, Symbol, SyntaxError, TextDecoder, TextDecoderStream, TextEncoder, TextEncoderStream, TransformStream, TransformStreamDefaultController, TypeError, URIError, URL, URLPattern, URLSearchParams, Uint16Array, Uint32Array, Uint8Array, Uint8ClampedArray, WeakMap, WeakRef, WeakSet, WebAssembly, WebSocket, WritableStream, WritableStreamDefaultController, WritableStreamDefaultWriter, __dirname, __filename, arguments, atob, btoa, clearImmediate, clearInterval, clearTimeout, console, crypto, decodeURI, decodeURIComponent, encodeURI, encodeURIComponent, escape, eval, expect, exports, fetch, global, globalThis, isFinite, isNaN, jest, module, navigator, parseFloat, parseInt, performance, process, queueMicrotask, require, setImmediate, setInterval, setTimeout, structuredClone, undefined, unescape.
+    Note: This is a precaution to guard against uninitialized mock variables. If it is ensured that the mock is required lazily, variable names prefixed with `mock` (case insensitive) are permitted.
+
+      23 |   offlineTransactionQueue: { enqueue: jest.fn() },
+      24 |   isRetryableOfflineTransactionError: (e: unknown) =>
+    > 25 |     !(e instanceof ApiError) || e.status === 0 || e.status >= 500,
+         |                    ^^^^^^^^
+      26 | }));
+      27 | const cache = {
+      28 |   wallets: [{ id: 1, name: 'Ví', currency: 'VND' }],
+
+      at File.buildCodeFrameError (node_modules/@babel/core/src/transformation/file/file.ts:251:12)
+      at NodePath.buildError [as buildCodeFrameError] (node_modules/@babel/traverse/src/path/index.ts:161:21)
+      at call (node_modules/@babel/traverse/src/visitors.ts:299:14)
+      at NodePath.call [as _call] (node_modules/@babel/traverse/src/path/context.ts:36:20)
+      at NodePath.call (node_modules/@babel/traverse/src/path/context.ts:21:18)
+      at NodePath.call [as visit] (node_modules/@babel/traverse/src/path/context.ts:97:31)
+      at TraversalContext.visit [as visitQueue] (node_modules/@babel/traverse/src/context.ts:161:16)
+      at TraversalContext.visitQueue [as visitMultiple] (node_modules/@babel/traverse/src/context.ts:109:17)
+      at TraversalContext.visitMultiple [as visit] (node_modules/@babel/traverse/src/context.ts:192:19)
+      at visit (node_modules/@babel/traverse/src/traverse-node.ts:208:17)
+      at NodePath.visit (node_modules/@babel/traverse/src/path/context.ts:104:33)
+      at TraversalContext.visit [as visitQueue] (node_modules/@babel/traverse/src/context.ts:161:16)
+      at TraversalContext.visitQueue [as visitSingle] (node_modules/@babel/traverse/src/context.ts:119:19)
+      at TraversalContext.visitSingle [as visit] (node_modules/@babel/traverse/src/context.ts:194:19)
+      at visit (node_modules/@babel/traverse/src/traverse-node.ts:208:17)
+      at traverse (node_modules/@babel/traverse/src/index.ts:84:15)
+      at transformFile (node_modules/@babel/core/src/transformation/index.ts:120:15)
+          at transformFile.next (<anonymous>)
+      at transformFile (node_modules/@babel/core/src/transformation/index.ts:50:12)
+          at run.next (<anonymous>)
+      at transform (node_modules/@babel/core/src/transform.ts:29:20)
+          at transform.next (<anonymous>)
+      at evaluateSync (node_modules/gensync/index.js:251:28)
+      at sync (node_modules/gensync/index.js:89:14)
+      at fn (node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)
+      at transformSync (node_modules/@babel/core/src/transform.ts:66:52)
+      at ScriptTransformer.transformSource (node_modules/@jest/transform/build/ScriptTransformer.js:545:31)
+      at ScriptTransformer._transformAndBuildScript (node_modules/@jest/transform/build/ScriptTransformer.js:674:40)
+      at ScriptTransformer.transform (node_modules/@jest/transform/build/ScriptTransformer.js:726:19)
+
+PASS __tests__/sharedProvider.test.tsx
+PASS __tests__/AuthContext.test.tsx
+
+Test Suites: 2 failed, 2 passed, 4 total
+Tests:       1 failed, 10 passed, 11 total
+Snapshots:   0 total
+Time:        15.488 s
+Ran all test suites matching /__tests__\\WidgetQuickEntry.test.tsx|__tests__\\widgetQuickEntry.test.ts|__tests__\\sharedProvider.test.tsx|__tests__\\AuthContext.test.tsx/i.

@@ -87,3 +87,18 @@ it('preserves the queue without attempting DB writes when offline, auth cannot r
   await act(async () => resolve(true));
   expect(queue.sync).not.toHaveBeenCalled();
 });
+it('refreshes the widget cache after confirmed sync before notifying views', async () => {
+  const refreshed = jest.fn().mockResolvedValue(undefined);
+  await act(async () => {
+    r = TestRenderer.create(<OfflineSessionSync onSynced={refreshed} />);
+  });
+  expect(refreshed).toHaveBeenCalledTimes(1);
+  expect(refreshed.mock.invocationCallOrder[0]).toBeLessThan(
+    jest.mocked(financeRefresh.emit).mock.invocationCallOrder[0],
+  );
+  jest
+    .mocked(queue.sync)
+    .mockResolvedValueOnce({ synced: 0, pending: 0, needsReview: 0 });
+  await act(async () => online());
+  expect(refreshed).toHaveBeenCalledTimes(2);
+});

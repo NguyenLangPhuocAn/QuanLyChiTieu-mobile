@@ -13,4 +13,12 @@
         <item name="android:textColorPrimary">#4A2B1A</item>
         <item name="android:textColorSecondary">#886449</item>
     </style>
+    <style name="WidgetEntryTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#FF8800</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>

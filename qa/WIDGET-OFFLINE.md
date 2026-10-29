@@ -1,5 +1,9 @@
 # Widget và ngoại tuyến — 29/10/2026
 
+## Cửa sổ nổi trên launcher — đợt 3, 29/10/2026
+
+Nút Thêm giao dịch, mic hoặc camera nay mở khung riêng trên launcher; không mở Tổng quan. Chọn ví, kiểm tra các trường rồi Xác nhận lưu; Hủy/Lưu xong trở về launcher. Thiếu đăng nhập hoặc cache mới cần Mở app để chuẩn bị. Ảnh quét không đính kèm. Các mô tả mở form trong app bên dưới là lịch sử trước đợt sửa này. Bằng chứng mới: evidence/2026-10-29-widget-popup/README.md.
+
 ## Bổ sung widget29/10 đợt2
 
 Chọn Thu/Chi ngay trên widget, bấm tên danh mục để chọn từ danh sách đã tải; mỗi loại nhớ lựa chọn riêng. Bấm Thêm giao dịch để mở form, mic để nghe/xem trước hoặc camera để chụp/quét. Tất cả vẫn cần kiểm tra và bấm Lưu. Ảnh quét không tự đính kèm; muốn lưu ảnh thì bấm Thêm ảnh hóa đơn thủ công. Snapshot native nay có ID/tên/loại danh mục để chọn, không có token, ghi chú hoặc tên/số dư ví. Native chooser không gọi API, không ghi tiền.
