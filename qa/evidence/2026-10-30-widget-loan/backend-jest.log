@@ -1,0 +1,6 @@
+
+Test Suites: 2 passed, 2 total
+Tests:       21 passed, 21 total
+Snapshots:   0 total
+Time:        5.232 s
+Ran all test suites matching src/loan-debts/loan-debts.service.spec.ts|src/loan-debts/loan-debts.controller.spec.ts.

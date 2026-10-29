@@ -9,6 +9,11 @@ import {
 import { transactionsService } from '../src/services/transactions';
 import { launchCamera } from 'react-native-image-picker';
 import { saveWidgetEntry } from '../src/services/widgetQuickEntry';
+import { saveWidgetLoanEntry } from '../src/services/widgetLoanEntry';
+jest.mock('../src/services/widgetLoanEntry', () => ({
+  ...jest.requireActual('../src/services/widgetLoanEntry'),
+  saveWidgetLoanEntry: jest.fn(),
+}));
 jest.mock('react-native-image-picker', () => ({ launchCamera: jest.fn() }));
 const mockAuth = {
   user: { id: 7 } as { id: number } | null,
@@ -82,6 +87,46 @@ beforeEach(() => {
   jest.mocked(homeWidget.validateLink).mockResolvedValue(true);
   jest.mocked(dashboardCache.read).mockResolvedValue(data);
 });
+
+it.each(['Vay', 'Cho vay'])(
+  'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+  async label => {
+    await mount();
+    await press('Vay/Nợ');
+    if (label === 'Cho vay') await press('Cho vay');
+    await fill('Số tiền widget', '100000');
+    await press('Kiểm tra');
+    expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
+    await fill('Tên người vay nợ widget', 'Nguoi QA');
+    await fill('Ngày hẹn trả widget', '2026-11-30');
+    await press('Chọn ví');
+    await press('Ví QA · VND');
+    await press('Kiểm tra');
+    expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
+    jest
+      .mocked(saveWidgetLoanEntry)
+      .mockRejectedValueOnce(Error('Mạng chưa sẵn sàng'));
+    await press('Xác nhận lưu');
+    expect(homeWidget.closeQuickEntry).not.toHaveBeenCalled();
+    const first = jest.mocked(saveWidgetLoanEntry).mock.calls[0][2];
+    expect(first).toMatchObject({
+      type: label === 'Vay' ? 'BORROWED' : 'LENT',
+      person_name: 'Nguoi QA',
+      wallet_id: 7,
+      principal_amount: '100000',
+      due_date: '2026-11-30',
+    });
+    await press('Sửa lại');
+    await press('Kiểm tra');
+    jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+    await press('Xác nhận lưu');
+    expect(
+      jest.mocked(saveWidgetLoanEntry).mock.calls[1][2].client_request_id,
+    ).toBe(first.client_request_id);
+    expect(saveWidgetEntry).not.toHaveBeenCalled();
+    expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
+  },
+);
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
 });

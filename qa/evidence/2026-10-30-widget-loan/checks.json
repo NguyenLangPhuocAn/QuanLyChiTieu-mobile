@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-30",
+  "android": "com.mobile.dev Android13 source Metro8082 API3302",
+  "mobileJest": "107/107 across13suites",
+  "mobileTypeScriptExit": 0,
+  "mobileEslintExit": 0,
+  "backendJest": "21/21 across2suites",
+  "backendTypeScriptExit": 0,
+  "backendEslintExit": 0,
+  "replay": "two concurrent repeats each loan: same ID; changed409; missing400; DB unchanged",
+  "nativeBuild": "not run",
+  "productionDeploy": "not run",
+  "stableHealth": 200,
+  "qaHealth": 200
+}

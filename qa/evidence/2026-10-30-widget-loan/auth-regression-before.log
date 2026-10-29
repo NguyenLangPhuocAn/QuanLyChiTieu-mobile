@@ -1,0 +1,34 @@
+FAIL __tests__/AuthContext.test.tsx
+  √ does not resurrect a login that finishes after sign out (57 ms)
+  √ does not restore an older access token after profile loading refreshes it (37 ms)
+  √ ignores an old profile update after switching accounts (8 ms)
+  √ keeps a stored session during a server outage and restores it on retry (11 ms)
+  × finishes restoration and shows login after discarding a session from another backend (12 ms)
+  √ opens a verified local profile before a slow/offline API, even if its access token is expired (11 ms)
+  √ never reuses another backend profile or restores local access after a confirmed auth rejection (11 ms)
+  √ sign out removes both credentials and the offline profile (7 ms)
+
+  ● finishes restoration and shows login after discarding a session from another backend
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      181 |   expect(current.user).toBeNull();
+      182 |   expect(current.token).toBeNull();
+    > 183 |   expect(current.isRestoringSession).toBe(false);
+          |                                      ^
+      184 |   expect(current.isLoading).toBe(false);
+      185 | });
+      186 | it('opens a verified local profile before a slow/offline API, even if its access token is expired', async () => {
+
+      at Object.toBe (__tests__/AuthContext.test.tsx:183:38)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 7 passed, 8 total
+Snapshots:   0 total
+Time:        4.014 s
+Ran all test suites matching /__tests__\\AuthContext.test.tsx/i.

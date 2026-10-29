@@ -19,6 +19,16 @@ const buildQuery = (filter?: {
 };
 
 export const loanDebtsService = {
+  createQuickEntry(
+    token: string,
+    payload: CreateLoanDebtPayload & { client_request_id: string },
+  ) {
+    return apiRequest<LoanDebt>('/loan-debts/quick-entry', {
+      method: 'POST',
+      token,
+      body: payload,
+    });
+  },
   getAll(
     token: string,
     filter?: { type?: LoanDebtType; status?: LoanDebtStatus },
@@ -54,11 +64,7 @@ export const loanDebtsService = {
       token,
     });
   },
-  addPayment(
-    token: string,
-    id: number,
-    payload: CreateLoanDebtPaymentPayload,
-  ) {
+  addPayment(token: string, id: number, payload: CreateLoanDebtPaymentPayload) {
     return apiRequest<LoanDebt>(`/loan-debts/${id}/payments`, {
       method: 'POST',
       token,

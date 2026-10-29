@@ -1,5 +1,13 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Vay/Nợ trong form widget — 30/10/2026
+
+- Form mở từ N+ hoặc widget đầy đủ có Chi, Thu và Vay/Nợ. Vay/Nợ tách Vay/Cho vay, nhập tên người, chọn ví thường, ngày giao dịch và ngày hẹn trả tùy chọn. Kiểm tra trước khi xác nhận; Vay cộng tiền, Cho vay trừ tiền và tạo liên kết sổ vay/nợ thật. Không tính khoản vay thành thu/chi thường.
+- Vay/Nợ cần mạng, lỗi giữ form để sửa/thử lại. Cùng mã yêu cầu chỉ ghi một lần; đổi nội dung của mã đã xử lý báo409. Route quick-entry riêng chặn server cũ chưa hỗ trợ chống trùng. Thu/Chi thường vẫn dùng hàng chờ offline hiện có.
+- Sửa treo khôi phục đăng nhập khi hồ sơ local thuộc backend khác. Jest mobile107/107 qua13bộ; backend21/21 qua2bộ, TypeScript/ESLint đạt.
+- Android13 com.mobile.dev từ Metro8082/API3302/MySQL QA: QA8 vay100k (loan1/tx28), cho vay50k (loan2/tx29), ví975k→1.075k→1.025k. Replay song song từng khoản trả cùng ID, đổi tiền409/thiếu mã400; SQL và số dư giữ nguyên. Bằng chứng qa/evidence/2026-10-30-widget-loan/README.md.
+- Đây là source và kiểm thử local, chưa phát hành APK hoặc deploy backend. Cần đưa backend hỗ trợ quick-entry lên trước bản app thật. Không đổi server3000/.env/web, không build native đợt này. Vay/Nợ offline, trả nợ ngay trong widget và thử điện thoại/OEM chưa nằm trong kết quả này.
+
 ## Sửa lỗi và tối ưu widget — 30/10/2026
 
 - Sửa số tiền VND nhập có dấu nhóm, thành tiền món không bị đổi94.000 thành94 hoặc buộc hiện0 khi xóa. USD giữ phần thập phân. Khóa camera ngay lần bấm đầu, không nhận kết quả đã hủy; mở camera dừng phần giọng nói đang nhập.

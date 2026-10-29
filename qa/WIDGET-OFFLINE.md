@@ -50,3 +50,12 @@ Nguồn kỹ thuật: [Android app widgets](https://developer.android.com/develo
 ## Kiểm thử
 
 Trạng thái thực tế và PNG/XML nằm trong evidence/2026-10-29-widget-offline/README.md. Chỉ đếm kiểm thử đã chạy. ServerQA3301/schema/tài khoản riêng; server ổn định3000 không đổi, không chạy workflow release/web.
+
+
+## Vay/Nợ từ widget — 30/10/2026
+
+Chạm N+ → Vay/Nợ → Vay hoặc Cho vay. Nhập số tiền, tên người, chọn ví thường và ngày giao dịch; ngày hẹn trả không bắt buộc. Kiểm tra dấu +/−, ví và người trước Xác nhận lưu. Lưu thành công tạo khoản trong sổ vay/nợ cùng giao dịch mở đầu. Khoản vay không nhập vào tổng thu/chi thường.
+
+Luồng này cần mạng. Khi lỗi giữ form, không đổi thành bản nháp thu/chi thường. Thử lại cùng yêu cầu không ghi thêm tiền; đổi nội dung sau khi server đã xử lý báo xung đột để kiểm tra sổ. Backend phải hỗ trợ POST /loan-debts/quick-entry; server cũ bị chặn. Không thêm trả nợ/thu hồi nợ trong popup đợt này.
+
+Android13 local Metro8082/API3302/MySQL QA đã lưu Vay100k và Cho vay50k, replay không đổi tiền. Jest mobile107/107, backend21/21; noEmit/ESLint đạt. Chưa APK/deploy hoặc điện thoại thật. Bằng chứng evidence/2026-10-30-widget-loan/README.md.

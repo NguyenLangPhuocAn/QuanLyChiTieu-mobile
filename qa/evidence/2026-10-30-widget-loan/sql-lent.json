@@ -1,0 +1,70 @@
+{
+  "qaUserId": 8,
+  "walletId": 8,
+  "balance": 1025000,
+  "loans": [
+    {
+      "id": 1,
+      "type": "BORROWED",
+      "person_name": "Widget Vay QA",
+      "principal_amount": "100000",
+      "opening_wallet_id": 8,
+      "opening_transaction_id": 28,
+      "due_date": "2026-11-30T00:00:00.000Z",
+      "note": null
+    },
+    {
+      "id": 2,
+      "type": "LENT",
+      "person_name": "Widget Cho vay QA",
+      "principal_amount": "50000",
+      "opening_wallet_id": 8,
+      "opening_transaction_id": 29,
+      "due_date": null,
+      "note": null
+    }
+  ],
+  "rows": [
+    {
+      "id": 27,
+      "amount": "-25000",
+      "currency": "VND",
+      "category_id": 22,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "receipt_image": null
+    },
+    {
+      "id": 28,
+      "amount": "100000",
+      "currency": "VND",
+      "category_id": 28,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "receipt_image": null
+    },
+    {
+      "id": 29,
+      "amount": "-50000",
+      "currency": "VND",
+      "category_id": 29,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "receipt_image": null
+    }
+  ],
+  "categories": [
+    {
+      "id": 22,
+      "name": "Khác",
+      "cash_flow_group": "NORMAL"
+    },
+    {
+      "id": 28,
+      "name": "Tiền đi vay",
+      "cash_flow_group": "LOAN_DEBT"
+    },
+    {
+      "id": 29,
+      "name": "Cho vay",
+      "cash_flow_group": "LOAN_DEBT"
+    }
+  ]
+}

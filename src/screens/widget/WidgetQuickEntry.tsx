@@ -46,6 +46,12 @@ import {
   normalizeMoneyInputForCurrency,
   parsePositiveMoneyInput,
 } from '../../utils/moneyInput';
+import {
+  widgetLoanPayload,
+  saveWidgetLoanEntry,
+  type WidgetLoanPayload,
+} from '../../services/widgetLoanEntry';
+import type { LoanDebtType } from '../../types/loanDebt';
 
 type Props = { entryUrl: string };
 type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
@@ -62,7 +68,13 @@ function Panel({ entryUrl }: Props) {
   const [data, setData] = useState<DashboardCache | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [type, setType] = useState<'INCOME' | 'EXPENSE' | 'LOAN_DEBT'>(
+    'EXPENSE',
+  );
+  const [loanType, setLoanType] = useState<LoanDebtType>('BORROWED');
+  const [personName, setPersonName] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const loanRequestId = useRef<string | null>(null);
   const [categoryId, setCategory] = useState<number | null>(null);
   const [walletId, setWallet] = useState<number | null>(null);
   const [amount, setAmount] = useState('');
@@ -72,7 +84,9 @@ function Panel({ entryUrl }: Props) {
   const [items, setItems] = useState<ItemDraft[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [picker, setPicker] = useState<'wallet' | 'category' | null>(null);
-  const [review, setReview] = useState<CreateTransactionPayload | null>(null);
+  const [review, setReview] = useState<
+    CreateTransactionPayload | WidgetLoanPayload | null
+  >(null);
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [voiceVisible, setVoiceVisible] = useState(false);
@@ -294,28 +308,49 @@ function Panel({ entryUrl }: Props) {
     c => c.id === categoryId && c.type === type,
   );
   const voicePreview = parseVoiceTransactionDraft(transcript);
+  const loanReview = review && 'principal_amount' in review ? review : null;
+  const transactionReview = review && 'amount' in review ? review : null;
   const prepare = () => {
     if (!data || busy || ocrBusy) return;
     try {
-      setReview(
-        widgetEntryPayload(
-          data,
-          {
-            type,
-            categoryId,
-            walletId,
-            amount,
-            note,
-            date,
-            currency,
-            items: items.map(item => ({
-              ...item,
-              amount: Number(parsePositiveMoneyInput(item.amount)),
-            })),
-          },
-          createClientRequestId(),
-        ),
-      );
+      if (type === 'LOAN_DEBT') {
+        loanRequestId.current ??= createClientRequestId();
+        setReview(
+          widgetLoanPayload(
+            data,
+            {
+              type: loanType,
+              personName,
+              dueDate,
+              walletId,
+              amount,
+              note,
+              date,
+              currency,
+            },
+            loanRequestId.current,
+          ),
+        );
+      } else
+        setReview(
+          widgetEntryPayload(
+            data,
+            {
+              type,
+              categoryId,
+              walletId,
+              amount,
+              note,
+              date,
+              currency,
+              items: items.map(item => ({
+                ...item,
+                amount: Number(parsePositiveMoneyInput(item.amount)),
+              })),
+            },
+            createClientRequestId(),
+          ),
+        );
       setError('');
       voice.cancel();
     } catch (e) {
@@ -329,16 +364,28 @@ function Panel({ entryUrl }: Props) {
     setError('');
     const owner = user.id;
     try {
-      const result = await saveWidgetEntry(
-        token,
-        owner,
-        review,
-        isOfflineSession,
-        () =>
-          alive.current &&
-          latest.current.userId === owner &&
-          latest.current.server === server,
-      );
+      const isCurrent = () =>
+        alive.current &&
+        latest.current.userId === owner &&
+        latest.current.server === server;
+      const result = loanReview
+        ? await saveWidgetLoanEntry(
+            token,
+            owner,
+            loanReview,
+            isOfflineSession,
+            isCurrent,
+          )
+        : await saveWidgetEntry(
+            token,
+            owner,
+            transactionReview!,
+            isOfflineSession,
+            () =>
+              alive.current &&
+              latest.current.userId === owner &&
+              latest.current.server === server,
+          );
       if (
         alive.current &&
         latest.current.userId === owner &&
@@ -415,23 +462,46 @@ function Panel({ entryUrl }: Props) {
           ) : review ? (
             <>
               <Text style={s.total}>
-                {review.type === 'INCOME' ? '+' : '−'}
-                {Number(review.amount).toLocaleString('vi-VN')}{' '}
+                {loanReview
+                  ? loanReview.type === 'BORROWED'
+                    ? '+'
+                    : '−'
+                  : review.type === 'INCOME'
+                  ? '+'
+                  : '−'}
+                {Number(
+                  loanReview?.principal_amount ?? transactionReview?.amount,
+                ).toLocaleString('vi-VN')}{' '}
                 {wallet?.currency}
               </Text>
               <Text style={s.review}>
-                {wallet?.name} · {category?.name}
+                {wallet?.name} ·{' '}
+                {loanReview
+                  ? `${loanReview.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'} ${
+                      loanReview.person_name
+                    }`
+                  : category?.name}
               </Text>
               <Text style={s.muted}>{review.transaction_date}</Text>
               <Text style={s.review}>{review.note || 'Không có ghi chú'}</Text>
-              {!!review.receipt_items?.length && (
+              {loanReview && (
                 <Text style={s.muted}>
-                  {review.receipt_items.length} món · không đính kèm ảnh quét
+                  {loanReview.due_date
+                    ? `Hẹn trả: ${loanReview.due_date}`
+                    : 'Chưa hẹn ngày trả'}
+                </Text>
+              )}
+              {!!transactionReview?.receipt_items?.length && (
+                <Text style={s.muted}>
+                  {transactionReview.receipt_items.length} món · không đính kèm
+                  ảnh quét
                 </Text>
               )}
               {isOfflineSession && (
                 <Text style={s.muted}>
-                  Đang ngoại tuyến: giữ trên máy, có mạng sẽ đồng bộ.
+                  {loanReview
+                    ? 'Vay/Nợ cần kết nối mạng để lưu.'
+                    : 'Đang ngoại tuyến: giữ trên máy, có mạng sẽ đồng bộ.'}
                 </Text>
               )}
             </>
@@ -440,7 +510,7 @@ function Panel({ entryUrl }: Props) {
               {picker === 'category' ? (
                 <WidgetCategoryPicker
                   categories={data?.categories ?? []}
-                  type={type}
+                  type={type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
                   selectedId={categoryId}
                   onSelect={selected => {
                     setCategory(selected.id);
@@ -450,12 +520,16 @@ function Panel({ entryUrl }: Props) {
               ) : (
                 <>
                   <Text style={s.label}>Chọn ví</Text>
-                  {data?.wallets.map(w =>
-                    button(`${w.name} · ${w.currency}`, () => {
-                      setWallet(w.id);
-                      setPicker(null);
-                    }),
-                  )}
+                  {data?.wallets
+                    .filter(
+                      w => type !== 'LOAN_DEBT' || w.wallet_type !== 'SAVINGS',
+                    )
+                    .map(w =>
+                      button(`${w.name} · ${w.currency}`, () => {
+                        setWallet(w.id);
+                        setPicker(null);
+                      }),
+                    )}
                 </>
               )}
               {button('Quay lại', () => setPicker(null))}
@@ -481,6 +555,16 @@ function Panel({ entryUrl }: Props) {
                   type === 'INCOME',
                   ocrBusy,
                 )}
+                {button(
+                  'Vay/Nợ',
+                  () => {
+                    setType('LOAN_DEBT');
+                    setVoiceVisible(false);
+                    voice.cancel();
+                  },
+                  type === 'LOAN_DEBT',
+                  ocrBusy,
+                )}
               </View>
               <TextInput
                 accessibilityLabel="Số tiền widget"
@@ -495,27 +579,66 @@ function Panel({ entryUrl }: Props) {
                 style={s.amount}
                 editable={!ocrBusy}
               />
-              <Text style={s.label}>Danh mục</Text>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={category?.name || 'Chọn danh mục'}
-                disabled={ocrBusy}
-                style={s.categoryCard}
-                onPress={() => setPicker('category')}
-              >
-                <View style={s.categoryIcon}>
-                  <CategoryIcon icon={category?.icon} size={24} />
-                </View>
-                <View style={s.categoryCopy}>
-                  <Text style={s.categoryName}>
-                    {category?.name || 'Chọn danh mục'}
-                  </Text>
-                  <Text style={s.muted}>
-                    {type === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
-                  </Text>
-                </View>
-                <Text style={s.buttonText}>Đổi</Text>
-              </TouchableOpacity>
+              {type === 'LOAN_DEBT' ? (
+                <>
+                  <View style={s.row}>
+                    {button(
+                      'Vay',
+                      () => setLoanType('BORROWED'),
+                      loanType === 'BORROWED',
+                    )}
+                    {button(
+                      'Cho vay',
+                      () => setLoanType('LENT'),
+                      loanType === 'LENT',
+                    )}
+                  </View>
+                  <TextInput
+                    accessibilityLabel="Tên người vay nợ widget"
+                    placeholder={
+                      loanType === 'BORROWED' ? 'Vay từ ai?' : 'Cho ai vay?'
+                    }
+                    value={personName}
+                    onChangeText={setPersonName}
+                    maxLength={100}
+                    style={s.input}
+                    editable={!ocrBusy}
+                  />
+                  <TextInput
+                    accessibilityLabel="Ngày hẹn trả widget"
+                    placeholder="Hẹn trả YYYY-MM-DD (không bắt buộc)"
+                    value={dueDate}
+                    onChangeText={setDueDate}
+                    style={s.input}
+                    editable={!ocrBusy}
+                  />
+                  <Text style={s.muted}>Vay/Nợ cần kết nối mạng để lưu.</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.label}>Danh mục</Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={category?.name || 'Chọn danh mục'}
+                    disabled={ocrBusy}
+                    style={s.categoryCard}
+                    onPress={() => setPicker('category')}
+                  >
+                    <View style={s.categoryIcon}>
+                      <CategoryIcon icon={category?.icon} size={24} />
+                    </View>
+                    <View style={s.categoryCopy}>
+                      <Text style={s.categoryName}>
+                        {category?.name || 'Chọn danh mục'}
+                      </Text>
+                      <Text style={s.muted}>
+                        {type === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
+                      </Text>
+                    </View>
+                    <Text style={s.buttonText}>Đổi</Text>
+                  </TouchableOpacity>
+                </>
+              )}
               <Text style={s.label}>Ví</Text>
               {button(
                 wallet ? `${wallet.name} · ${wallet.currency}` : 'Chọn ví',
@@ -579,7 +702,13 @@ function Panel({ entryUrl }: Props) {
                   <Text style={s.muted}>
                     {voicePreview.draft
                       ? `${
-                          voicePreview.draft.type === 'INCOME' ? 'Thu' : 'Chi'
+                          type === 'LOAN_DEBT'
+                            ? loanType === 'BORROWED'
+                              ? 'Vay'
+                              : 'Cho vay'
+                            : voicePreview.draft.type === 'INCOME'
+                            ? 'Thu'
+                            : 'Chi'
                         } ${voicePreview.draft.amount} ${
                           voicePreview.draft.currency
                         }`
@@ -594,7 +723,7 @@ function Panel({ entryUrl }: Props) {
                       setNote(draft.note || '');
                       setDate(draft.transaction_date || date);
                       setCurrency(draft.currency || null);
-                      if (type !== draft.type) {
+                      if (type !== 'LOAN_DEBT' && type !== draft.type) {
                         setType(draft.type);
                         setCategory(null);
                       }
@@ -622,7 +751,7 @@ function Panel({ entryUrl }: Props) {
                   {w}
                 </Text>
               ))}
-              {!!items.length && (
+              {type !== 'LOAN_DEBT' && !!items.length && (
                 <View style={s.subpanel}>
                   <Text style={s.label}>Các món ({items.length})</Text>
                   {items.map((item, index) => (

@@ -39,11 +39,12 @@ export type CreateLoanDebtPayload = {
   due_date?: string | null;
   note?: string;
   transaction_date?: string;
+  client_request_id?: string;
 };
 
 export type UpdateLoanDebtPayload = Omit<
   Partial<CreateLoanDebtPayload>,
-  'type' | 'transaction_date'
+  'type' | 'transaction_date' | 'client_request_id'
 >;
 
 export type CreateLoanDebtPaymentPayload = {

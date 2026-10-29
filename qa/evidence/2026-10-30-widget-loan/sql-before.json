@@ -1,0 +1,23 @@
+{
+  "qaUserId": 8,
+  "walletId": 8,
+  "balance": 975000,
+  "loans": [],
+  "rows": [
+    {
+      "id": 27,
+      "amount": "-25000",
+      "currency": "VND",
+      "category_id": 22,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "receipt_image": null
+    }
+  ],
+  "categories": [
+    {
+      "id": 22,
+      "name": "Khác",
+      "cash_flow_group": "NORMAL"
+    }
+  ]
+}

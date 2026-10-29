@@ -166,6 +166,7 @@ const AuthController = ({
     setIsOfflineSession(false);
     setSessionRestoreError(null);
     setIsLoading(false);
+    setIsRestoringSession(false);
     setIsCurrencySetupRequired(false);
     persistSession(null);
     if (bankNotificationReader.isSupported) {

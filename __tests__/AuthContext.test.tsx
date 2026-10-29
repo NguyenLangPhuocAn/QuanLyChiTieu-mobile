@@ -175,6 +175,20 @@ const remountStored = async (stored: unknown) => {
     );
   });
 };
+
+it('finishes restoration and shows login after discarding a session from another backend', async () => {
+  await remountStored({
+    accessToken: 'old-server-token',
+    refreshToken: 'old-refresh',
+    accessTokenExpiresAt: Date.now() + 600000,
+    server: 'https://different-backend.invalid',
+    user: profile,
+  });
+  expect(current.user).toBeNull();
+  expect(current.token).toBeNull();
+  expect(current.isRestoringSession).toBe(false);
+  expect(current.isLoading).toBe(false);
+});
 it('opens a verified local profile before a slow/offline API, even if its access token is expired', async () => {
   let fail!: (error: Error) => void;
   jest.mocked(authService.getProfile).mockImplementationOnce(
