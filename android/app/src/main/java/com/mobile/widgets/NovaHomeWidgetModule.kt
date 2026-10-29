@@ -39,8 +39,11 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
   }
   @ReactMethod fun activate(scope: String?, promise: Promise) {
     val p = NovaWidgetProvider.prefs(context)
-    if (scope != p.getString("scope", null)) p.edit().clear().putString("scope", scope).commit()
-    NovaWidgetProvider.render(context); promise.resolve(null)
+    if (scope != p.getString("scope", null)) {
+      p.edit().clear().putString("scope", scope).commit()
+      NovaWidgetProvider.render(context)
+    }
+    promise.resolve(null)
   }
   @ReactMethod fun update(scope: String, json: String, promise: Promise) {
     try {
@@ -61,7 +64,11 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
         val safe = JSONObject().put("day", value.getString("day")).put("expense", value.getString("expense").take(80))
           .put("income", value.getString("income").take(80)).put("pending", value.getInt("pending"))
           .put("hasData", value.optBoolean("hasData")).put("categories", categories)
-        p.edit().putString("snapshot", safe.toString()).commit(); NovaWidgetProvider.render(context)
+        val snapshot = safe.toString()
+        if (snapshot != p.getString("snapshot", null)) {
+          p.edit().putString("snapshot", snapshot).commit()
+          NovaWidgetProvider.render(context)
+        }
       }
       promise.resolve(null)
     } catch (_: Exception) { promise.reject("WIDGET", "Chưa cập nhật được widget.") }
@@ -74,6 +81,10 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
   }
   @ReactMethod fun validateLink(scope: String, url: String, promise: Promise) {
     promise.resolve(scope == NovaWidgetProvider.prefs(context).getString("scope", null) && NovaWidgetProvider.validEntry(context, url))
+  }
+  @ReactMethod fun entryReady(promise: Promise) {
+    NovaWidgetEntryActivity.showContent()
+    promise.resolve(null)
   }
   @ReactMethod fun closeQuickEntry(result: String, promise: Promise) {
     val activity = context.currentActivity

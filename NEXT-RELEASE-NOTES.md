@@ -1,5 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Sửa lỗi và tối ưu widget — 30/10/2026
+
+- Sửa số tiền VND nhập có dấu nhóm, thành tiền món không bị đổi94.000 thành94 hoặc buộc hiện0 khi xóa. USD giữ phần thập phân. Khóa camera ngay lần bấm đầu, không nhận kết quả đã hủy; mở camera dừng phần giọng nói đang nhập.
+- Cache tải muộn có thể khôi phục form ngay tại chỗ, có Thử lại. Giữ cây giao diện khi main/widget chuyển chủ phiên đăng nhập, giữ Thu/Chi, ví, danh mục và tiền sau khôi phục cùng phiên. Kiểm widget/nonce/scope vẫn bắt buộc.
+- Ghi tiền đã xác nhận không chờ thêm GET ví mới đóng; ví cập nhật nền có kiểm phiên và đọc cache mới. Lượt tải danh sách đọc cache sau khi mạng trả về để giữ khoản vừa lưu. Native có loading/Đóng trước khi React sẵn sàng, sửa khung loading sau khi nhìn ảnh thật; nâng chiều cao tối thiểu widget đầy đủ210dp để không co mất nút. Tái dùng PendingIntent và bỏ vẽ lại snapshot giống nhau.
+- Jest101/101 qua12bộ (9ca mới), TypeScript/ESLint đạt. Debug local build/cài83s, sửa loading/cài21s; JVM11planner hiện có đạt. Android13 com.mobile.dev/Metro8081/API3301/MySQL QA: preview/offline chưa đổi SQL,1chờ; mở lại online đúng1khoản id27/−25.000/VND/category22/ví8, số dư975.000. WidgetChi25k/Thu0/0chờ; bật/tắt che tiền4lần PendingIntent15→15; camera ngoài app/Hủy về form đạt.
+- Không nghiệm thu AI OCR/giọng nói thật hoặc điện thoại/OEM/hiệu năng release. Một lượt đầu bị Fast Refresh khi còn sửa source, đã chạy lại với source cuối; không gọi ảnh loading hẹp hoặc frame chuyển màn là đạt. Giữ server3000/.env, health200; không phát hành APK/web. Excel chỉH21/I21 và chiều cao hàng21, nhật ký tuần/patch note/bằng chứng cập nhật. Các mục C2b/đồng bộ lịch/ảnh offline chưa đổi. Bằng chứng mobile/qa/evidence/2026-10-30-widget-fixes/README.md.
+
+
 ## Widget mini 1×1 — 29/10/2026, đợt 5
 
 - Thêm provider riêng Nova · Mini 1×1, icon N+ màu cam, không hiện số tiền. Chạm icon mở NovaWidgetEntryActivity trên launcher, dùng chung form Thu/Chi, danh mục đầy đủ, chọn ví, mic/camera và xem trước/xác nhận; Hủy/Đóng về màn hình chính. Giữ widget Thu chi nhanh 4×2, không giả lập thu gọn bằng cách chiếm ô lớn. Không xin quyền overlay.

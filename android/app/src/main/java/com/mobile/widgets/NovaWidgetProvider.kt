@@ -75,7 +75,9 @@ open class NovaWidgetProvider : AppWidgetProvider() {
         .appendQueryParameter("scope", prefs(context).getString("scope", ""))
         .appendQueryParameter("type", type).appendQueryParameter("action", action)
         .appendQueryParameter("widget", widgetId.toString()).appendQueryParameter("nonce", nonce)
-        .appendQueryParameter("event", "$widgetId-${System.currentTimeMillis()}-$action")
+        // Stable identity lets Android replace PendingIntents on repaint rather
+        // than allocating a new activity token for every cache refresh.
+        .appendQueryParameter("event", "$widgetId-$action")
       if (categoryId != null) uri.appendQueryParameter("category", categoryId.toString())
       return Intent(context, NovaWidgetEntryActivity::class.java).setAction(Intent.ACTION_VIEW).setData(uri.build())
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)

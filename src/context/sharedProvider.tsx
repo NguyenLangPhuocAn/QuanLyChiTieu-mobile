@@ -47,17 +47,20 @@ export function createSharedProvider<T>(
       return () => {
         hosts.delete(host);
         if (owner === host) {
-          value = undefined;
           owner = hosts.values().next().value;
+          // Keep follower subtrees mounted during handoff. The new controller
+          // publishes its restoring state; only the final host clears memory.
+          if (!owner) value = undefined;
           ownerListeners.forEach(listener => listener());
           valueListeners.forEach(listener => listener());
         }
       };
     }, [host]);
-    return currentOwner === host ? (
-      <Controller publish={publish}>{children}</Controller>
-    ) : (
-      <Follower>{children}</Follower>
+    return (
+      <>
+        {currentOwner === host && <Controller publish={publish} />}
+        <Follower>{children}</Follower>
+      </>
     );
   };
 }

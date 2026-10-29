@@ -20,12 +20,15 @@ export async function refreshWidgetEntryCache(
   current: () => boolean,
 ) {
   const session = captureApiSession();
-  const [data, wallets, page, categories] = await Promise.all([
-    dashboardCache.read(userId),
+  const [wallets, page, categories] = await Promise.all([
     walletsService.getAll(token),
     transactionsService.getPage(token, { limit: 100, page: 1 }),
     categoriesService.getAll(token),
   ]);
+  if (!current() || !session()) return;
+  // A payment can finish while these reads are in flight. Merge with the
+  // latest cache rather than the snapshot from before the network requests.
+  const data = await dashboardCache.read(userId);
   if (!current() || !session() || !data) return;
   const ids = new Set(page.data.map(t => t.id));
   await dashboardCache.save(userId, {
@@ -117,14 +120,10 @@ export async function saveWidgetEntry(
   }
   // A failed cache refresh must never turn a committed payment into a retry/new payment.
   try {
-    const [data, wallets] = await Promise.all([
-      dashboardCache.read(userId),
-      walletsService.getAll(token),
-    ]);
+    const data = await dashboardCache.read(userId);
     if (valid() && data)
       await dashboardCache.save(userId, {
         ...data,
-        wallets,
         transactions: [
           created,
           ...data.transactions.filter(t => t.id !== created.id),
@@ -134,5 +133,16 @@ export async function saveWidgetEntry(
     /* main app refreshes server data on resume */
   }
   if (valid()) financeRefresh.emit();
+  // The payment is already confirmed. A slow wallet GET must not keep the
+  // confirmation button busy or encourage a second payment. Keep this refresh
+  // scoped to the captured auth session, even after the widget panel closes.
+  const refreshWallets = async () => {
+    const wallets = await walletsService.getAll(token);
+    if (!session() || server !== getApiBaseUrl()) return;
+    const latest = await dashboardCache.read(userId);
+    if (session() && server === getApiBaseUrl() && latest)
+      await dashboardCache.save(userId, { ...latest, wallets });
+  };
+  refreshWallets().catch(() => undefined);
   return 'SAVED' as const;
 }

@@ -10,15 +10,16 @@ import { transactionsService } from '../src/services/transactions';
 import { launchCamera } from 'react-native-image-picker';
 import { saveWidgetEntry } from '../src/services/widgetQuickEntry';
 jest.mock('react-native-image-picker', () => ({ launchCamera: jest.fn() }));
+const mockAuth = {
+  user: { id: 7 } as { id: number } | null,
+  token: 'token' as string | null,
+  isRestoringSession: false,
+  isCurrencySetupRequired: false,
+  isOfflineSession: false,
+};
 jest.mock('../src/context/AuthContext', () => ({
   AuthProvider: ({ children }: React.PropsWithChildren) => children,
-  useAuth: () => ({
-    user: { id: 7 },
-    token: 'token',
-    isRestoringSession: false,
-    isCurrencySetupRequired: false,
-    isOfflineSession: false,
-  }),
+  useAuth: () => mockAuth,
 }));
 jest.mock('../src/components/HomeWidgetSession', () => () => null);
 jest.mock('../src/components/OfflineSessionSync', () => () => null);
@@ -36,6 +37,7 @@ jest.mock('../src/native/homeWidget', () => ({
   homeWidget: {
     validateLink: jest.fn(),
     closeQuickEntry: jest.fn().mockResolvedValue(true),
+    entryReady: jest.fn().mockResolvedValue(undefined),
   },
 }));
 jest.mock('../src/services/dashboardCache', () => ({
@@ -72,6 +74,11 @@ const fill = async (name: string, value: string) => {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  Object.assign(mockAuth, {
+    user: { id: 7 },
+    token: 'token',
+    isRestoringSession: false,
+  });
   jest.mocked(homeWidget.validateLink).mockResolvedValue(true);
   jest.mocked(dashboardCache.read).mockResolvedValue(data);
 });
@@ -141,7 +148,7 @@ it('camera fills editable items and amount but never saves or attaches its photo
     warnings: ['Giảm 15.000'],
   });
   await mount(entryUrl + '&action=CAMERA');
-  expect(control('Số tiền widget').props.value).toBe('79000');
+  expect(control('Số tiền widget').props.value).toBe('79.000');
   expect(control('Tên món 1').props.value).toBe('Bạc xỉu (2)');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
   await press('Chọn ví');
@@ -160,22 +167,138 @@ it('camera fills editable items and amount but never saves or attaches its photo
 it('updates the complete category cache while keeping the entered amount', async () => {
   await mount();
   await fill('Số tiền widget', '25000');
-  jest
-    .mocked(dashboardCache.read)
-    .mockResolvedValue({
-      ...data,
-      categories: [
-        ...data.categories,
-        { id: 35, name: 'Bảo hiểm', type: 'EXPENSE' },
-      ],
-    });
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    ...data,
+    categories: [
+      ...data.categories,
+      { id: 35, name: 'Bảo hiểm', type: 'EXPENSE' },
+    ],
+  });
   await act(async () => {
     jest.mocked(dashboardCache.subscribe).mock.calls[0][0]();
   });
   await press('Đi lại');
   expect(control('Bảo hiểm')).toBeDefined();
   await press('Bảo hiểm');
-  expect(control('Số tiền widget').props.value).toBe('25000');
+  expect(control('Số tiền widget').props.value).toBe('25.000');
   expect(control('Bảo hiểm')).toBeDefined();
   expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('recovers in place when the initial cache is missing and later arrives', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValueOnce(null);
+  await mount();
+  expect(control('Số tiền widget')).toBeUndefined();
+  await act(async () => {
+    jest.mocked(dashboardCache.subscribe).mock.calls[0][0]();
+  });
+  expect(control('Số tiền widget')).toBeDefined();
+  expect(control('Đi lại')).toBeDefined();
+});
+
+it('accepts formatted VND and preserves an empty item amount while editing', async () => {
+  jest.mocked(launchCamera).mockResolvedValue({
+    assets: [{ uri: 'file:///qa.jpg' }],
+  });
+  jest.mocked(transactionsService.analyzeReceipt).mockResolvedValue({
+    amount: 79000,
+    currency: 'VND',
+    receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
+    warnings: [],
+  });
+  await mount(entryUrl + '&action=CAMERA');
+  await fill('Thành tiền món 1', '');
+  expect(control('Thành tiền món 1').props.value).toBe('');
+  await fill('Thành tiền món 1', '94.000');
+  await fill('Số tiền widget', '79.000');
+  await press('Chọn ví');
+  await press('Ví QA · VND');
+  await press('Kiểm tra');
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2]).toMatchObject({
+    amount: '79000',
+    receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
+  });
+});
+
+it('locks repeated camera taps immediately and ignores cancelled OCR after manual input', async () => {
+  let finish!: (result: Awaited<ReturnType<typeof launchCamera>>) => void;
+  jest.mocked(launchCamera).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  await mount();
+  const camera = control('Chụp ảnh đọc hóa đơn');
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = camera.props.onPress();
+    camera.props.onPress();
+  });
+  expect(launchCamera).toHaveBeenCalledTimes(1);
+  await press('Hủy đọc');
+  await fill('Số tiền widget', '25000');
+  await act(async () => {
+    finish({ assets: [{ uri: 'file:///late.jpg' }] });
+    await pending;
+  });
+  expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
+  expect(control('Số tiền widget').props.value).toBe('25.000');
+});
+
+it('keeps decimal-comma input for a non-VND wallet instead of treating it as thousands', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    ...data,
+    wallets: [{ ...data.wallets[0], currency: 'USD' }],
+  });
+  await mount();
+  await press('Chọn ví');
+  await press('Ví QA · USD');
+  await fill('Số tiền widget', '2,50');
+  await press('Kiểm tra');
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].amount).toBe('2.50');
+});
+
+it('keeps the income draft and wallet through temporary auth-controller restoration', async () => {
+  await mount();
+  await press('Thu');
+  await press('Chọn danh mục');
+  await press('Lương');
+  await press('Chọn ví');
+  await press('Ví QA · VND');
+  await fill('Số tiền widget', '125000');
+  await fill('Ghi chú widget', 'luong QA');
+  await act(async () => {
+    Object.assign(mockAuth, {
+      user: null,
+      token: null,
+      isRestoringSession: true,
+    });
+    renderer.update(<WidgetQuickEntry entryUrl={entryUrl} />);
+  });
+  await act(async () => {
+    Object.assign(mockAuth, {
+      user: { id: 7 },
+      token: 'new-token',
+      isRestoringSession: false,
+    });
+    renderer.update(<WidgetQuickEntry entryUrl={entryUrl} />);
+  });
+  expect(control('Số tiền widget').props.value).toBe('125.000');
+  expect(control('Lương')).toBeDefined();
+  expect(control('Ví QA · VND')).toBeDefined();
+  await press('Kiểm tra');
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2]).toMatchObject({
+    type: 'INCOME',
+    category_id: 10,
+    wallet_id: 7,
+    amount: '125000',
+    note: 'luong QA',
+  });
 });

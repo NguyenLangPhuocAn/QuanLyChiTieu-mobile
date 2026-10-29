@@ -1,0 +1,79 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (62.735 s)
+  ● requires wallet and preview before saving, locks repeated confirms, then closes the panel
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      84 |     renderer = TestRenderer.create(<WidgetQuickEntry entryUrl={url} />);
+      85 |   });
+    > 86 | };
+         | ^
+      87 | it('requires wallet and preview before saving, locks repeated confirms, then closes the panel', async () => {
+      88 |   await mount();
+      89 |   await fill('Số tiền widget', '25000');
+
+      at Object.it (__tests__/WidgetQuickEntry.test.tsx:86:1)
+
+  ● recovers in place when the initial cache is missing and later arrives
+
+    expect(received).toBeDefined()
+
+    Received: undefined
+
+      188 |   await act(async () => {
+      189 |     jest.mocked(dashboardCache.subscribe).mock.calls[0][0]();
+    > 190 |   });
+          |      ^
+      191 |   expect(control('Số tiền widget')).toBeDefined();
+      192 |   expect(control('Đi lại')).toBeDefined();
+      193 | });
+
+      at Object.toBeDefined (__tests__/WidgetQuickEntry.test.tsx:190:37)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● accepts formatted VND and preserves an empty item amount while editing
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: ""
+    Received: "0"
+
+      202 |   });
+      203 |   await mount(entryUrl + '&action=CAMERA');
+    > 204 |   await fill('Thành tiền món 1', '');
+          |                                      ^
+      205 |   expect(control('Thành tiền món 1').props.value).toBe('');
+      206 |   await fill('Thành tiền món 1', '94.000');
+      207 |   await fill('Số tiền widget', '79.000');
+
+      at Object.toBe (__tests__/WidgetQuickEntry.test.tsx:204:51)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● locks repeated camera taps immediately and ignores cancelled OCR after manual input
+
+    expect(jest.fn()).toHaveBeenCalledTimes(expected)
+
+    Expected number of calls: 1
+    Received number of calls: 2
+
+      225 |     pending = camera.props.onPress();
+      226 |     camera.props.onPress();
+    > 227 |   });
+          |      ^
+      228 |   expect(launchCamera).toHaveBeenCalledTimes(1);
+      229 |   await press('Hủy đọc');
+      230 |   await fill('Số tiền widget', '25000');
+
+      at Object.toHaveBeenCalledTimes (__tests__/WidgetQuickEntry.test.tsx:227:24)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+PASS __tests__/widgetQuickEntry.test.ts
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       4 failed, 11 passed, 15 total
+Snapshots:   0 total
+Time:        65.622 s
+Ran all test suites matching /__tests__\\WidgetQuickEntry.test.tsx|__tests__\\widgetQuickEntry.test.ts/i.

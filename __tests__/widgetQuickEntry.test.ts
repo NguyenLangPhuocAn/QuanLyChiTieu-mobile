@@ -3,7 +3,7 @@ import {
   saveWidgetEntry,
   refreshWidgetEntryCache,
 } from '../src/services/widgetQuickEntry';
-import { ApiError } from '../src/services/api';
+import { ApiError, invalidateAuthSession } from '../src/services/api';
 import { transactionsService } from '../src/services/transactions';
 import {
   dashboardCache,
@@ -150,5 +150,93 @@ it('refreshes widget totals from confirmed server rows after sync, without losin
     meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
   });
   await refreshWidgetEntryCache('token', 7, () => false);
+  expect(dashboardCache.save).not.toHaveBeenCalled();
+});
+
+it('returns a confirmed save without waiting for a slow wallet read and merges its later result with the latest cache', async () => {
+  const created = { id: 90, type: 'EXPENSE', amount: '-25000' } as never;
+  jest.mocked(transactionsService.create).mockResolvedValueOnce(created);
+  let walletDone!: (value: typeof cache.wallets) => void;
+  jest.mocked(walletsService.getAll).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        walletDone = resolve;
+      }),
+  );
+  let result: string | undefined;
+  const pending = saveWidgetEntry(
+    'token',
+    7,
+    payload(),
+    false,
+    () => true,
+  ).then(value => {
+    result = value;
+  });
+  try {
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(result).toBe('SAVED');
+    expect(dashboardCache.save).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ transactions: [created] }),
+    );
+    jest.mocked(dashboardCache.read).mockResolvedValue({
+      ...cache,
+      transactions: [created, { id: 91 } as never],
+    });
+  } finally {
+    walletDone(cache.wallets);
+    await pending;
+  }
+  await new Promise<void>(resolve => setImmediate(resolve));
+  expect(
+    jest.mocked(dashboardCache.save).mock.calls.at(-1)?.[1].transactions,
+  ).toEqual([created, { id: 91 }]);
+});
+
+it('preserves a payment cached while the server page was still loading', async () => {
+  let pageDone!: (
+    value: Awaited<ReturnType<typeof transactionsService.getPage>>,
+  ) => void;
+  jest.mocked(transactionsService.getPage).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        pageDone = resolve;
+      }),
+  );
+  const loading = refreshWidgetEntryCache('token', 7, () => true);
+  const justSaved = { id: 92, amount: '-25000' } as never;
+  jest
+    .mocked(dashboardCache.read)
+    .mockResolvedValue({ ...cache, transactions: [justSaved] });
+  pageDone({
+    data: [],
+    meta: { page: 1, limit: 100, total: 0, totalPages: 0 },
+  });
+  await loading;
+  expect(dashboardCache.save).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ transactions: [justSaved] }),
+  );
+});
+
+it('drops a background wallet result if the auth session changes after a confirmed save', async () => {
+  jest
+    .mocked(transactionsService.create)
+    .mockResolvedValueOnce({ id: 93 } as never);
+  let walletDone!: (value: typeof cache.wallets) => void;
+  jest.mocked(walletsService.getAll).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        walletDone = resolve;
+      }),
+  );
+  await expect(
+    saveWidgetEntry('token', 7, payload(), false, () => true),
+  ).resolves.toBe('SAVED');
+  jest.mocked(dashboardCache.save).mockClear();
+  invalidateAuthSession();
+  walletDone(cache.wallets);
+  await new Promise<void>(resolve => setImmediate(resolve));
   expect(dashboardCache.save).not.toHaveBeenCalled();
 });

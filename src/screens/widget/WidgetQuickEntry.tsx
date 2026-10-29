@@ -41,8 +41,14 @@ import { toDateKey } from '../../utils/budgetPeriod';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import type { ReceiptItem } from '../../types/transaction';
 import { widgetPanelState } from '../../services/widgetPanelState';
+import {
+  formatMoneyInputForCurrency,
+  normalizeMoneyInputForCurrency,
+  parsePositiveMoneyInput,
+} from '../../utils/moneyInput';
 
 type Props = { entryUrl: string };
+type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
 function Panel({ entryUrl }: Props) {
   const {
     user,
@@ -63,7 +69,7 @@ function Panel({ entryUrl }: Props) {
   const [note, setNote] = useState('');
   const [date, setDate] = useState(toDateKey(new Date()));
   const [currency, setCurrency] = useState<string | null>(null);
-  const [items, setItems] = useState<ReceiptItem[]>([]);
+  const [items, setItems] = useState<ItemDraft[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [picker, setPicker] = useState<'wallet' | 'category' | null>(null);
   const [review, setReview] = useState<CreateTransactionPayload | null>(null);
@@ -75,6 +81,10 @@ function Panel({ entryUrl }: Props) {
   const alive = useRef(true);
   const operation = useRef(0);
   const saving = useRef(false);
+  const scanning = useRef(false);
+  const initialized = useRef(false);
+  const initializedFor = useRef<string | null>(null);
+  const [loadRevision, setLoadRevision] = useState(0);
   const latest = useRef({ userId: user?.id, server });
   latest.current = { userId: user?.id, server };
   const initialAction = useRef<string | null>(null);
@@ -107,7 +117,9 @@ function Panel({ entryUrl }: Props) {
   useEffect(() => {
     if (isRestoringSession) return;
     let active = true;
+    initialized.current = false;
     setReady(false);
+    setError('');
     const load = async () => {
       if (
         !user?.id ||
@@ -131,19 +143,24 @@ function Panel({ entryUrl }: Props) {
       const nextType =
         params.get('widgetType') === 'INCOME' ? 'INCOME' : 'EXPENSE';
       const nextId = Number(params.get('widgetCategoryId'));
-      setType(nextType);
-      setCategory(
-        cached.categories.some(
-          c =>
-            c.id === nextId &&
-            c.type === nextType &&
-            (!c.cash_flow_group || c.cash_flow_group === 'NORMAL'),
-        )
-          ? nextId
-          : null,
-      );
+      const source = `${widgetScope(scope)}|${entryUrl}`;
+      if (initializedFor.current !== source) {
+        setType(nextType);
+        setCategory(
+          cached.categories.some(
+            c =>
+              c.id === nextId &&
+              c.type === nextType &&
+              (!c.cash_flow_group || c.cash_flow_group === 'NORMAL'),
+          )
+            ? nextId
+            : null,
+        );
+        initialAction.current = params.get('widgetAction');
+        initializedFor.current = source;
+      }
       setData(cached);
-      initialAction.current = params.get('widgetAction');
+      initialized.current = true;
       setReady(true);
       setError('');
     };
@@ -161,6 +178,7 @@ function Panel({ entryUrl }: Props) {
     entryUrl,
     isCurrencySetupRequired,
     user?.must_change_password,
+    loadRevision,
   ]);
   useEffect(() => {
     if (!user?.id) return;
@@ -175,8 +193,15 @@ function Panel({ entryUrl }: Props) {
             cached &&
             latest.current.userId === userId &&
             latest.current.server === server
-          )
-            setData(cached);
+          ) {
+            if (
+              !initialized.current &&
+              cached.wallets.length &&
+              cached.categories.length
+            )
+              setLoadRevision(value => value + 1);
+            else if (initialized.current) setData(cached);
+          }
         })
         .catch(() => undefined);
     };
@@ -188,7 +213,8 @@ function Panel({ entryUrl }: Props) {
   }, [user?.id, server]);
 
   const scan = async () => {
-    if (!token || ocrBusy || saving.current) return;
+    if (!token || scanning.current || saving.current) return;
+    scanning.current = true;
     const version = ++operation.current;
     const owner = user?.id;
     const current = () =>
@@ -199,6 +225,7 @@ function Panel({ entryUrl }: Props) {
     setOcrBusy(true);
     setError('');
     voice.cancel();
+    setVoiceVisible(false);
     try {
       const picked = await launchCamera({
         mediaType: 'photo',
@@ -222,10 +249,15 @@ function Panel({ entryUrl }: Props) {
       if (result.amount && result.amount > 0) setAmount(String(result.amount));
       if (result.note || result.merchant)
         setNote(result.note || result.merchant || '');
-      if (result.currency) setCurrency(result.currency);
+      setCurrency(result.currency || null);
       if (result.transaction_date)
         setDate(result.transaction_date.slice(0, 10));
-      setItems(result.receipt_items ?? []);
+      setItems(
+        (result.receipt_items ?? []).map(item => ({
+          ...item,
+          amount: String(item.amount),
+        })),
+      );
       setWarnings(result.warnings ?? []);
       // OCR photo is transient; never pass it to transaction upload or offline queue.
     } catch (e) {
@@ -237,7 +269,10 @@ function Panel({ entryUrl }: Props) {
           ),
         );
     } finally {
-      if (current()) setOcrBusy(false);
+      if (current()) {
+        scanning.current = false;
+        setOcrBusy(false);
+      }
     }
   };
   useEffect(() => {
@@ -253,6 +288,8 @@ function Panel({ entryUrl }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
   const wallet = data?.wallets.find(w => w.id === walletId);
+  const moneyCurrency =
+    currency || wallet?.currency || user?.currency_default || 'VND';
   const category = data?.categories.find(
     c => c.id === categoryId && c.type === type,
   );
@@ -263,7 +300,19 @@ function Panel({ entryUrl }: Props) {
       setReview(
         widgetEntryPayload(
           data,
-          { type, categoryId, walletId, amount, note, date, currency, items },
+          {
+            type,
+            categoryId,
+            walletId,
+            amount,
+            note,
+            date,
+            currency,
+            items: items.map(item => ({
+              ...item,
+              amount: Number(parsePositiveMoneyInput(item.amount)),
+            })),
+          },
           createClientRequestId(),
         ),
       );
@@ -290,7 +339,12 @@ function Panel({ entryUrl }: Props) {
           latest.current.userId === owner &&
           latest.current.server === server,
       );
-      if (alive.current) await homeWidget.closeQuickEntry(result);
+      if (
+        alive.current &&
+        latest.current.userId === owner &&
+        latest.current.server === server
+      )
+        await homeWidget.closeQuickEntry(result);
     } catch (e) {
       if (alive.current)
         setError(
@@ -322,7 +376,11 @@ function Panel({ entryUrl }: Props) {
     </TouchableOpacity>
   );
   return (
-    <KeyboardAvoidingView style={s.backdrop} behavior="height">
+    <KeyboardAvoidingView
+      style={s.backdrop}
+      behavior="height"
+      onLayout={() => homeWidget.entryReady().catch(() => undefined)}
+    >
       <View style={s.card}>
         <View style={s.header}>
           <Text style={s.title}>
@@ -347,6 +405,8 @@ function Panel({ entryUrl }: Props) {
               <Text style={s.muted}>
                 {error || 'Đang mở dữ liệu trên máy…'}
               </Text>
+              {!!error &&
+                button('Thử lại', () => setLoadRevision(value => value + 1))}
               {!!error &&
                 button('Mở app', () => {
                   homeWidget.closeQuickEntry('OPEN').catch(() => undefined);
@@ -425,8 +485,12 @@ function Panel({ entryUrl }: Props) {
               <TextInput
                 accessibilityLabel="Số tiền widget"
                 placeholder="Số tiền"
-                value={amount}
-                onChangeText={setAmount}
+                value={formatMoneyInputForCurrency(amount, moneyCurrency)}
+                onChangeText={value =>
+                  setAmount(
+                    normalizeMoneyInputForCurrency(value, moneyCurrency),
+                  )
+                }
                 keyboardType="decimal-pad"
                 style={s.amount}
                 editable={!ocrBusy}
@@ -548,6 +612,7 @@ function Panel({ entryUrl }: Props) {
                   <Text style={s.muted}>Đang đọc ảnh…</Text>
                   {button('Hủy đọc', () => {
                     operation.current++;
+                    scanning.current = false;
                     setOcrBusy(false);
                   })}
                 </View>
@@ -576,13 +641,24 @@ function Panel({ entryUrl }: Props) {
                       />
                       <TextInput
                         accessibilityLabel={`Thành tiền món ${index + 1}`}
-                        value={String(item.amount)}
+                        value={formatMoneyInputForCurrency(
+                          item.amount,
+                          moneyCurrency,
+                        )}
                         keyboardType="decimal-pad"
                         style={[s.input, s.itemAmount]}
                         onChangeText={value =>
                           setItems(previous =>
                             previous.map((r, i) =>
-                              i === index ? { ...r, amount: Number(value) } : r,
+                              i === index
+                                ? {
+                                    ...r,
+                                    amount: normalizeMoneyInputForCurrency(
+                                      value,
+                                      moneyCurrency,
+                                    ),
+                                  }
+                                : r,
                             ),
                           )
                         }

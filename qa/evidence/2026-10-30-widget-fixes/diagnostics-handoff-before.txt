@@ -1,0 +1,28 @@
+FAIL __tests__/sharedProvider.test.tsx
+  √ shares one controller across roots, propagates changes and hands ownership over on close (30 ms)
+  × keeps a widget draft mounted when the main root closes and hands over its controller (9 ms)
+
+  ● keeps a widget draft mounted when the main root closes and hands over its controller
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "Grab 25.000"
+    Received: ""
+
+      84 |   await act(async () => change('Grab 25.000'));
+      85 |   await act(async () => main.unmount());
+    > 86 |   expect(draft).toBe('Grab 25.000');
+         |                 ^
+      87 |   expect(mounts).toBe(1);
+      88 |   await act(async () => widget.unmount());
+      89 | });
+
+      at Object.toBe (__tests__/sharedProvider.test.tsx:86:17)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 passed, 2 total
+Snapshots:   0 total
+Time:        1.939 s, estimated 3 s
+Ran all test suites matching /__tests__\\sharedProvider.test.tsx/i.

@@ -1,0 +1,15 @@
+{
+  "qaUserId": 8,
+  "walletId": 8,
+  "balance": 975000,
+  "rows": [
+    {
+      "id": 27,
+      "amount": "-25000",
+      "currency": "VND",
+      "category_id": 22,
+      "receipt_image": null,
+      "transaction_date": "2026-10-30T00:00:00.000Z"
+    }
+  ]
+}

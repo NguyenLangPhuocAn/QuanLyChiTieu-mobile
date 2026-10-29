@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-30",
+  "jest": {
+    "passed": 101,
+    "suites": 12,
+    "added": 9
+  },
+  "typescriptExit": 0,
+  "eslintExit": 0,
+  "native": {
+    "initialBuildSeconds": 83,
+    "finalBuildSeconds": 21,
+    "existingPlannerTests": 11,
+    "failures": 0
+  },
+  "qa8": {
+    "beforeTransactions": 0,
+    "offlineTransactions": 0,
+    "afterTransactions": 1,
+    "transactionId": 27,
+    "amount": -25000,
+    "beforeBalance": 1000000,
+    "afterBalance": 975000
+  },
+  "pendingIntents": {
+    "before": 15,
+    "after": 15,
+    "repaints": 4
+  },
+  "productionHealth": 200,
+  "productionRelease": false,
+  "realDevice": false
+}
