@@ -57,6 +57,7 @@ import {
 } from '../../services/widgetLoanEntry';
 import type { LoanDebtType } from '../../types/loanDebt';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
+import { formatCurrency } from '../../utils/format';
 
 type Props = { entryUrl: string };
 type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
@@ -596,19 +597,26 @@ function Panel({ entryUrl }: Props) {
                   ocrBusy,
                 )}
               </View>
-              <TextInput
-                accessibilityLabel="Số tiền widget"
-                placeholder="Số tiền"
-                value={formatMoneyInputForCurrency(amount, moneyCurrency)}
-                onChangeText={value =>
-                  setAmount(
-                    normalizeMoneyInputForCurrency(value, moneyCurrency),
-                  )
-                }
-                keyboardType="decimal-pad"
-                style={s.amount}
-                editable={!ocrBusy}
-              />
+              <View style={s.amountField}>
+                <Text style={s.label}>Số tiền</Text>
+                <View style={s.amountBox}>
+                  <TextInput
+                    accessibilityLabel="Số tiền widget"
+                    placeholder="0"
+                    placeholderTextColor="#C99A72"
+                    value={formatMoneyInputForCurrency(amount, moneyCurrency)}
+                    onChangeText={value =>
+                      setAmount(
+                        normalizeMoneyInputForCurrency(value, moneyCurrency),
+                      )
+                    }
+                    keyboardType="decimal-pad"
+                    style={s.amount}
+                    editable={!ocrBusy}
+                  />
+                  <Text style={s.amountCurrency}>{moneyCurrency}</Text>
+                </View>
+              </View>
               {type === 'LOAN_DEBT' ? (
                 <>
                   <View style={s.row}>
@@ -689,7 +697,13 @@ function Panel({ entryUrl }: Props) {
                 </>
               )}
               <Text style={s.label}>Ví</Text>
-              <View style={s.wallets}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={s.walletStrip}
+                contentContainerStyle={s.wallets}
+              >
                 {data?.wallets
                   .filter(
                     w => type !== 'LOAN_DEBT' || w.wallet_type !== 'SAVINGS',
@@ -707,20 +721,27 @@ function Panel({ entryUrl }: Props) {
                         onPress={() => setWallet(w.id)}
                         style={[s.walletCard, selected && s.walletSelected]}
                       >
-                        <WalletIcon
-                          size={19}
-                          color={selected ? '#C36600' : '#886449'}
-                        />
-                        <View style={s.categoryCopy}>
-                          <Text style={s.walletName} numberOfLines={2}>
-                            {w.name}
-                          </Text>
-                          <Text style={s.walletCurrency}>{w.currency}</Text>
+                        <View
+                          style={[
+                            s.walletIcon,
+                            selected && s.walletIconSelected,
+                          ]}
+                        >
+                          <WalletIcon
+                            size={19}
+                            color={selected ? '#FFF' : '#D87219'}
+                          />
                         </View>
+                        <Text style={s.walletName} numberOfLines={1}>
+                          {w.name}
+                        </Text>
+                        <Text style={s.walletCurrency} numberOfLines={1}>
+                          {formatCurrency(Number(w.balance || 0), w.currency)}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
-              </View>
+              </ScrollView>
               <TextInput
                 accessibilityLabel="Ghi chú widget"
                 placeholder="Ghi chú"
@@ -963,23 +984,34 @@ function WidgetSync() {
   );
 }
 const s = StyleSheet.create({
-  wallets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  walletStrip: { flexGrow: 0 },
+  wallets: { gap: 10, paddingRight: 10, paddingBottom: 2 },
   walletCard: {
-    width: '48%',
-    flexGrow: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 64,
-    padding: 10,
-    borderRadius: 14,
+    width: 138,
+    padding: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#ECD6C1',
-    backgroundColor: '#FFFDFB',
+    borderColor: '#F2D9C0',
+    backgroundColor: '#FFF6EF',
   },
   walletSelected: { backgroundColor: '#FFF0DF', borderColor: '#FF8800' },
+  walletIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 14,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  walletIconSelected: { backgroundColor: '#FF8800' },
   walletName: { color: '#4A2B1A', fontWeight: '700', fontSize: 14 },
-  walletCurrency: { color: '#886449', fontSize: 12, marginTop: 2 },
+  walletCurrency: {
+    color: '#8A623F',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 5,
+  },
   dateField: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1064,15 +1096,34 @@ const s = StyleSheet.create({
   disabled: { opacity: 0.45 },
   buttonText: { color: '#7A4A28', fontSize: 14, fontWeight: '600' },
   primaryText: { color: '#FFF' },
-  amount: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#4A2B1A',
-    padding: 14,
+  amountField: { gap: 6 },
+  amountBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    minHeight: 60,
     borderWidth: 1,
-    borderColor: '#ECC7A2',
-    borderRadius: 14,
-    backgroundColor: '#FFF',
+    borderColor: '#EBC4A4',
+    borderRadius: 16,
+    backgroundColor: '#FFF6EF',
+  },
+  amount: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 28,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    color: '#4A2B1A',
+    paddingVertical: 10,
+    paddingHorizontal: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  amountCurrency: {
+    color: '#8A623F',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 10,
   },
   input: {
     minHeight: 44,

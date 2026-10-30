@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Ví cuộn ngang và số tiền trong widget — 30/10/2026
+
+- Thẻ ví cuộn ngang theo giao diện trong app, gồm icon/tên/số dư, chọn viền cam. Thay bố cục hai cột, vẫn chọn trực tiếp.
+- Ô số tiền tách nhãn, dùng placeholder0/font28 độ đậm600, chữ số thẳng hàng và đơn vị tiền nhỏ bên phải.
+- Android local thử vuốt hai chiều/chọn ví cuối/nhập1.250.000/preview rồi đóng không lưu. Jest20/20 WidgetQuickEntry, TypeScript/ESLint đạt; SQL QA không đổi. Không build/phát hành APK hoặc thay server/web.
+- Bằng chứng: mobile/qa/evidence/2026-10-30-widget-horizontal-font/README.md.
+
 ## Form nhập từ widget — 30/10/2026
 
 - Ngày giao dịch và ngày hẹn trả dùng lịch Android, hiện dd/MM/yyyy; Hủy giữ ngày, có thể bỏ ngày hẹn trả.

@@ -1,0 +1,6 @@
+PASS __tests__/WidgetQuickEntry.test.tsx (11.891 s)
+
+Test Suites: 1 passed, 1 total
+Tests:       20 passed, 20 total
+Snapshots:   0 total
+Time:        12.238 s, estimated 21 s
