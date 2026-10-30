@@ -64,3 +64,8 @@ Android13 local Metro8082/API3302/MySQL QA đã lưu Vay100k và Cho vay50k, rep
 
 
 Bổ sung cùng đợt chống lặp30/10: Hàng chờ offline so sánh toàn bộ nội dung cùng mã (không phụ thuộc thứ tự khóa JSON). Nội dung khác báo409/OFFLINE_DRAFT_CONFLICT và giữ nguyên bản cũ; áp dụng giao dịch nhập tay và thông báo ngân hàng, gồm thay đổi món hóa đơn. Hai ca mới xác nhận không ghi đè hoặc gửi API.
+
+
+## Bảng đầy đủ là mặc định — yêu cầu mới30/10/2026
+
+Thêm widget Nova nay ghim trực tiếp Thu chi nhanh4×2. Có Chi/Thu/Vay-Nợ, chọn danh mục và thêm/mic/camera; Loan không gọi bộ chọn danh mục thường, mở popup Vay/Cho vay. Minheight/minResize110dp cùng layout gọn giúp launcher QA nhận4×2, không kéo cao4×4. Mini provider giữ để nâng cấp tương thích, không còn lựa chọn mặc định trong app. QA đã bỏ mini và bàn giao một bảng đầy đủ, che tiền. Biên bản evidence/2026-10-30-money-calendar-widget-full/README.md. Các mục mini29/10 là lịch sử theo yêu cầu cũ.

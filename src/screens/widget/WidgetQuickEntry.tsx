@@ -164,7 +164,11 @@ function Panel({ entryUrl }: Props) {
       if (!active) return;
       const params = new URLSearchParams(link.slice(link.indexOf('?') + 1));
       const nextType =
-        params.get('widgetType') === 'INCOME' ? 'INCOME' : 'EXPENSE';
+        params.get('widgetType') === 'LOAN_DEBT'
+          ? 'LOAN_DEBT'
+          : params.get('widgetType') === 'INCOME'
+          ? 'INCOME'
+          : 'EXPENSE';
       const nextId = Number(params.get('widgetCategoryId'));
       const source = `${widgetScope(scope)}|${entryUrl}`;
       if (initializedFor.current !== source) {

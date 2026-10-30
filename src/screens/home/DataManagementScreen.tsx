@@ -493,12 +493,12 @@ const DataManagementScreen = () => {
             accessibilityLabel="Thêm widget Nova"
             style={styles.localCard}
             onPress={() => {
-              const add = async (kind: 'mini' | 'full') => {
+              const add = async () => {
                 try {
-                  if (!(await homeWidget.requestPin(kind)))
+                  if (!(await homeWidget.requestPin('full')))
                     Alert.alert(
                       'Thêm widget',
-                      'Nhấn giữ màn hình chính → Widget → Nova, rồi chọn bản Mini hoặc Thu chi nhanh.',
+                      'Nhấn giữ màn hình chính → Widget → Nova → Thu chi nhanh.',
                     );
                 } catch {
                   Alert.alert(
@@ -507,17 +507,14 @@ const DataManagementScreen = () => {
                   );
                 }
               };
-              Alert.alert('Chọn widget', 'Bạn muốn thêm kiểu nào?', [
-                { text: 'Mini 1×1', onPress: () => add('mini') },
-                { text: 'Bản đầy đủ', onPress: () => add('full') },
-                { text: 'Hủy', style: 'cancel' },
-              ]);
+              add();
             }}
           >
             <View style={styles.localCopy}>
               <Text style={styles.cardTitle}>Widget màn hình chính</Text>
               <Text style={styles.cardText}>
-                Chọn biểu tượng mini 1×1 hoặc bản đầy đủ có thu, chi hôm nay.
+                Bảng thu, chi hôm nay, danh mục, thêm giao dịch, nói và chụp hóa
+                đơn ngay trên màn hình chính.
               </Text>
               <Text style={styles.cacheMeta}>Thêm widget Nova</Text>
             </View>

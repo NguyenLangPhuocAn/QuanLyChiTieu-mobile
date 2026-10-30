@@ -6,3 +6,4 @@
 - Không phát hành APK, cập nhật web tải hay thay server ổn định cho mỗi thay đổi nhỏ; gom bản và chờ người dùng chốt cập nhật. Bản debug local phục vụ yêu cầu kiểm thử không phải bản phát hành cho điện thoại thật.
 
 - Theo yêu cầu ngày28/10/2026: tất cả file sao lưu dùng file thường, không mã hóa/không hỏi mật khẩu. Chỉ thay đổi lại khi người dùng yêu cầu mới.
+- Theo yêu cầu30/10/2026 mới nhất: widget ưu tiên bảng Thu chi nhanh đầy đủ trên màn hình chính, không đặt mini N+ làm mẫu bàn giao. Nút Thêm widget trong app ghim bản đầy đủ; giữ dữ liệu/widget cũ của người dùng khi nâng cấp.

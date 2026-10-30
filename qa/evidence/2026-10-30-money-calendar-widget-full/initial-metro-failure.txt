@@ -1,0 +1,21 @@
+node:internal/fs/watchers:262
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'C:\Users\Admin\Documents\QuanLyChiTieu\mobile\android\app\.cxx\Debug\n3sp2z4w\armeabi-v7a\CMakeFiles\CMakeTmp\CMakeFiles\cmTC_196fe.dir'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2539:36)
+    at #watchdir (C:\Users\Admin\Documents\QuanLyChiTieu\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:133:33)
+    at C:\Users\Admin\Documents\QuanLyChiTieu\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:233:31
+    at Walker.<anonymous> (C:\Users\Admin\Documents\QuanLyChiTieu\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:378:5)
+    at Walker.emit (node:events:508:28)
+    at C:\Users\Admin\Documents\QuanLyChiTieu\mobile\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:185:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'C:\\Users\\Admin\\Documents\\QuanLyChiTieu\\mobile\\android\\app\\.cxx\\Debug\\n3sp2z4w\\armeabi-v7a\\CMakeFiles\\CMakeTmp\\CMakeFiles\\cmTC_196fe.dir',
+  filename: 'C:\\Users\\Admin\\Documents\\QuanLyChiTieu\\mobile\\android\\app\\.cxx\\Debug\\n3sp2z4w\\armeabi-v7a\\CMakeFiles\\CMakeTmp\\CMakeFiles\\cmTC_196fe.dir'
+}
+
+Node.js v24.11.0

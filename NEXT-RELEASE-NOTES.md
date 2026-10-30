@@ -1,5 +1,14 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Lịch tiền, Chi an toàn và widget đầy đủ — 30/10/2026
+
+- Tài khoản có màn Lịch tiền riêng: hóa đơn đã xác nhận và khoản thu/chi dự kiến trong30ngày, số dư dự kiến theo ngày và ngày có thể thiếu tiền. Không mở lại Trung tâm tài chính. Khoản dự kiến phải xem trước/xác nhận, chỉ lưu lịch, không ghi giao dịch hoặc đổi số dư.
+- Chi an toàn lấy số dư ví thường cùng tiền tệ, trừ hóa đơn chưa xử lý, chi dự kiến và chi chờ đồng bộ, chia30ngày/làm tròn xuống. Giữ số dư âm, loại ví tiết kiệm/tiền tệ khác; không cộng lương chưa nhận. Hóa đơn biến động giữ mức tối đa, quá hạn giữ từ hôm nay; đã trả/bỏ qua/dừng/xóa không bị giữ tiếp. Có mở cách tính và thời điểm cache; không thay hạn mức ngân sách từng danh mục.
+- Thêm widget ghim trực tiếp bảng Thu chi nhanh4×2, đủ Chi/Thu/Vay-Nợ, danh mục, thêm/mic/camera. Vay/Nợ mở đúng form riêng trên launcher. Bỏ dòng0chờ, thu gọn khoảng trống; giữ provider Mini cũ để tương thích, không dùng làm mặc định/bàn giao. Emulator đã thay mini bằng đúng một widget đầy đủ.
+- Hồi quy128/128 qua16bộ; sau chỉnh cuối33/33 tập trung, TypeScript/ESLint đạt; Metro2/2, JVM11planner cũ đạt. Debug local build/cài12m43 (4ABI), chỉnh kích thước chỉx86_64/cài32s. Sửa Metro ENOENT do CMake xóa cây tạm bằng loại android build/.cxx/.gradle khỏi watcher.
+- Android13 local/API3302/MySQL QA8:34125/ngày → hóa đơn300k còn24125; lương dự kiến5triệu không nâng mức; thêm chi800k về0/thiếu76250; bỏ qua kỳ hóa đơn còn7458. Thu/Lương, Chi/Khác và Vay/Nợ mở đúng popup, Hủy về launcher; widgetChi26250/Thu0. SQL giữ4tx27–30,2loan1–2/ví1023750.
+- Chưa phát hành/ký APK production, deploy hoặc cập nhật web/server3000/.env. Còn đồng bộ lịch giữa thiết bị, backup/sync khoản dự kiến mới, máy thật/OEM/4G và AI/mic/OCR thật. Bằng chứng mobile/qa/evidence/2026-10-30-money-calendar-widget-full/README.md.
+
 ## Chống lưu lặp khi thử lại widget — 30/10/2026
 
 - Thu/Chi giữ cùng mã yêu cầu qua Sửa lại, xem trước và thử lưu lại. Khi máy chủ đã xử lý, cùng mã/nội dung không ghi thêm tiền; nội dung thay đổi vẫn do backend kiểm tra xung đột.

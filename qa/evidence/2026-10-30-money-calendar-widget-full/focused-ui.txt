@@ -1,0 +1,11 @@
+PASS __tests__/WidgetQuickEntry.test.tsx (13.863 s)
+PASS __tests__/MoneyCalendarScreen.test.tsx
+PASS __tests__/moneyCalendar.test.ts
+PASS __tests__/moneyCalendarPlans.test.ts
+PASS __tests__/widget.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       33 passed, 33 total
+Snapshots:   0 total
+Time:        19.255 s
+Ran all test suites matching /__tests__\\MoneyCalendarScreen.test.tsx|__tests__\\moneyCalendar.test.ts|__tests__\\moneyCalendarPlans.test.ts|__tests__\\WidgetQuickEntry.test.tsx|__tests__\\widget.test.ts/i.

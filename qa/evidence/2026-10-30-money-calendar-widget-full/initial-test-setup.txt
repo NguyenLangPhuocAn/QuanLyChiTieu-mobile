@@ -1,0 +1,61 @@
+PASS __tests__/moneyCalendar.test.ts
+FAIL __tests__/moneyCalendarPlans.test.ts
+  ● persists plans isolated by account and backend, then removes only the requested plan
+
+    TypeError: _asyncStorage.default.clear is not a function
+
+      13 | };
+      14 | beforeEach(async () => {
+    > 15 |   await AsyncStorage.clear();
+         |                      ^
+      16 |   mockServer = scope.server;
+      17 | });
+      18 | it('persists plans isolated by account and backend, then removes only the requested plan', async () => {
+
+      at Object.clear (__tests__/moneyCalendarPlans.test.ts:15:22)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+  ● serializes writes and rejects duplicate ids or a changed backend
+
+    TypeError: _asyncStorage.default.clear is not a function
+
+      13 | };
+      14 | beforeEach(async () => {
+    > 15 |   await AsyncStorage.clear();
+         |                      ^
+      16 |   mockServer = scope.server;
+      17 | });
+      18 | it('persists plans isolated by account and backend, then removes only the requested plan', async () => {
+
+      at Object.clear (__tests__/moneyCalendarPlans.test.ts:15:22)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+  ● preserves corrupt storage and never replaces it when adding a plan
+
+    TypeError: _asyncStorage.default.clear is not a function
+
+      13 | };
+      14 | beforeEach(async () => {
+    > 15 |   await AsyncStorage.clear();
+         |                      ^
+      16 |   mockServer = scope.server;
+      17 | });
+      18 | it('persists plans isolated by account and backend, then removes only the requested plan', async () => {
+
+      at Object.clear (__tests__/moneyCalendarPlans.test.ts:15:22)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+      at node_modules/@babel/runtime/helpers/asyncToGenerator.js:22:7
+      at Object.<anonymous> (node_modules/@babel/runtime/helpers/asyncToGenerator.js:14:12)
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       3 failed, 7 passed, 10 total
+Snapshots:   0 total
+Time:        5.529 s
+Ran all test suites matching /__tests__\\moneyCalendar.test.ts|__tests__\\moneyCalendarPlans.test.ts/i.

@@ -36,7 +36,7 @@ open class NovaWidgetProvider : AppWidgetProvider() {
       val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1)
       val type = intent.getStringExtra("type")
       val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
-      if (id in ids && type in listOf("EXPENSE", "INCOME")) {
+      if (id in ids && type in listOf("EXPENSE", "INCOME", "LOAN_DEBT")) {
         p.edit().putString("type_$id", type).commit()
         render(context)
       }
@@ -109,18 +109,19 @@ open class NovaWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.widget_expense, if (!visible) "*****" else if (fresh) json.optString("expense", "—") else "Chưa cập nhật")
         views.setTextViewText(R.id.widget_income, if (!visible) "*****" else if (fresh) json.optString("income", "—") else "Chưa cập nhật")
         views.setTextViewText(R.id.widget_status, if (scope == null) "Mở app để đăng nhập" else "${json.optInt("pending")} chờ đồng bộ")
+        views.setViewVisibility(R.id.widget_status, if (scope != null && json.optInt("pending") == 0) android.view.View.GONE else android.view.View.VISIBLE)
         views.setTextViewText(R.id.widget_toggle, if (visible) "Ẩn tiền" else "Hiện tiền")
         val toggle = Intent(context, NovaWidgetProvider::class.java).setAction("com.mobile.widget.TOGGLE")
         views.setOnClickPendingIntent(R.id.widget_toggle, PendingIntent.getBroadcast(context, id, toggle, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         val type = p.getString("type_$id", "EXPENSE") ?: "EXPENSE"
         val category = if (scope == null) null else categories(context, type).find { it.id == p.getLong("category_${id}_$type", -1) }
-        views.setTextViewText(R.id.widget_category, (category?.name ?: "Chọn danh mục") + "  ▾")
-        views.setContentDescription(R.id.widget_category, if (type == "INCOME") "Chọn danh mục thu" else "Chọn danh mục chi")
-        for ((viewId, choiceType) in listOf(R.id.widget_expense_button to "EXPENSE", R.id.widget_income_button to "INCOME")) {
+        views.setTextViewText(R.id.widget_category, if (type == "LOAN_DEBT") "Vay hoặc cho vay · chọn khi nhập" else (category?.name ?: "Chọn danh mục") + "  ▾")
+        views.setContentDescription(R.id.widget_category, if (type == "LOAN_DEBT") "Nhập khoản vay nợ" else if (type == "INCOME") "Chọn danh mục thu" else "Chọn danh mục chi")
+        for ((viewId, choiceType) in listOf(R.id.widget_expense_button to "EXPENSE", R.id.widget_income_button to "INCOME", R.id.widget_loan_button to "LOAN_DEBT")) {
           val selected = type == choiceType
           views.setInt(viewId, "setBackgroundResource", if (selected) R.drawable.nova_widget_button else R.drawable.nova_widget_secondary)
           views.setTextColor(viewId, if (selected) android.graphics.Color.WHITE else android.graphics.Color.rgb(122,74,40))
-          views.setContentDescription(viewId, (if (choiceType == "INCOME") "Thu" else "Chi") + if (selected) ", đang chọn" else "")
+          views.setContentDescription(viewId, (if (choiceType == "LOAN_DEBT") "Vay/Nợ" else if (choiceType == "INCOME") "Thu" else "Chi") + if (selected) ", đang chọn" else "")
           val select = Intent(context, NovaWidgetProvider::class.java).setAction("com.mobile.widget.TYPE")
             .setData(Uri.parse("nova-widget://type/$id/$choiceType")).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra("type", choiceType)
           views.setOnClickPendingIntent(viewId, PendingIntent.getBroadcast(context, id, select, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
@@ -129,7 +130,7 @@ open class NovaWidgetProvider : AppWidgetProvider() {
           .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
           .setData(Uri.parse("nova-widget://category/$id/$type")).putExtra("scope", scope)
           .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra("type", type)
-        views.setOnClickPendingIntent(R.id.widget_category, if (scope == null)
+        views.setOnClickPendingIntent(R.id.widget_category, if (scope == null || type == "LOAN_DEBT")
           PendingIntent.getActivity(context, id, entryIntent(context,id,type,"FORM",null), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
           else PendingIntent.getActivity(context, id, choose, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         for ((viewId, action) in listOf(R.id.widget_add to "FORM", R.id.widget_voice to "VOICE", R.id.widget_camera to "CAMERA")) {

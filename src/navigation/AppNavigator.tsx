@@ -40,6 +40,7 @@ import FinancialPlanScreen from '../screens/home/FinancialPlanScreen';
 import SmartRulesScreen from '../screens/home/SmartRulesScreen';
 import DataManagementScreen from '../screens/home/DataManagementScreen';
 import FinancialCenterScreen from '../screens/home/FinancialCenterScreen';
+import MoneyCalendarScreen from '../screens/home/MoneyCalendarScreen';
 import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
 import RecurringBillsScreen from '../screens/home/RecurringBillsScreen';
@@ -76,7 +77,7 @@ export type RootStackParamList = {
     | {
         financialDraftId?: string;
         editTransaction?: TransactionItem;
-        widgetType?: 'INCOME' | 'EXPENSE';
+        widgetType?: 'INCOME' | 'EXPENSE' | 'LOAN_DEBT';
         widgetEvent?: string;
         widgetAction?: 'FORM' | 'VOICE' | 'CAMERA';
         widgetCategoryId?: number;
@@ -124,6 +125,7 @@ export type RootStackParamList = {
   PersonalBackup: undefined;
   RecurringBills: { reminderDate?: string } | undefined;
   FinancialCenter: { wallets?: Wallet[] } | undefined;
+  MoneyCalendar: undefined;
   LoanDebts: undefined;
   LoanDebtForm: { loanDebtId?: number } | undefined;
   LoanDebtDetail: { loanDebtId: number };
@@ -254,6 +256,7 @@ const AppNavigator = () => {
             component={NotificationSettingsScreen}
           />
           <Stack.Screen name="SmartRules" component={SmartRulesScreen} />
+          <Stack.Screen name="MoneyCalendar" component={MoneyCalendarScreen} />
           <Stack.Screen
             name="DataManagement"
             component={DataManagementScreen}

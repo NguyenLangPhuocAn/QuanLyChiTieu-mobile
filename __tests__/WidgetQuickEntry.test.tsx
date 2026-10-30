@@ -191,6 +191,16 @@ it.each([
   expect(saveWidgetLoanEntry).toHaveBeenCalledTimes(kind === 'Vay/Nợ' ? 1 : 0);
   expect(homeWidget.closeQuickEntry).toHaveBeenLastCalledWith(result);
 });
+it('opens the loan form directly from the full widget loan selection', async () => {
+  await mount(
+    entryUrl
+      .replace('type=EXPENSE', 'type=LOAN_DEBT')
+      .replace('&category=9', ''),
+  );
+  expect(control('Tên người vay nợ widget')).toBeDefined();
+  expect(control('Chọn danh mục')).toBeUndefined();
+  expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
+});
 it('requires wallet and preview before saving, locks repeated confirms, then closes the panel', async () => {
   await mount();
   await fill('Số tiền widget', '25000');

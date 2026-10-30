@@ -9,7 +9,7 @@ export const widgetLink = (scope: BillScope, url: string): string | null => {
   const category = params.get('category');
   if (
     params.get('scope') !== widgetScope(scope) ||
-    !['EXPENSE', 'INCOME'].includes(type ?? '') ||
+    !['EXPENSE', 'INCOME', 'LOAN_DEBT'].includes(type ?? '') ||
     !event ||
     event.length > 100 ||
     !['FORM', 'VOICE', 'CAMERA'].includes(action) ||

@@ -1,0 +1,10 @@
+✔ excludes native temporary/build trees on Windows and POSIX (1.5441ms)
+✔ keeps native source and application JS available (0.28ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3217.5804

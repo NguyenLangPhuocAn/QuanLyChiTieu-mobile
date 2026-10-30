@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-30",
+  "jest": "128/128 across16suites",
+  "focusedAfterFinal": "33/33 across5suites",
+  "typeScriptExit": 0,
+  "eslintExit": 0,
+  "metro": "2/2",
+  "nativeJVM": "11/11 existing planner",
+  "nativeBuild": "debugQA296tasks12m43s; finalx86_64 278tasks32s",
+  "api": "QA3302",
+  "metroRuntime": "QA8081 with api.widget-loan.ts ->3302",
+  "calendar": "34125->24125; plannedIncome5m does not increase safe; expense800k->0/short76250; skipBill->7458",
+  "widget": "onefull4x2; Mini removed; income/expense/loan popup and cancel; visible26250/0 thenhidden",
+  "database": "unchanged4transactions,2loans,balance1023750",
+  "production": "no release,deploy,web,.env changes",
+  "stableHealth": 200,
+  "qaHealth": 200
+}

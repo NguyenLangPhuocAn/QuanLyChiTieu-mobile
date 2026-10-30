@@ -400,6 +400,12 @@ const AccountScreen = ({
             action: () => navigation.navigate('RecurringBills'),
           },
           {
+            title: 'Lịch tiền và Chi an toàn',
+            subtitle: 'Khoản sắp tới và mức chi sau khi dành tiền hóa đơn',
+            Icon: CalendarDays,
+            action: () => navigation.navigate('MoneyCalendar'),
+          },
+          {
             title: 'Ngân sách',
             subtitle: 'Theo dõi hạn mức theo ví',
             Icon: ShieldCheck,
