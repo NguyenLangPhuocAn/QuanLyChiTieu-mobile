@@ -7,7 +7,8 @@ import {
   type DashboardCache,
 } from '../src/services/dashboardCache';
 import { transactionsService } from '../src/services/transactions';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { Alert } from 'react-native';
 import { saveWidgetEntry } from '../src/services/widgetQuickEntry';
 import { saveWidgetLoanEntry } from '../src/services/widgetLoanEntry';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -16,7 +17,10 @@ jest.mock('../src/services/widgetLoanEntry', () => ({
   ...jest.requireActual('../src/services/widgetLoanEntry'),
   saveWidgetLoanEntry: jest.fn(),
 }));
-jest.mock('react-native-image-picker', () => ({ launchCamera: jest.fn() }));
+jest.mock('react-native-image-picker', () => ({
+  launchCamera: jest.fn(),
+  launchImageLibrary: jest.fn(),
+}));
 const mockAuth = {
   user: { id: 7 } as { id: number } | null,
   token: 'token' as string | null,
@@ -30,12 +34,17 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/components/HomeWidgetSession', () => () => null);
 jest.mock('../src/components/OfflineSessionSync', () => () => null);
+let mockOnTranscript: (text: string) => void;
+const mockVoice = {
+  status: 'idle' as 'idle' | 'starting' | 'listening' | 'stopping',
+  cancel: jest.fn(),
+  toggle: jest.fn(),
+};
 jest.mock('../src/hooks/useVoiceInput', () => ({
-  useVoiceInput: () => ({
-    status: 'idle',
-    cancel: jest.fn(),
-    toggle: jest.fn().mockResolvedValue(undefined),
-  }),
+  useVoiceInput: (callback: (text: string) => void) => {
+    mockOnTranscript = callback;
+    return mockVoice;
+  },
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'http://qa.test',
@@ -87,8 +96,22 @@ const chooseDate = async (name: string, date: Date) => {
       .props.onChange({ type: 'set' }, date),
   );
 };
+const pickPhoto = async (name = 'Chụp ảnh') => {
+  const choices = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2];
+  const choice = choices?.find(item => item.text === name);
+  expect(choice).toBeDefined();
+  await act(async () => choice?.onPress?.());
+};
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  mockVoice.status = 'idle';
+  mockVoice.toggle.mockImplementation(async () => {
+    mockVoice.status = 'starting';
+  });
+  mockVoice.cancel.mockImplementation(() => {
+    mockVoice.status = 'idle';
+  });
   Object.assign(mockAuth, {
     user: { id: 7 },
     token: 'token',
@@ -265,6 +288,8 @@ it('camera fills editable items and amount but never saves or attaches its photo
     warnings: ['Giảm 15.000'],
   });
   await mount(entryUrl + '&action=CAMERA');
+  expect(launchCamera).not.toHaveBeenCalled();
+  await pickPhoto();
   expect(control('Số tiền widget').props.value).toBe('79.000');
   expect(control('Tên món 1').props.value).toBe('Bạc xỉu (2)');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
@@ -323,6 +348,7 @@ it('accepts formatted VND and preserves an empty item amount while editing', asy
     warnings: [],
   });
   await mount(entryUrl + '&action=CAMERA');
+  await pickPhoto();
   await fill('Thành tiền món 1', '');
   expect(control('Thành tiền món 1').props.value).toBe('');
   await fill('Thành tiền món 1', '94.000');
@@ -349,8 +375,16 @@ it('locks repeated camera taps immediately and ignores cancelled OCR after manua
   const camera = control('Chụp ảnh đọc hóa đơn');
   let pending!: Promise<void>;
   await act(async () => {
-    pending = camera.props.onPress();
     camera.props.onPress();
+    camera.props.onPress();
+  });
+  expect(Alert.alert).toHaveBeenCalledTimes(1);
+  expect(launchCamera).not.toHaveBeenCalled();
+  const choices = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2];
+  await act(async () => {
+    pending = choices
+      ?.find(item => item.text === 'Chụp ảnh')
+      ?.onPress?.() as unknown as Promise<void>;
   });
   expect(launchCamera).toHaveBeenCalledTimes(1);
   await press('Hủy đọc');
@@ -493,7 +527,95 @@ it('lets the optional loan due date be picked and cleared and excludes savings w
   expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
   jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
   await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetLoanEntry).mock.calls[0][2].due_date).toBeNull();
+});
+
+it('shows only a recording bar from the widget mic and fills the existing draft after speech ends', async () => {
+  const url = entryUrl + '&action=VOICE';
+  await mount(url);
+  expect(mockVoice.toggle).toHaveBeenCalledWith('');
+  expect(control('Số tiền widget')).toBeUndefined();
+  expect(control('Câu nói widget')).toBeUndefined();
+  await act(async () => {
+    mockVoice.status = 'listening';
+    mockOnTranscript('chi 25 nghìn đi lại');
+  });
+  expect(control('Số tiền widget')).toBeUndefined();
+  await act(async () => {
+    mockVoice.status = 'idle';
+    renderer.update(<WidgetQuickEntry entryUrl={url} />);
+  });
+  expect(control('Số tiền widget').props.value).toBe('25.000');
+  expect(control('Đi lại')).toBeDefined();
+  expect(control('Ví QA · VND').props.accessibilityState.selected).toBe(false);
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('records inside the current form and cancellation preserves manual input despite a late transcript', async () => {
+  await mount();
+  await fill('Số tiền widget', '1000');
+  await fill('Ghi chú widget', 'Ghi chú giữ lại');
+  await press('Nói để nhập');
+  expect(control('Số tiền widget')).toBeDefined();
+  expect(control('Câu nói widget')).toBeUndefined();
+  await press('Hủy thu âm');
+  await act(async () => mockOnTranscript('chi 25 nghìn đi lại'));
+  expect(control('Số tiền widget').props.value).toBe('1.000');
+  expect(control('Ghi chú widget').props.value).toBe('Ghi chú giữ lại');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('chooses a library photo and fills receipt details without attaching the source image', async () => {
+  jest
+    .mocked(launchImageLibrary)
+    .mockResolvedValue({
+      assets: [{ uri: 'content://qa/receipt.jpg', type: 'image/jpeg' }],
+    });
+  jest
+    .mocked(transactionsService.analyzeReceipt)
+    .mockResolvedValue({
+      amount: 79000,
+      currency: 'VND',
+      receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
+      warnings: [],
+    });
+  await mount(entryUrl + '&action=CAMERA');
+  await pickPhoto('Chọn từ thư viện');
+  expect(launchCamera).not.toHaveBeenCalled();
+  expect(launchImageLibrary).toHaveBeenCalledWith(
+    expect.objectContaining({ selectionLimit: 1, mediaType: 'photo' }),
+  );
+  expect(control('Số tiền widget').props.value).toBe('79.000');
+  expect(control('Tên món 1').props.value).toBe('Bạc xỉu');
+  await press('Ví QA · VND');
+  await press('Kiểm tra');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
   expect(
-    jest.mocked(saveWidgetLoanEntry).mock.calls[0][2].due_date,
-  ).toBeNull();
+    JSON.stringify(jest.mocked(saveWidgetEntry).mock.calls[0][2]),
+  ).not.toContain('content://qa');
+});
+
+it('preserves the draft when the photo menu or library is cancelled', async () => {
+  await mount();
+  await fill('Số tiền widget', '25000');
+  await press('Chụp ảnh đọc hóa đơn');
+  await pickPhoto('Hủy');
+  expect(launchCamera).not.toHaveBeenCalled();
+  expect(launchImageLibrary).not.toHaveBeenCalled();
+  jest.mocked(launchImageLibrary).mockResolvedValue({ didCancel: true });
+  await press('Chụp ảnh đọc hóa đơn');
+  await pickPhoto('Chọn từ thư viện');
+  expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
+  expect(control('Số tiền widget').props.value).toBe('25.000');
+  expect(control('Kiểm tra').props.disabled).toBe(false);
+});
+
+it('ignores an old photo choice after the widget form is closed', async () => {
+  await mount();
+  await press('Chụp ảnh đọc hóa đơn');
+  await act(async () => renderer.unmount());
+  await pickPhoto('Chọn từ thư viện');
+  expect(launchImageLibrary).not.toHaveBeenCalled();
 });

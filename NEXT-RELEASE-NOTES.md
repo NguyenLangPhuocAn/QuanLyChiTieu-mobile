@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Mic widget và nguồn ảnh hóa đơn — 30/10/2026
+
+- Mic ngoài widget mở thanh thu gọn cuối màn hình, chưa mở form số tiền. Trong form, mic thu tại chỗ. Có trạng thái bật micro/đang thu/đang xử lý và Dừng/Hủy. Câu hợp lệ sau kết thúc mới điền giao dịch, người dùng chọn ví/kiểm tra/xác nhận.
+- Ảnh hóa đơn cho chọn chụp mới hoặc thư viện. Hủy giữ bản nhập; ảnh đọc không tự đính kèm. Chống mở lặp và bỏ callback nguồn ảnh sau đóng form/đổi tài khoản.
+- Android local xác nhận thanh native Đang thu âm, mở/hủy camera và thư viện; SQL không đổi. Jest30/30 qua2bộ (5ca mới), TypeScript/ESLint đạt. Nhận tiếng Việt/đọc ảnh bằng model thật và điện thoại vật lý còn cần thử. Chưa phát hành APK hoặc thay server/web.
+- Bằng chứng mobile/qa/evidence/2026-10-30-widget-voice-photo/README.md.
+
 ## Ví cuộn ngang và số tiền trong widget — 30/10/2026
 
 - Thẻ ví cuộn ngang theo giao diện trong app, gồm icon/tên/số dư, chọn viền cam. Thay bố cục hai cột, vẫn chọn trực tiếp.

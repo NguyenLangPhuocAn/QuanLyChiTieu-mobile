@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
@@ -15,7 +16,7 @@ import { CalendarDays, Camera, Mic, X } from 'lucide-react-native';
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { AuthProvider, useAuth } from '../../context/AuthContext';
 import HomeWidgetSession from '../../components/HomeWidgetSession';
 import WidgetCategoryPicker from '../../components/WidgetCategoryPicker';
@@ -103,8 +104,12 @@ function Panel({ entryUrl }: Props) {
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [voiceVisible, setVoiceVisible] = useState(false);
+  const [voiceOnly, setVoiceOnly] = useState(false);
   const [transcript, setTranscript] = useState('');
   const voice = useVoiceInput(setTranscript);
+  const voicePending = useRef(false);
+  const voiceOwner = useRef({ userId: user?.id, server });
+  const choosingImage = useRef(false);
   const alive = useRef(true);
   const operation = useRef(0);
   const saving = useRef(false);
@@ -118,6 +123,7 @@ function Panel({ entryUrl }: Props) {
   const close = () => {
     if (saving.current) return;
     operation.current++;
+    voicePending.current = false;
     voice.cancel();
     homeWidget.closeQuickEntry(completed.current ?? undefined).catch(() => {
       if (alive.current)
@@ -192,6 +198,7 @@ function Panel({ entryUrl }: Props) {
             : null,
         );
         initialAction.current = params.get('widgetAction');
+        setVoiceOnly(params.get('widgetAction') === 'VOICE');
         initializedFor.current = source;
       }
       setData(cached);
@@ -247,7 +254,7 @@ function Panel({ entryUrl }: Props) {
     };
   }, [user?.id, server]);
 
-  const scan = async () => {
+  const scan = async (source: 'camera' | 'library') => {
     if (!token || scanning.current || saving.current) return;
     scanning.current = true;
     const version = ++operation.current;
@@ -259,16 +266,23 @@ function Panel({ entryUrl }: Props) {
       latest.current.server === server;
     setOcrBusy(true);
     setError('');
+    voicePending.current = false;
     voice.cancel();
     setVoiceVisible(false);
     try {
-      const picked = await launchCamera({
-        mediaType: 'photo',
-        quality: 0.8,
+      const options = {
+        mediaType: 'photo' as const,
+        quality: 0.8 as const,
         maxWidth: 1600,
         maxHeight: 1600,
-        saveToPhotos: false,
-      });
+      };
+      const picked =
+        source === 'camera'
+          ? await launchCamera({
+              ...options,
+              saveToPhotos: false,
+            })
+          : await launchImageLibrary({ ...options, selectionLimit: 1 });
       if (!current() || picked.didCancel) return;
       const asset = picked.assets?.[0];
       if (picked.errorCode || !asset?.uri)
@@ -310,15 +324,59 @@ function Panel({ entryUrl }: Props) {
       }
     }
   };
+  const chooseImage = () => {
+    if (choosingImage.current || scanning.current || saving.current) return;
+    choosingImage.current = true;
+    Keyboard.dismiss();
+    const owner = user?.id;
+    const select = (source: 'camera' | 'library') => {
+      choosingImage.current = false;
+      if (
+        alive.current &&
+        latest.current.userId === owner &&
+        latest.current.server === server
+      )
+        scan(source).catch(() => undefined);
+    };
+    Alert.alert(
+      'Ảnh hóa đơn',
+      'Chọn ảnh để đọc nội dung hóa đơn.',
+      [
+        { text: 'Chụp ảnh', onPress: () => select('camera') },
+        { text: 'Chọn từ thư viện', onPress: () => select('library') },
+        {
+          text: 'Hủy',
+          style: 'cancel',
+          onPress: () => {
+            choosingImage.current = false;
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          choosingImage.current = false;
+        },
+      },
+    );
+  };
+  const startVoice = () => {
+    if (ocrBusy || saving.current || voice.status !== 'idle') return;
+    Keyboard.dismiss();
+    setTranscript('');
+    setVoiceVisible(true);
+    voiceOwner.current = { userId: user?.id, server };
+    voicePending.current = true;
+    voice.toggle('').catch(() => undefined);
+  };
   useEffect(() => {
     if (!ready) return;
     const action = initialAction.current;
     initialAction.current = null;
     if (action === 'VOICE') {
-      setVoiceVisible(true);
-      voice.toggle('').catch(() => undefined);
+      startVoice();
     }
-    if (action === 'CAMERA') scan().catch(() => undefined);
+    if (action === 'CAMERA') chooseImage();
     // Execute the initial widget action once, after validated cache is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
@@ -329,6 +387,28 @@ function Panel({ entryUrl }: Props) {
     c => c.id === categoryId && c.type === type,
   );
   const voicePreview = parseVoiceTransactionDraft(transcript);
+  useEffect(() => {
+    if (!voicePending.current || voice.status !== 'idle' || !transcript.trim())
+      return;
+    voicePending.current = false;
+    if (
+      voiceOwner.current.userId !== user?.id ||
+      voiceOwner.current.server !== server
+    )
+      return;
+    const draft = parseVoiceTransactionDraft(transcript).draft;
+    if (!draft) return;
+    setAmount(String(draft.amount));
+    setNote(draft.note || '');
+    setDate(draft.transaction_date || toDateKey(new Date()));
+    setCurrency(draft.currency || null);
+    if (type !== 'LOAN_DEBT' && type !== draft.type) {
+      setType(draft.type);
+      setCategory(null);
+    }
+    setVoiceVisible(false);
+    setVoiceOnly(false);
+  }, [voice.status, transcript, user?.id, server, type]);
   const loanReview = review && 'principal_amount' in review ? review : null;
   const transactionReview = review && 'amount' in review ? review : null;
   const changeDate = (event: DateTimePickerEvent, selected?: Date) => {
@@ -343,7 +423,14 @@ function Panel({ entryUrl }: Props) {
     setDatePicker(target);
   };
   const prepare = () => {
-    if (!data || busy || ocrBusy || completed.current) return;
+    if (
+      !data ||
+      busy ||
+      ocrBusy ||
+      voice.status !== 'idle' ||
+      completed.current
+    )
+      return;
     try {
       if (type === 'LOAN_DEBT') {
         loanRequestId.current ??= createClientRequestId();
@@ -464,27 +551,78 @@ function Panel({ entryUrl }: Props) {
   );
   return (
     <KeyboardAvoidingView
-      style={s.backdrop}
+      style={[s.backdrop, voiceOnly && s.voiceBackdrop]}
       behavior="height"
       onLayout={() => homeWidget.entryReady().catch(() => undefined)}
     >
       <View style={s.card}>
-        <View style={s.header}>
-          <Text style={s.title}>
-            {review ? 'Kiểm tra giao dịch' : 'Thêm giao dịch'}
-          </Text>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Đóng khung nhập"
-            disabled={busy}
-            onPress={close}
-          >
-            <Text style={s.close}>Đóng</Text>
-          </TouchableOpacity>
-        </View>
+        {!voiceOnly && (
+          <View style={s.header}>
+            <Text style={s.title}>
+              {voiceOnly
+                ? 'Nhập bằng giọng nói'
+                : review
+                ? 'Kiểm tra giao dịch'
+                : 'Thêm giao dịch'}
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Đóng khung nhập"
+              disabled={busy}
+              onPress={close}
+            >
+              <Text style={s.close}>Đóng</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {ready && voiceVisible && (
+          <View style={[s.voiceBar, voiceOnly && s.voiceOnlyBar]}>
+            <View style={s.row}>
+              {voice.status === 'starting' || voice.status === 'stopping' ? (
+                <ActivityIndicator size="small" color="#D87219" />
+              ) : (
+                <View
+                  style={[s.recordDot, voice.status === 'idle' && s.recordIdle]}
+                />
+              )}
+              <Text accessibilityLiveRegion="polite" style={s.voiceTitle}>
+                {voice.status === 'starting'
+                  ? 'Đang bật micro…'
+                  : voice.status === 'listening'
+                  ? 'Đang thu âm…'
+                  : voice.status === 'stopping'
+                  ? 'Đang xử lý giọng nói…'
+                  : 'Nhấn Nói lại để thử lại'}
+              </Text>
+            </View>
+            <Text style={s.muted} numberOfLines={3}>
+              {transcript || 'Ví dụ: chi 25 nghìn tiền đi lại.'}
+            </Text>
+            {voice.status === 'idle' && !!transcript && !voicePreview.draft && (
+              <Text style={s.muted}>{voicePreview.issues.join(' ')}</Text>
+            )}
+            <View style={s.row}>
+              {button('Hủy thu âm', () => {
+                voicePending.current = false;
+                voice.cancel();
+                setVoiceVisible(false);
+                if (voiceOnly) close();
+              })}
+              {button(
+                voice.status === 'idle' ? 'Nói lại' : 'Dừng thu âm',
+                () => {
+                  if (voice.status === 'idle') startVoice();
+                  else voice.toggle('').catch(() => undefined);
+                },
+                true,
+                voice.status === 'starting' || voice.status === 'stopping',
+              )}
+            </View>
+          </View>
+        )}
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={s.content}
+          contentContainerStyle={[s.content, voiceOnly && s.voiceOnlyContent]}
         >
           {!ready ? (
             <>
@@ -499,7 +637,7 @@ function Panel({ entryUrl }: Props) {
                   homeWidget.closeQuickEntry('OPEN').catch(() => undefined);
                 })}
             </>
-          ) : review ? (
+          ) : voiceOnly ? null : review ? (
             <>
               {!!completedResult && (
                 <Text accessibilityLiveRegion="polite" style={s.review}>
@@ -767,8 +905,8 @@ function Panel({ entryUrl }: Props) {
                   accessibilityLabel="Nói để nhập"
                   disabled={ocrBusy}
                   onPress={() => {
-                    setVoiceVisible(true);
-                    voice.toggle(transcript).catch(() => undefined);
+                    if (voice.status === 'idle') startVoice();
+                    else voice.toggle('').catch(() => undefined);
                   }}
                   style={s.tool}
                 >
@@ -781,59 +919,13 @@ function Panel({ entryUrl }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel="Chụp ảnh đọc hóa đơn"
                   disabled={ocrBusy}
-                  onPress={scan}
+                  onPress={chooseImage}
                   style={s.tool}
                 >
                   <Camera size={21} color="#A75410" />
-                  <Text style={s.buttonText}>Chụp hóa đơn</Text>
+                  <Text style={s.buttonText}>Ảnh hóa đơn</Text>
                 </TouchableOpacity>
               </View>
-              {voiceVisible && (
-                <View style={s.subpanel}>
-                  <TextInput
-                    accessibilityLabel="Câu nói widget"
-                    placeholder="Ví dụ: chi 25 nghìn đi lại"
-                    multiline
-                    value={transcript}
-                    onChangeText={setTranscript}
-                    style={s.input}
-                  />
-                  <Text style={s.muted}>
-                    {voicePreview.draft
-                      ? `${
-                          type === 'LOAN_DEBT'
-                            ? loanType === 'BORROWED'
-                              ? 'Vay'
-                              : 'Cho vay'
-                            : voicePreview.draft.type === 'INCOME'
-                            ? 'Thu'
-                            : 'Chi'
-                        } ${voicePreview.draft.amount} ${
-                          voicePreview.draft.currency
-                        }`
-                      : voicePreview.issues.join('\n')}
-                  </Text>
-                  {button(
-                    'Điền vào giao dịch',
-                    () => {
-                      const draft = voicePreview.draft;
-                      if (!draft) return;
-                      setAmount(String(draft.amount));
-                      setNote(draft.note || '');
-                      setDate(draft.transaction_date || date);
-                      setCurrency(draft.currency || null);
-                      if (type !== 'LOAN_DEBT' && type !== draft.type) {
-                        setType(draft.type);
-                        setCategory(null);
-                      }
-                      setVoiceVisible(false);
-                      voice.cancel();
-                    },
-                    false,
-                    !voicePreview.draft,
-                  )}
-                </View>
-              )}
               {ocrBusy && (
                 <View style={s.row}>
                   <ActivityIndicator color="#FF8800" />
@@ -925,7 +1017,7 @@ function Panel({ entryUrl }: Props) {
             onChange={changeDate}
           />
         )}
-        {ready && !picker && (
+        {ready && !picker && !voiceOnly && !voiceVisible && (
           <View style={s.footer}>
             {completedResult ? (
               button('Đóng', close, true, busy)
@@ -984,6 +1076,24 @@ function WidgetSync() {
   );
 }
 const s = StyleSheet.create({
+  voiceBackdrop: { justifyContent: 'flex-end', paddingVertical: 24 },
+  voiceOnlyBar: { margin: 0, backgroundColor: '#FFF9F2', padding: 16 },
+  voiceOnlyContent: { padding: 0 },
+  voiceBar: {
+    margin: 16,
+    padding: 14,
+    gap: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFF0DF',
+  },
+  voiceTitle: { flex: 1, fontWeight: '600', color: '#4A2B1A' },
+  recordDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#CC4C33',
+  },
+  recordIdle: { backgroundColor: '#AE9279' },
   walletStrip: { flexGrow: 0 },
   wallets: { gap: 10, paddingRight: 10, paddingBottom: 2 },
   walletCard: {
