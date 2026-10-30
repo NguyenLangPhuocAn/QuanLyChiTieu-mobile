@@ -9,3 +9,4 @@
 - Theo yêu cầu30/10/2026 mới nhất: widget ưu tiên bảng Thu chi nhanh đầy đủ trên màn hình chính, không đặt mini N+ làm mẫu bàn giao. Nút Thêm widget trong app ghim bản đầy đủ; giữ dữ liệu/widget cũ của người dùng khi nâng cấp.
 - Form widget chọn ví bằng thẻ cuộn ngang giống MainScreen, không xếp lưới hai cột hoặc thêm bước Chọn ví trung gian. Ô số tiền có nhãn riêng, chữ số dễ đọc và đơn vị tiền nhỏ cùng hàng.
 - Mic ngoài widget mở thanh thu âm gọn cuối màn hình, chưa mở form nhập tiền. Mic trong form thu tại chỗ; có câu hợp lệ sau khi kết thúc mới điền giao dịch để kiểm tra/chọn ví/xác nhận. Nút ảnh hóa đơn cho chọn chụp mới hoặc thư viện; không tự đính kèm ảnh OCR.
+- Camera ngoài widget phải hỏi chụp/thư viện ngay trên launcher, không dựng form nhập tiền phía sau. Chưa chọn ảnh/đang đọc/lỗi đọc thì chưa mở form; chỉ mở sau khi nhận kết quả đọc ảnh. Hủy menu/camera/thư viện về launcher. Nút ảnh trong form đang nhập giữ form hiện có.

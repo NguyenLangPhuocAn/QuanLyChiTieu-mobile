@@ -1,0 +1,8 @@
+# Camera widget hỏi nguồn ảnh trước — 30/10/2026
+
+- Sửa lỗi menu ảnh đã xuất hiện nhưng form giao dịch bị dựng sẵn phía sau. CAMERA từ widget vào luồng ảnh riêng ngay từ lần render đầu: menu trên launcher, không tiêu đề/ô số tiền/ví. Khi chọn/chụp hoặc đang OCR vẫn chưa mở form. Chỉ đọc xong mới điền form để người dùng kiểm tra/chọn ví/xác nhận; không tự lưu.
+- Hủy menu, Back/Hủy camera hoặc thư viện đều đóng về launcher. Lỗi OCR vẫn ở luồng ảnh với Chọn ảnh khác/Hủy. Hủy đọc bỏ kết quả muộn; Alert dismiss sau chọn nguồn không tự đóng nhầm. Nút ảnh trong form thường vẫn giữ dữ liệu đang nhập.
+- Android13 com.mobile.dev/source Metro8081/API3302/MySQL QA8. 00 đã ở menu và còn Fast Refresh, tên current-home chỉ là tên chụp ban đầu; thao tác tìm nút widget lúc modal đang mở bị helper chặn vì không có nút. 01 Hủy về Home;02 menu sạch trên launcher;03 camera native;04 Back về Home;05 menu mở thư viện, gallery-focus.txt xác nhận đúng PhotoPickerActivity,06 Back về Home. Không chụp thumbnail thư viện.07 bản cuối sau gọn code,08 Hủy về Home.
+- PNG/XML gốc. sql-unchanged.json so sánh sâu4ví/tx27–30/loan1–2/ví8=1.023.750đ với đợt form, không thay tiền hoặc dữ liệu. Chưa chọn ảnh gửi model thật trong lượt UI này.
+- Jest36/36 qua WidgetQuickEntry/useVoiceInput,6ca mới: Hủy menu/camera/thư viện, đợi OCR mới mở form, Hủy rồi trả kết quả muộn, OCR lỗi/chọn lại. Các native/API trong Jest là mock; native trên emulator chỉ thử menu/mở/Hủy hai nguồn. TypeScript/ESLint exit0.
+- Không thêm dependency/native hoặc đổi backend/.env/server3000. Không build/cài/phát hành APK hoặc cập nhật web. OCR thật trên máy vật lý vẫn cần thử sau; không coi mock là nghiệm thu model.

@@ -1,0 +1,7 @@
+PASS __tests__/WidgetQuickEntry.test.tsx (7.278 s)
+PASS __tests__/useVoiceInput.test.tsx
+
+Test Suites: 2 passed, 2 total
+Tests:       36 passed, 36 total
+Snapshots:   0 total
+Time:        7.616 s, estimated 18 s

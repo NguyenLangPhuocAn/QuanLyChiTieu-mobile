@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Camera widget: chọn ảnh trước khi mở form — 30/10/2026
+
+- Sửa việc mở form tiền phía sau hộp chọn nguồn ảnh. Camera ngoài widget nay hỏi Chụp ảnh/Thư viện trên launcher trước. Chưa chọn ảnh, đang đọc hoặc lỗi đọc đều chưa hiện form; chỉ hiện sau khi nhận kết quả OCR.
+- Hủy menu/camera/thư viện về Home. Lỗi cho chọn lại ảnh, hủy đọc bỏ kết quả muộn. Nút ảnh trong form hiện có giữ dữ liệu đang nhập.
+- Android local thử đúng thứ tự và ba đường Hủy;36/36 kiểm thử qua2bộ (6ca mới), TypeScript/ESLint đạt, SQL QA không đổi. Kết quả OCR mở form kiểm bằng mock, chưa nghiệm thu model/máy thật. Chưa phát hành APK hoặc thay server/web.
+- Bằng chứng mobile/qa/evidence/2026-10-30-widget-photo-first/README.md.
+
 ## Mic widget và nguồn ảnh hóa đơn — 30/10/2026
 
 - Mic ngoài widget mở thanh thu gọn cuối màn hình, chưa mở form số tiền. Trong form, mic thu tại chỗ. Có trạng thái bật micro/đang thu/đang xử lý và Dừng/Hủy. Câu hợp lệ sau kết thúc mới điền giao dịch, người dùng chọn ví/kiểm tra/xác nhận.

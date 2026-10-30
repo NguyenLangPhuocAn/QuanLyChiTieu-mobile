@@ -288,6 +288,8 @@ it('camera fills editable items and amount but never saves or attaches its photo
     warnings: ['Giảm 15.000'],
   });
   await mount(entryUrl + '&action=CAMERA');
+  expect(control('Số tiền widget')).toBeUndefined();
+  expect(control('Ví QA · VND')).toBeUndefined();
   expect(launchCamera).not.toHaveBeenCalled();
   await pickPhoto();
   expect(control('Số tiền widget').props.value).toBe('79.000');
@@ -566,19 +568,15 @@ it('records inside the current form and cancellation preserves manual input desp
 });
 
 it('chooses a library photo and fills receipt details without attaching the source image', async () => {
-  jest
-    .mocked(launchImageLibrary)
-    .mockResolvedValue({
-      assets: [{ uri: 'content://qa/receipt.jpg', type: 'image/jpeg' }],
-    });
-  jest
-    .mocked(transactionsService.analyzeReceipt)
-    .mockResolvedValue({
-      amount: 79000,
-      currency: 'VND',
-      receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
-      warnings: [],
-    });
+  jest.mocked(launchImageLibrary).mockResolvedValue({
+    assets: [{ uri: 'content://qa/receipt.jpg', type: 'image/jpeg' }],
+  });
+  jest.mocked(transactionsService.analyzeReceipt).mockResolvedValue({
+    amount: 79000,
+    currency: 'VND',
+    receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
+    warnings: [],
+  });
   await mount(entryUrl + '&action=CAMERA');
   await pickPhoto('Chọn từ thư viện');
   expect(launchCamera).not.toHaveBeenCalled();
@@ -618,4 +616,95 @@ it('ignores an old photo choice after the widget form is closed', async () => {
   await act(async () => renderer.unmount());
   await pickPhoto('Chọn từ thư viện');
   expect(launchImageLibrary).not.toHaveBeenCalled();
+});
+
+it.each(['menu', 'camera', 'library'])(
+  'closes the widget camera entry on %s cancellation without creating a transaction form',
+  async source => {
+    await mount(entryUrl + '&action=CAMERA');
+    expect(control('Số tiền widget')).toBeUndefined();
+    if (source === 'menu') await pickPhoto('Hủy');
+    else {
+      jest.mocked(launchCamera).mockResolvedValue({ didCancel: true });
+      jest.mocked(launchImageLibrary).mockResolvedValue({ didCancel: true });
+      await pickPhoto(source === 'camera' ? 'Chụp ảnh' : 'Chọn từ thư viện');
+      // Native Alert also dismisses after selecting a source. It must not close twice.
+      await act(async () =>
+        jest.mocked(Alert.alert).mock.calls.at(-1)?.[3]?.onDismiss?.(),
+      );
+    }
+    expect(homeWidget.closeQuickEntry).toHaveBeenCalledTimes(1);
+    expect(control('Số tiền widget')).toBeUndefined();
+    expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
+    expect(saveWidgetEntry).not.toHaveBeenCalled();
+  },
+);
+
+it('waits for OCR completion before opening the form from the widget camera entry', async () => {
+  let resolve!: (
+    result: Awaited<ReturnType<typeof transactionsService.analyzeReceipt>>,
+  ) => void;
+  jest
+    .mocked(launchImageLibrary)
+    .mockResolvedValue({ assets: [{ uri: 'content://qa/photo.jpg' }] });
+  jest.mocked(transactionsService.analyzeReceipt).mockImplementationOnce(
+    () =>
+      new Promise(done => {
+        resolve = done;
+      }),
+  );
+  await mount(entryUrl + '&action=CAMERA');
+  await pickPhoto('Chọn từ thư viện');
+  expect(control('Số tiền widget')).toBeUndefined();
+  expect(control('Hủy đọc ảnh')).toBeDefined();
+  await act(async () =>
+    resolve({
+      amount: 79000,
+      currency: 'VND',
+      warnings: [],
+      receipt_items: [],
+    }),
+  );
+  expect(control('Số tiền widget').props.value).toBe('79.000');
+  expect(control('Ví QA · VND').props.accessibilityState.selected).toBe(false);
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('ignores a late OCR result after cancelling the widget photo flow', async () => {
+  let resolve!: (
+    result: Awaited<ReturnType<typeof transactionsService.analyzeReceipt>>,
+  ) => void;
+  jest
+    .mocked(launchImageLibrary)
+    .mockResolvedValue({ assets: [{ uri: 'content://qa/photo.jpg' }] });
+  jest.mocked(transactionsService.analyzeReceipt).mockImplementationOnce(
+    () =>
+      new Promise(done => {
+        resolve = done;
+      }),
+  );
+  await mount(entryUrl + '&action=CAMERA');
+  await pickPhoto('Chọn từ thư viện');
+  await press('Hủy đọc ảnh');
+  await act(async () => resolve({ amount: 79000, warnings: [] }));
+  expect(homeWidget.closeQuickEntry).toHaveBeenCalledTimes(1);
+  expect(control('Số tiền widget')).toBeUndefined();
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('keeps an OCR error in the photo flow and lets the user choose another image without opening the form', async () => {
+  jest
+    .mocked(launchImageLibrary)
+    .mockResolvedValue({ assets: [{ uri: 'content://qa/photo.jpg' }] });
+  jest
+    .mocked(transactionsService.analyzeReceipt)
+    .mockRejectedValueOnce(Error('QA đọc ảnh thất bại'));
+  await mount(entryUrl + '&action=CAMERA');
+  await pickPhoto('Chọn từ thư viện');
+  expect(control('Số tiền widget')).toBeUndefined();
+  expect(control('Chọn ảnh khác')).toBeDefined();
+  await press('Chọn ảnh khác');
+  expect(Alert.alert).toHaveBeenCalledTimes(2);
+  expect(homeWidget.closeQuickEntry).not.toHaveBeenCalled();
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
 });

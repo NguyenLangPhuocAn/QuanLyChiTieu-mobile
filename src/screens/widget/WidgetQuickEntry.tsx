@@ -105,6 +105,10 @@ function Panel({ entryUrl }: Props) {
   const [ocrBusy, setOcrBusy] = useState(false);
   const [voiceVisible, setVoiceVisible] = useState(false);
   const [voiceOnly, setVoiceOnly] = useState(false);
+  const [photoOnly, setPhotoOnly] = useState(
+    () =>
+      new URLSearchParams(entryUrl.split('?')[1]).get('action') === 'CAMERA',
+  );
   const [transcript, setTranscript] = useState('');
   const voice = useVoiceInput(setTranscript);
   const voicePending = useRef(false);
@@ -199,6 +203,7 @@ function Panel({ entryUrl }: Props) {
         );
         initialAction.current = params.get('widgetAction');
         setVoiceOnly(params.get('widgetAction') === 'VOICE');
+        setPhotoOnly(params.get('widgetAction') === 'CAMERA');
         initializedFor.current = source;
       }
       setData(cached);
@@ -283,7 +288,15 @@ function Panel({ entryUrl }: Props) {
               saveToPhotos: false,
             })
           : await launchImageLibrary({ ...options, selectionLimit: 1 });
-      if (!current() || picked.didCancel) return;
+      if (!current()) return;
+      if (picked.didCancel) {
+        if (photoOnly) {
+          scanning.current = false;
+          setOcrBusy(false);
+          close();
+        }
+        return;
+      }
       const asset = picked.assets?.[0];
       if (picked.errorCode || !asset?.uri)
         throw Error(
@@ -308,6 +321,7 @@ function Panel({ entryUrl }: Props) {
         })),
       );
       setWarnings(result.warnings ?? []);
+      setPhotoOnly(false);
       // OCR photo is transient; never pass it to transaction upload or offline queue.
     } catch (e) {
       if (current())
@@ -329,6 +343,17 @@ function Panel({ entryUrl }: Props) {
     choosingImage.current = true;
     Keyboard.dismiss();
     const owner = user?.id;
+    const dismiss = () => {
+      if (!choosingImage.current) return;
+      choosingImage.current = false;
+      if (
+        photoOnly &&
+        alive.current &&
+        latest.current.userId === owner &&
+        latest.current.server === server
+      )
+        close();
+    };
     const select = (source: 'camera' | 'library') => {
       choosingImage.current = false;
       if (
@@ -347,16 +372,12 @@ function Panel({ entryUrl }: Props) {
         {
           text: 'Hủy',
           style: 'cancel',
-          onPress: () => {
-            choosingImage.current = false;
-          },
+          onPress: dismiss,
         },
       ],
       {
         cancelable: true,
-        onDismiss: () => {
-          choosingImage.current = false;
-        },
+        onDismiss: dismiss,
       },
     );
   };
@@ -549,14 +570,26 @@ function Panel({ entryUrl }: Props) {
       <Text style={[s.buttonText, primary && s.primaryText]}>{label}</Text>
     </TouchableOpacity>
   );
+  if (photoOnly && ready && !ocrBusy && !error) {
+    return (
+      <View
+        style={[s.backdrop, s.photoBackdrop]}
+        onLayout={() => homeWidget.entryReady().catch(() => undefined)}
+      />
+    );
+  }
   return (
     <KeyboardAvoidingView
-      style={[s.backdrop, voiceOnly && s.voiceBackdrop]}
+      style={[
+        s.backdrop,
+        (voiceOnly || photoOnly) && s.voiceBackdrop,
+        photoOnly && s.photoBackdrop,
+      ]}
       behavior="height"
       onLayout={() => homeWidget.entryReady().catch(() => undefined)}
     >
       <View style={s.card}>
-        {!voiceOnly && (
+        {!voiceOnly && !photoOnly && (
           <View style={s.header}>
             <Text style={s.title}>
               {voiceOnly
@@ -636,6 +669,22 @@ function Panel({ entryUrl }: Props) {
                 button('Mở app', () => {
                   homeWidget.closeQuickEntry('OPEN').catch(() => undefined);
                 })}
+            </>
+          ) : photoOnly ? (
+            <>
+              {ocrBusy && (
+                <View style={s.row}>
+                  <ActivityIndicator color="#FF8800" />
+                  <Text style={s.voiceTitle}>Đang đọc ảnh hóa đơn…</Text>
+                </View>
+              )}
+              {!ocrBusy && !!error && button('Chọn ảnh khác', chooseImage)}
+              {button(ocrBusy ? 'Hủy đọc ảnh' : 'Hủy', () => {
+                operation.current++;
+                scanning.current = false;
+                setOcrBusy(false);
+                close();
+              })}
             </>
           ) : voiceOnly ? null : review ? (
             <>
@@ -1017,7 +1066,7 @@ function Panel({ entryUrl }: Props) {
             onChange={changeDate}
           />
         )}
-        {ready && !picker && !voiceOnly && !voiceVisible && (
+        {ready && !picker && !voiceOnly && !photoOnly && !voiceVisible && (
           <View style={s.footer}>
             {completedResult ? (
               button('Đóng', close, true, busy)
@@ -1076,6 +1125,7 @@ function WidgetSync() {
   );
 }
 const s = StyleSheet.create({
+  photoBackdrop: { backgroundColor: 'transparent' },
   voiceBackdrop: { justifyContent: 'flex-end', paddingVertical: 24 },
   voiceOnlyBar: { margin: 0, backgroundColor: '#FFF9F2', padding: 16 },
   voiceOnlyContent: { padding: 0 },
