@@ -1,0 +1,9 @@
+PASS __tests__/WidgetQuickEntry.test.tsx (20.656 s)
+PASS __tests__/widgetQuickEntry.test.ts
+PASS __tests__/widgetLoanEntry.test.ts
+PASS __tests__/moneyInput.test.ts
+
+Test Suites: 4 passed, 4 total
+Tests:       49 passed, 49 total
+Snapshots:   0 total
+Time:        21.795 s

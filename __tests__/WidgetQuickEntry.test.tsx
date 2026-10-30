@@ -10,6 +10,8 @@ import { transactionsService } from '../src/services/transactions';
 import { launchCamera } from 'react-native-image-picker';
 import { saveWidgetEntry } from '../src/services/widgetQuickEntry';
 import { saveWidgetLoanEntry } from '../src/services/widgetLoanEntry';
+import DateTimePicker from '@react-native-community/datetimepicker';
+jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/services/widgetLoanEntry', () => ({
   ...jest.requireActual('../src/services/widgetLoanEntry'),
   saveWidgetLoanEntry: jest.fn(),
@@ -77,6 +79,14 @@ const press = async (name: string) => {
 const fill = async (name: string, value: string) => {
   await act(async () => control(name).props.onChangeText(value));
 };
+const chooseDate = async (name: string, date: Date) => {
+  await press(name);
+  await act(async () =>
+    renderer.root
+      .findByType(DateTimePicker)
+      .props.onChange({ type: 'set' }, date),
+  );
+};
 beforeEach(() => {
   jest.clearAllMocks();
   Object.assign(mockAuth, {
@@ -98,8 +108,7 @@ it.each(['Vay', 'Cho vay'])(
     await press('Kiểm tra');
     expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
     await fill('Tên người vay nợ widget', 'Nguoi QA');
-    await fill('Ngày hẹn trả widget', '2026-11-30');
-    await press('Chọn ví');
+    await chooseDate('Ngày hẹn trả widget', new Date(2026, 10, 30));
     await press('Ví QA · VND');
     await press('Kiểm tra');
     expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
@@ -145,7 +154,6 @@ it.each(['Chi', 'Thu'])(
       await press('Lương');
     }
     await fill('Số tiền widget', '25000');
-    await press('Chọn ví');
     await press('Ví QA · VND');
     await press('Kiểm tra');
     jest
@@ -171,7 +179,6 @@ it.each([
     await fill('Tên người vay nợ widget', 'Nguoi QA');
   }
   await fill('Số tiền widget', '25000');
-  await press('Chọn ví');
   await press('Ví QA · VND');
   await press('Kiểm tra');
   jest
@@ -206,7 +213,6 @@ it('requires wallet and preview before saving, locks repeated confirms, then clo
   await fill('Số tiền widget', '25000');
   await press('Kiểm tra');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
-  await press('Chọn ví');
   await press('Ví QA · VND');
   await press('Kiểm tra');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
@@ -262,7 +268,6 @@ it('camera fills editable items and amount but never saves or attaches its photo
   expect(control('Số tiền widget').props.value).toBe('79.000');
   expect(control('Tên món 1').props.value).toBe('Bạc xỉu (2)');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
-  await press('Chọn ví');
   await press('Ví QA · VND');
   await press('Kiểm tra');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('PENDING');
@@ -322,7 +327,6 @@ it('accepts formatted VND and preserves an empty item amount while editing', asy
   expect(control('Thành tiền món 1').props.value).toBe('');
   await fill('Thành tiền món 1', '94.000');
   await fill('Số tiền widget', '79.000');
-  await press('Chọn ví');
   await press('Ví QA · VND');
   await press('Kiểm tra');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
@@ -365,7 +369,6 @@ it('keeps decimal-comma input for a non-VND wallet instead of treating it as tho
     wallets: [{ ...data.wallets[0], currency: 'USD' }],
   });
   await mount();
-  await press('Chọn ví');
   await press('Ví QA · USD');
   await fill('Số tiền widget', '2,50');
   await press('Kiểm tra');
@@ -379,7 +382,6 @@ it('keeps the income draft and wallet through temporary auth-controller restorat
   await press('Thu');
   await press('Chọn danh mục');
   await press('Lương');
-  await press('Chọn ví');
   await press('Ví QA · VND');
   await fill('Số tiền widget', '125000');
   await fill('Ghi chú widget', 'luong QA');
@@ -412,4 +414,86 @@ it('keeps the income draft and wallet through temporary auth-controller restorat
     amount: '125000',
     note: 'luong QA',
   });
+});
+
+it('lists all wallets in the form and previews the tapped wallet without an intermediate picker', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    ...data,
+    wallets: [
+      ...data.wallets,
+      {
+        ...data.wallets[0],
+        id: 8,
+        name: 'Tài khoản ngân hàng',
+        wallet_type: 'BANK',
+      },
+      { ...data.wallets[0], id: 9, name: 'Tiết kiệm', wallet_type: 'SAVINGS' },
+    ],
+  });
+  await mount();
+  expect(control('Chọn ví')).toBeUndefined();
+  expect(control('Ví QA · VND')).toBeDefined();
+  expect(control('Tài khoản ngân hàng · VND')).toBeDefined();
+  expect(control('Tiết kiệm · VND')).toBeDefined();
+  await fill('Số tiền widget', '25000');
+  await press('Tài khoản ngân hàng · VND');
+  expect(
+    control('Tài khoản ngân hàng · VND').props.accessibilityState.selected,
+  ).toBe(true);
+  expect(control('Ví QA · VND').props.accessibilityState.selected).toBe(false);
+  await press('Kiểm tra');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].wallet_id).toBe(8);
+});
+
+it('uses a native calendar, keeps the date on dismissal and submits the selected local day', async () => {
+  await mount();
+  await fill('Số tiền widget', '25000');
+  await press('Ví QA · VND');
+  await chooseDate('Ngày giao dịch widget', new Date(2026, 10, 1));
+  expect(renderer.root.findAllByType(DateTimePicker)).toHaveLength(0);
+  expect(control('Ngày giao dịch widget').props.onChangeText).toBeUndefined();
+  await press('Ngày giao dịch widget');
+  expect(renderer.root.findByType(DateTimePicker).props.value.getDate()).toBe(
+    1,
+  );
+  await act(async () =>
+    renderer.root
+      .findByType(DateTimePicker)
+      .props.onChange({ type: 'dismissed' }, new Date(2026, 10, 2)),
+  );
+  await press('Kiểm tra');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].transaction_date).toBe(
+    '2026-11-01',
+  );
+});
+
+it('lets the optional loan due date be picked and cleared and excludes savings wallets for loans', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    ...data,
+    wallets: [
+      ...data.wallets,
+      { ...data.wallets[0], id: 9, name: 'Tiết kiệm', wallet_type: 'SAVINGS' },
+    ],
+  });
+  await mount();
+  await press('Vay/Nợ');
+  expect(control('Tiết kiệm · VND')).toBeUndefined();
+  await chooseDate('Ngày hẹn trả widget', new Date(2026, 10, 30));
+  await press('Bỏ ngày hẹn trả');
+  await fill('Tên người vay nợ widget', 'Nguoi QA');
+  await fill('Số tiền widget', '100000');
+  await press('Ví QA · VND');
+  await press('Kiểm tra');
+  expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
+  jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+  await press('Xác nhận lưu');
+  expect(
+    jest.mocked(saveWidgetLoanEntry).mock.calls[0][2].due_date,
+  ).toBeNull();
 });

@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Form nhập từ widget — 30/10/2026
+
+- Ngày giao dịch và ngày hẹn trả dùng lịch Android, hiện dd/MM/yyyy; Hủy giữ ngày, có thể bỏ ngày hẹn trả.
+- Ví hiện trực tiếp dạng thẻ hai cột, chọn một lần và làm nổi ví đang chọn. Bỏ màn/nút Chọn ví trung gian, giữ nguyên bước kiểm tra/xác nhận và chống trùng.
+- Android local đã thử4ví có tên dài, chọn ví và lịch, preview đúng ngày/ví. Jest49/49 qua4bộ, TypeScript/ESLint đạt. SQL QA giữ nguyên giao dịch/số dư, chỉ thêm3ví thử số dư0. Chưa phát hành APK; không thay server hoặc website.
+- Bằng chứng: mobile/qa/evidence/2026-10-30-widget-inline-form/README.md.
+
 ## Lịch tiền, Chi an toàn và widget đầy đủ — 30/10/2026
 
 - Tài khoản có màn Lịch tiền riêng: hóa đơn đã xác nhận và khoản thu/chi dự kiến trong30ngày, số dư dự kiến theo ngày và ngày có thể thiếu tiền. Không mở lại Trung tâm tài chính. Khoản dự kiến phải xem trước/xác nhận, chỉ lưu lịch, không ghi giao dịch hoặc đổi số dư.

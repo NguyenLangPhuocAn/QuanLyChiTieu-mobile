@@ -1,0 +1,22 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (11.252 s)
+  ● lets the optional loan due date be picked and cleared and excludes savings wallets for loans
+
+    expect(received).toBeUndefined()
+
+    Received: null
+
+      496 |   expect(
+      497 |     jest.mocked(saveWidgetLoanEntry).mock.calls[0][2].due_date,
+    > 498 |   ).toBeUndefined();
+          |     ^
+      499 | });
+      500 |
+
+      at Object.toBeUndefined (__tests__/WidgetQuickEntry.test.tsx:498:5)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 19 passed, 20 total
+Snapshots:   0 total
+Time:        11.594 s, estimated 14 s

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Keyboard,
   KeyboardAvoidingView,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Camera, Mic } from 'lucide-react-native';
+import { CalendarDays, Camera, Mic, X } from 'lucide-react-native';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { launchCamera } from 'react-native-image-picker';
 import { AuthProvider, useAuth } from '../../context/AuthContext';
 import HomeWidgetSession from '../../components/HomeWidgetSession';
@@ -52,9 +56,11 @@ import {
   type WidgetLoanPayload,
 } from '../../services/widgetLoanEntry';
 import type { LoanDebtType } from '../../types/loanDebt';
+import { getWalletTypeMeta } from '../../constants/walletTypes';
 
 type Props = { entryUrl: string };
 type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
+const dateLabel = (value: string) => value.split('-').reverse().join('/');
 function Panel({ entryUrl }: Props) {
   const {
     user,
@@ -88,7 +94,8 @@ function Panel({ entryUrl }: Props) {
   const [currency, setCurrency] = useState<string | null>(null);
   const [items, setItems] = useState<ItemDraft[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [picker, setPicker] = useState<'wallet' | 'category' | null>(null);
+  const [picker, setPicker] = useState<'category' | null>(null);
+  const [datePicker, setDatePicker] = useState<'date' | 'dueDate' | null>(null);
   const [review, setReview] = useState<
     CreateTransactionPayload | WidgetLoanPayload | null
   >(null);
@@ -323,6 +330,17 @@ function Panel({ entryUrl }: Props) {
   const voicePreview = parseVoiceTransactionDraft(transcript);
   const loanReview = review && 'principal_amount' in review ? review : null;
   const transactionReview = review && 'amount' in review ? review : null;
+  const changeDate = (event: DateTimePickerEvent, selected?: Date) => {
+    const target = datePicker;
+    setDatePicker(null);
+    if (!alive.current || event.type !== 'set' || !selected || !target) return;
+    if (target === 'date') setDate(toDateKey(selected));
+    else setDueDate(toDateKey(selected));
+  };
+  const openDate = (target: 'date' | 'dueDate') => {
+    Keyboard.dismiss();
+    setDatePicker(target);
+  };
   const prepare = () => {
     if (!data || busy || ocrBusy || completed.current) return;
     try {
@@ -535,31 +553,15 @@ function Panel({ entryUrl }: Props) {
             </>
           ) : picker ? (
             <>
-              {picker === 'category' ? (
-                <WidgetCategoryPicker
-                  categories={data?.categories ?? []}
-                  type={type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
-                  selectedId={categoryId}
-                  onSelect={selected => {
-                    setCategory(selected.id);
-                    setPicker(null);
-                  }}
-                />
-              ) : (
-                <>
-                  <Text style={s.label}>Chọn ví</Text>
-                  {data?.wallets
-                    .filter(
-                      w => type !== 'LOAN_DEBT' || w.wallet_type !== 'SAVINGS',
-                    )
-                    .map(w =>
-                      button(`${w.name} · ${w.currency}`, () => {
-                        setWallet(w.id);
-                        setPicker(null);
-                      }),
-                    )}
-                </>
-              )}
+              <WidgetCategoryPicker
+                categories={data?.categories ?? []}
+                type={type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
+                selectedId={categoryId}
+                onSelect={selected => {
+                  setCategory(selected.id);
+                  setPicker(null);
+                }}
+              />
               {button('Quay lại', () => setPicker(null))}
             </>
           ) : (
@@ -632,14 +634,33 @@ function Panel({ entryUrl }: Props) {
                     style={s.input}
                     editable={!ocrBusy}
                   />
-                  <TextInput
-                    accessibilityLabel="Ngày hẹn trả widget"
-                    placeholder="Hẹn trả YYYY-MM-DD (không bắt buộc)"
-                    value={dueDate}
-                    onChangeText={setDueDate}
-                    style={s.input}
-                    editable={!ocrBusy}
-                  />
+                  <View style={s.row}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Ngày hẹn trả widget"
+                      onPress={() => openDate('dueDate')}
+                      disabled={ocrBusy}
+                      style={[s.dateField, s.dueDateField]}
+                    >
+                      <CalendarDays size={19} color="#A75410" />
+                      <Text style={s.dateCopy}>
+                        {dueDate
+                          ? `Hẹn trả: ${dateLabel(dueDate)}`
+                          : 'Hẹn trả · không bắt buộc'}
+                      </Text>
+                    </TouchableOpacity>
+                    {!!dueDate && (
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel="Bỏ ngày hẹn trả"
+                        onPress={() => setDueDate('')}
+                        disabled={ocrBusy}
+                        style={s.clearDate}
+                      >
+                        <X size={18} color="#886449" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <Text style={s.muted}>Vay/Nợ cần kết nối mạng để lưu.</Text>
                 </>
               ) : (
@@ -668,12 +689,38 @@ function Panel({ entryUrl }: Props) {
                 </>
               )}
               <Text style={s.label}>Ví</Text>
-              {button(
-                wallet ? `${wallet.name} · ${wallet.currency}` : 'Chọn ví',
-                () => setPicker('wallet'),
-                false,
-                ocrBusy,
-              )}
+              <View style={s.wallets}>
+                {data?.wallets
+                  .filter(
+                    w => type !== 'LOAN_DEBT' || w.wallet_type !== 'SAVINGS',
+                  )
+                  .map(w => {
+                    const selected = w.id === walletId;
+                    const WalletIcon = getWalletTypeMeta(w.wallet_type).Icon;
+                    return (
+                      <TouchableOpacity
+                        key={w.id}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${w.name} · ${w.currency}`}
+                        accessibilityState={{ selected }}
+                        disabled={ocrBusy}
+                        onPress={() => setWallet(w.id)}
+                        style={[s.walletCard, selected && s.walletSelected]}
+                      >
+                        <WalletIcon
+                          size={19}
+                          color={selected ? '#C36600' : '#886449'}
+                        />
+                        <View style={s.categoryCopy}>
+                          <Text style={s.walletName} numberOfLines={2}>
+                            {w.name}
+                          </Text>
+                          <Text style={s.walletCurrency}>{w.currency}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
               <TextInput
                 accessibilityLabel="Ghi chú widget"
                 placeholder="Ghi chú"
@@ -682,14 +729,17 @@ function Panel({ entryUrl }: Props) {
                 style={s.input}
                 editable={!ocrBusy}
               />
-              <TextInput
+              <TouchableOpacity
+                accessibilityRole="button"
                 accessibilityLabel="Ngày giao dịch widget"
-                placeholder="YYYY-MM-DD"
-                value={date}
-                onChangeText={setDate}
-                style={s.input}
-                editable={!ocrBusy}
-              />
+                onPress={() => openDate('date')}
+                disabled={ocrBusy}
+                style={s.dateField}
+              >
+                <CalendarDays size={19} color="#A75410" />
+                <Text style={s.dateCopy}>Ngày giao dịch</Text>
+                <Text style={s.dateValue}>{dateLabel(date)}</Text>
+              </TouchableOpacity>
               <View style={s.row}>
                 <TouchableOpacity
                   accessibilityRole="button"
@@ -843,6 +893,17 @@ function Panel({ entryUrl }: Props) {
             </Text>
           )}
         </ScrollView>
+        {ready && !review && !picker && datePicker && (
+          <DateTimePicker
+            value={
+              new Date(
+                `${datePicker === 'dueDate' ? dueDate || date : date}T12:00:00`,
+              )
+            }
+            mode="date"
+            onChange={changeDate}
+          />
+        )}
         {ready && !picker && (
           <View style={s.footer}>
             {completedResult ? (
@@ -902,6 +963,43 @@ function WidgetSync() {
   );
 }
 const s = StyleSheet.create({
+  wallets: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  walletCard: {
+    width: '48%',
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 64,
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#ECD6C1',
+    backgroundColor: '#FFFDFB',
+  },
+  walletSelected: { backgroundColor: '#FFF0DF', borderColor: '#FF8800' },
+  walletName: { color: '#4A2B1A', fontWeight: '700', fontSize: 14 },
+  walletCurrency: { color: '#886449', fontSize: 12, marginTop: 2 },
+  dateField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 46,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ECD6C1',
+    backgroundColor: '#FFFDFB',
+  },
+  dateCopy: { flex: 1, color: '#886449', flexShrink: 1 },
+  dateValue: { color: '#4A2B1A', fontWeight: '600' },
+  clearDate: {
+    width: 44,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dueDateField: { flex: 1 },
   categoryCard: {
     flexDirection: 'row',
     alignItems: 'center',
