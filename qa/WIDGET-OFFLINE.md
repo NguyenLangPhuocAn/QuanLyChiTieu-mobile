@@ -54,8 +54,13 @@ Trạng thái thực tế và PNG/XML nằm trong evidence/2026-10-29-widget-off
 
 ## Vay/Nợ từ widget — 30/10/2026
 
+Đợt chống lặp tiếp theo cùng ngày: Thu/Chi giữ mã yêu cầu qua Sửa lại/xem trước/thử lại. Sau khi đã SAVED/PENDING, không gửi lại hoặc sửa nội dung trong popup; lỗi native đóng cửa sổ chỉ cho Đóng/Back để thử đóng. Mô phỏng lỗi đóng sau lưu trên Android local đã xác nhận đúng một khoản1.250đ, database không đổi khi đóng lại. Mobile114/114 qua13bộ; bằng chứng evidence/2026-10-30-widget-retry/README.md. Không đổi yêu cầu mạng của Vay/Nợ.
+
 Chạm N+ → Vay/Nợ → Vay hoặc Cho vay. Nhập số tiền, tên người, chọn ví thường và ngày giao dịch; ngày hẹn trả không bắt buộc. Kiểm tra dấu +/−, ví và người trước Xác nhận lưu. Lưu thành công tạo khoản trong sổ vay/nợ cùng giao dịch mở đầu. Khoản vay không nhập vào tổng thu/chi thường.
 
 Luồng này cần mạng. Khi lỗi giữ form, không đổi thành bản nháp thu/chi thường. Thử lại cùng yêu cầu không ghi thêm tiền; đổi nội dung sau khi server đã xử lý báo xung đột để kiểm tra sổ. Backend phải hỗ trợ POST /loan-debts/quick-entry; server cũ bị chặn. Không thêm trả nợ/thu hồi nợ trong popup đợt này.
 
 Android13 local Metro8082/API3302/MySQL QA đã lưu Vay100k và Cho vay50k, replay không đổi tiền. Jest mobile107/107, backend21/21; noEmit/ESLint đạt. Chưa APK/deploy hoặc điện thoại thật. Bằng chứng evidence/2026-10-30-widget-loan/README.md.
+
+
+Bổ sung cùng đợt chống lặp30/10: Hàng chờ offline so sánh toàn bộ nội dung cùng mã (không phụ thuộc thứ tự khóa JSON). Nội dung khác báo409/OFFLINE_DRAFT_CONFLICT và giữ nguyên bản cũ; áp dụng giao dịch nhập tay và thông báo ngân hàng, gồm thay đổi món hóa đơn. Hai ca mới xác nhận không ghi đè hoặc gửi API.

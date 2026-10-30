@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-30",
+  "mobileJest": "114/114 across13suites (7new: 5panel,2queue)",
+  "panelJest": "16/16",
+  "typeScriptExit": 0,
+  "eslintExit": 0,
+  "android": "com.mobile.dev source Android13 Metro8083 fault adapter then8082 normal API3302",
+  "database": "QA8 tx30 only new record; balance1025000->1023750; closing no mutation",
+  "nativeBuild": "not run",
+  "backendChange": "read-only QA evidence helper only",
+  "release": "not run",
+  "stableHealth": 200,
+  "qaHealth": 200,
+  "queueConflict": "manual/bank changed amount or item:409, no overwrite; reordered keys accepted"
+}

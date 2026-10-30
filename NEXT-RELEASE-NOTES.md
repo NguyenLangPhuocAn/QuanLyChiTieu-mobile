@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Chống lưu lặp khi thử lại widget — 30/10/2026
+
+- Thu/Chi giữ cùng mã yêu cầu qua Sửa lại, xem trước và thử lưu lại. Khi máy chủ đã xử lý, cùng mã/nội dung không ghi thêm tiền; nội dung thay đổi vẫn do backend kiểm tra xung đột.
+- Khi đã lưu hoặc đã đưa vào hàng chờ, khóa gửi và bỏ Sửa lại/Xác nhận lưu. Nếu native không đóng được popup, hiện trạng thái đã tiếp nhận cùng nút Đóng; bấm lại/Back chỉ thử đóng, giữ đúng kết quả SAVED/PENDING.
+- Mobile114/114 qua13bộ (7ca mới), TypeScript/ESLint đạt. Android13 source local với QA mô phỏng lỗi native đóng đúng sau xác nhận: giao dịch Chi1.250đ tạo đúng tx30, ví1.025.000→1.023.750; đóng lại về launcher, SQL/số dư không đổi.
+- Bằng chứng mobile/qa/evidence/2026-10-30-widget-retry/README.md. Mô phỏng lỗi chỉ nằm trong cấu hình Metro QA8083, không vào cấu hình release. Trả emulator về Metro8082 bình thường sau thử. Không build native/APK, deploy/web hoặc đổi server3000.
+
 ## Vay/Nợ trong form widget — 30/10/2026
 
 - Form mở từ N+ hoặc widget đầy đủ có Chi, Thu và Vay/Nợ. Vay/Nợ tách Vay/Cho vay, nhập tên người, chọn ví thường, ngày giao dịch và ngày hẹn trả tùy chọn. Kiểm tra trước khi xác nhận; Vay cộng tiền, Cho vay trừ tiền và tạo liên kết sổ vay/nợ thật. Không tính khoản vay thành thu/chi thường.

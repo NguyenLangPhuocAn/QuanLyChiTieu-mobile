@@ -75,6 +75,11 @@ function Panel({ entryUrl }: Props) {
   const [personName, setPersonName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const loanRequestId = useRef<string | null>(null);
+  const transactionRequestId = useRef<string | null>(null);
+  const completed = useRef<'SAVED' | 'PENDING' | null>(null);
+  const [completedResult, setCompletedResult] = useState<
+    'SAVED' | 'PENDING' | null
+  >(null);
   const [categoryId, setCategory] = useState<number | null>(null);
   const [walletId, setWallet] = useState<number | null>(null);
   const [amount, setAmount] = useState('');
@@ -106,7 +111,10 @@ function Panel({ entryUrl }: Props) {
     if (saving.current) return;
     operation.current++;
     voice.cancel();
-    homeWidget.closeQuickEntry().catch(() => undefined);
+    homeWidget.closeQuickEntry(completed.current ?? undefined).catch(() => {
+      if (alive.current)
+        setError('Chưa đóng được cửa sổ. Bạn có thể bấm Đóng để thử lại.');
+    });
   };
   useEffect(() => {
     alive.current = true;
@@ -117,7 +125,8 @@ function Panel({ entryUrl }: Props) {
   useEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
       if (saving.current) return true;
-      if (picker) setPicker(null);
+      if (completed.current) close();
+      else if (picker) setPicker(null);
       else if (review) setReview(null);
       else close();
       return true;
@@ -311,7 +320,7 @@ function Panel({ entryUrl }: Props) {
   const loanReview = review && 'principal_amount' in review ? review : null;
   const transactionReview = review && 'amount' in review ? review : null;
   const prepare = () => {
-    if (!data || busy || ocrBusy) return;
+    if (!data || busy || ocrBusy || completed.current) return;
     try {
       if (type === 'LOAN_DEBT') {
         loanRequestId.current ??= createClientRequestId();
@@ -331,7 +340,8 @@ function Panel({ entryUrl }: Props) {
             loanRequestId.current,
           ),
         );
-      } else
+      } else {
+        transactionRequestId.current ??= createClientRequestId();
         setReview(
           widgetEntryPayload(
             data,
@@ -348,9 +358,10 @@ function Panel({ entryUrl }: Props) {
                 amount: Number(parsePositiveMoneyInput(item.amount)),
               })),
             },
-            createClientRequestId(),
+            transactionRequestId.current,
           ),
         );
+      }
       setError('');
       voice.cancel();
     } catch (e) {
@@ -358,7 +369,8 @@ function Panel({ entryUrl }: Props) {
     }
   };
   const save = async () => {
-    if (!review || !token || !user?.id || saving.current) return;
+    if (!review || !token || !user?.id || saving.current || completed.current)
+      return;
     saving.current = true;
     setBusy(true);
     setError('');
@@ -390,15 +402,20 @@ function Panel({ entryUrl }: Props) {
         alive.current &&
         latest.current.userId === owner &&
         latest.current.server === server
-      )
+      ) {
+        completed.current = result;
+        setCompletedResult(result);
         await homeWidget.closeQuickEntry(result);
+      }
     } catch (e) {
       if (alive.current)
         setError(
-          getUserFriendlyErrorMessage(
-            e,
-            'Chưa lưu được. Giữ thông tin và thử lại.',
-          ),
+          completed.current
+            ? 'Giao dịch đã được tiếp nhận. Bấm Đóng để trở về màn hình chính.'
+            : getUserFriendlyErrorMessage(
+                e,
+                'Chưa lưu được. Giữ thông tin và thử lại.',
+              ),
         );
     } finally {
       saving.current = false;
@@ -461,6 +478,13 @@ function Panel({ entryUrl }: Props) {
             </>
           ) : review ? (
             <>
+              {!!completedResult && (
+                <Text accessibilityLiveRegion="polite" style={s.review}>
+                  {completedResult === 'SAVED'
+                    ? 'Đã lưu giao dịch.'
+                    : 'Đã lưu trên máy, đang chờ đồng bộ.'}
+                </Text>
+              )}
               <Text style={s.total}>
                 {loanReview
                   ? loanReview.type === 'BORROWED'
@@ -817,7 +841,9 @@ function Panel({ entryUrl }: Props) {
         </ScrollView>
         {ready && !picker && (
           <View style={s.footer}>
-            {review ? (
+            {completedResult ? (
+              button('Đóng', close, true, busy)
+            ) : review ? (
               <>
                 {button('Sửa lại', () => setReview(null), false, busy)}
                 {button(busy ? 'Đang lưu…' : 'Xác nhận lưu', save, true, busy)}

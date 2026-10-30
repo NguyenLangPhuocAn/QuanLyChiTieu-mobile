@@ -1,0 +1,40 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (31.731 s)
+  × previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (7222 ms)
+  √ previews Cho vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (464 ms)
+  √ keeps the same Chi request after a failed save and repeated preview (241 ms)
+  √ keeps the same Thu request after a failed save and repeated preview (211 ms)
+  √ only retries closing after Chi is SAVED (100 ms)
+  √ only retries closing after Chi is PENDING (107 ms)
+  √ only retries closing after Vay/Nợ is SAVED (137 ms)
+  √ requires wallet and preview before saving, locks repeated confirms, then closes the panel (3635 ms)
+  √ cancel never writes and a stale widget link cannot show financial fields (56 ms)
+  √ camera fills editable items and amount but never saves or attaches its photo (197 ms)
+  √ updates the complete category cache while keeping the entered amount (147 ms)
+  √ recovers in place when the initial cache is missing and later arrives (58 ms)
+  √ accepts formatted VND and preserves an empty item amount while editing (238 ms)
+  √ locks repeated camera taps immediately and ignores cancelled OCR after manual input (102 ms)
+  √ keeps decimal-comma input for a non-VND wallet instead of treating it as thousands (118 ms)
+  √ keeps the income draft and wallet through temporary auth-controller restoration (273 ms)
+
+  ● previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      89 | });
+      90 |
+    > 91 | it.each(['Vay', 'Cho vay'])(
+         |                            ^
+      92 |   'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+      93 |   async label => {
+      94 |     await mount();
+
+      at node_modules/jest-each/build/bind.js:47:15
+          at Array.forEach (<anonymous>)
+      at Object.<anonymous> (__tests__/WidgetQuickEntry.test.tsx:91:28)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 15 passed, 16 total
+Snapshots:   0 total
+Time:        32.261 s
+Ran all test suites matching /__tests__\\WidgetQuickEntry.test.tsx/i.

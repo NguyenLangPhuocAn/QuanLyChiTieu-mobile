@@ -1,0 +1,31 @@
+{
+  "qaUserId": 8,
+  "walletId": 8,
+  "balance": 1023750,
+  "rows": [
+    {
+      "id": 27,
+      "amount": "-25000",
+      "category_id": 22,
+      "note": null
+    },
+    {
+      "id": 28,
+      "amount": "100000",
+      "category_id": 28,
+      "note": "Tiền đi vay: Widget Vay QA"
+    },
+    {
+      "id": 29,
+      "amount": "-50000",
+      "category_id": 29,
+      "note": "Cho vay: Widget Cho vay QA"
+    },
+    {
+      "id": 30,
+      "amount": "-1250",
+      "category_id": 22,
+      "note": "Widget retry QA"
+    }
+  ]
+}

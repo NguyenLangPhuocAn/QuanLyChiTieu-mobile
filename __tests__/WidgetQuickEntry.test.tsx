@@ -135,6 +135,62 @@ const mount = async (url = entryUrl) => {
     renderer = TestRenderer.create(<WidgetQuickEntry entryUrl={url} />);
   });
 };
+it.each(['Chi', 'Thu'])(
+  'keeps the same %s request after a failed save and repeated preview',
+  async label => {
+    await mount();
+    if (label === 'Thu') {
+      await press('Thu');
+      await press('Chọn danh mục');
+      await press('Lương');
+    }
+    await fill('Số tiền widget', '25000');
+    await press('Chọn ví');
+    await press('Ví QA · VND');
+    await press('Kiểm tra');
+    jest
+      .mocked(saveWidgetEntry)
+      .mockRejectedValueOnce(Error('Chưa lưu hàng chờ'));
+    await press('Xác nhận lưu');
+    const first = jest.mocked(saveWidgetEntry).mock.calls[0][2];
+    await press('Sửa lại');
+    await press('Kiểm tra');
+    jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+    await press('Xác nhận lưu');
+    expect(jest.mocked(saveWidgetEntry).mock.calls[1][2]).toEqual(first);
+  },
+);
+it.each([
+  { kind: 'Chi', result: 'SAVED' as const },
+  { kind: 'Chi', result: 'PENDING' as const },
+  { kind: 'Vay/Nợ', result: 'SAVED' as const },
+])('only retries closing after $kind is $result', async ({ kind, result }) => {
+  await mount();
+  if (kind === 'Vay/Nợ') {
+    await press('Vay/Nợ');
+    await fill('Tên người vay nợ widget', 'Nguoi QA');
+  }
+  await fill('Số tiền widget', '25000');
+  await press('Chọn ví');
+  await press('Ví QA · VND');
+  await press('Kiểm tra');
+  jest
+    .mocked(homeWidget.closeQuickEntry)
+    .mockRejectedValueOnce(Error('Bridge unavailable'));
+  if (kind === 'Vay/Nợ')
+    jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+  else jest.mocked(saveWidgetEntry).mockResolvedValueOnce(result);
+  const oldConfirm = control('Xác nhận lưu').props.onPress;
+  await act(async () => oldConfirm());
+  expect(control('Sửa lại')).toBeUndefined();
+  expect(control('Xác nhận lưu')).toBeUndefined();
+  expect(control('Đóng')).toBeDefined();
+  await act(async () => oldConfirm());
+  await press('Đóng');
+  expect(saveWidgetEntry).toHaveBeenCalledTimes(kind === 'Vay/Nợ' ? 0 : 1);
+  expect(saveWidgetLoanEntry).toHaveBeenCalledTimes(kind === 'Vay/Nợ' ? 1 : 0);
+  expect(homeWidget.closeQuickEntry).toHaveBeenLastCalledWith(result);
+});
 it('requires wallet and preview before saving, locks repeated confirms, then closes the panel', async () => {
   await mount();
   await fill('Số tiền widget', '25000');

@@ -1,0 +1,156 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (102.505 s)
+  × previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (7156 ms)
+  √ previews Cho vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (464 ms)
+  × keeps the same Chi request after a failed save and repeated preview (236 ms)
+  × keeps the same Thu request after a failed save and repeated preview (232 ms)
+  × only retries closing after Chi is SAVED (3733 ms)
+  × only retries closing after Chi is PENDING (3107 ms)
+  × only retries closing after Vay/Nợ is SAVED (3524 ms)
+  √ requires wallet and preview before saving, locks repeated confirms, then closes the panel (775 ms)
+  √ cancel never writes and a stale widget link cannot show financial fields (81 ms)
+  √ camera fills editable items and amount but never saves or attaches its photo (286 ms)
+  √ updates the complete category cache while keeping the entered amount (236 ms)
+  √ recovers in place when the initial cache is missing and later arrives (95 ms)
+  √ accepts formatted VND and preserves an empty item amount while editing (280 ms)
+  √ locks repeated camera taps immediately and ignores cancelled OCR after manual input (175 ms)
+  √ keeps decimal-comma input for a non-VND wallet instead of treating it as thousands (153 ms)
+  √ keeps the income draft and wallet through temporary auth-controller restoration (433 ms)
+
+  ● previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      89 | });
+      90 |
+    > 91 | it.each(['Vay', 'Cho vay'])(
+         |                            ^
+      92 |   'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+      93 |   async label => {
+      94 |     await mount();
+
+      at node_modules/jest-each/build/bind.js:47:15
+          at Array.forEach (<anonymous>)
+      at Object.<anonymous> (__tests__/WidgetQuickEntry.test.tsx:91:28)
+
+  ● keeps the same Chi request after a failed save and repeated preview
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,9 +1,9 @@
+      Object {
+        "amount": "25000",
+        "category_id": 9,
+    -   "client_request_id": "txn_mvumrppw_25rsnb1qz6yrzjay4z2k",
+    +   "client_request_id": "txn_mvumrprm_zf60cmmu3nkp9b390erb",
+        "note": undefined,
+        "receipt_items": null,
+        "transaction_date": "2026-10-30",
+        "type": "EXPENSE",
+        "wallet_id": 7,
+
+      156 |     await press('Sửa lại');
+      157 |     await press('Kiểm tra');
+    > 158 |     jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+          |                                                           ^
+      159 |     await press('Xác nhận lưu');
+      160 |     expect(jest.mocked(saveWidgetEntry).mock.calls[1][2]).toEqual(first);
+      161 |   },
+
+      at toEqual (__tests__/WidgetQuickEntry.test.tsx:158:59)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● keeps the same Thu request after a failed save and repeated preview
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,9 +1,9 @@
+      Object {
+        "amount": "25000",
+        "category_id": 10,
+    -   "client_request_id": "txn_mvumrpx4_xm9k6okh6tmwibdr7exw",
+    +   "client_request_id": "txn_mvumrpy9_t36xm3734jej1ryqktcu",
+        "note": undefined,
+        "receipt_items": null,
+        "transaction_date": "2026-10-30",
+        "type": "INCOME",
+        "wallet_id": 7,
+
+      156 |     await press('Sửa lại');
+      157 |     await press('Kiểm tra');
+    > 158 |     jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+          |                                                           ^
+      159 |     await press('Xác nhận lưu');
+      160 |     expect(jest.mocked(saveWidgetEntry).mock.calls[1][2]).toEqual(first);
+      161 |   },
+
+      at toEqual (__tests__/WidgetQuickEntry.test.tsx:158:59)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● only retries closing after Chi is SAVED
+
+    expect(received).toBeUndefined()
+
+    Received: {"_fiber": {"_debugHookTypes": null, "_debugInfo": null, "_debugNeedsRemount": false, "_debugOwner": [FiberNode], "_debugStack": [Error: react-stack-top-frame], "_debugTask": null, "actualDuration": 1, "actualStartTime": 1793344092807, "alternate": [FiberNode], "child": [FiberNode], "childLanes": 0, "deletions": null, "dependencies": null, "elementType": [Function Touchable], "flags": 67108865, "index": 0, "key": "Sửa lại", "lanes": 0, "memoizedProps": [Object], "memoizedState": null, "mode": 3, "pendingProps": [Object], "ref": null, "refCleanup": null, "return": [FiberNode], "selfBaseDuration": 0, "sibling": [FiberNode], "stateNode": null, "subtreeFlags": 14158341, "tag": 0, "treeBaseDuration": 1, "type": [Function Touchable], "updateQueue": null}}
+
+      178 |     .mocked(homeWidget.closeQuickEntry)
+      179 |     .mockRejectedValueOnce(Error('Bridge unavailable'));
+    > 180 |   if (kind === 'Vay/Nợ')
+          |                         ^
+      181 |     jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+      182 |   else jest.mocked(saveWidgetEntry).mockResolvedValueOnce(result);
+      183 |   const oldConfirm = control('Xác nhận lưu').props.onPress;
+
+      at toBeUndefined (__tests__/WidgetQuickEntry.test.tsx:180:30)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● only retries closing after Chi is PENDING
+
+    expect(received).toBeUndefined()
+
+    Received: {"_fiber": {"_debugHookTypes": null, "_debugInfo": null, "_debugNeedsRemount": false, "_debugOwner": [FiberNode], "_debugStack": [Error: react-stack-top-frame], "_debugTask": null, "actualDuration": 0, "actualStartTime": 1793344096546, "alternate": [FiberNode], "child": [FiberNode], "childLanes": 0, "deletions": null, "dependencies": null, "elementType": [Function Touchable], "flags": 67108865, "index": 0, "key": "Sửa lại", "lanes": 0, "memoizedProps": [Object], "memoizedState": null, "mode": 3, "pendingProps": [Object], "ref": null, "refCleanup": null, "return": [FiberNode], "selfBaseDuration": 0, "sibling": [FiberNode], "stateNode": null, "subtreeFlags": 14158341, "tag": 0, "treeBaseDuration": 0, "type": [Function Touchable], "updateQueue": null}}
+
+      178 |     .mocked(homeWidget.closeQuickEntry)
+      179 |     .mockRejectedValueOnce(Error('Bridge unavailable'));
+    > 180 |   if (kind === 'Vay/Nợ')
+          |                         ^
+      181 |     jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+      182 |   else jest.mocked(saveWidgetEntry).mockResolvedValueOnce(result);
+      183 |   const oldConfirm = control('Xác nhận lưu').props.onPress;
+
+      at toBeUndefined (__tests__/WidgetQuickEntry.test.tsx:180:30)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● only retries closing after Vay/Nợ is SAVED
+
+    expect(received).toBeUndefined()
+
+    Received: {"_fiber": {"_debugHookTypes": null, "_debugInfo": null, "_debugNeedsRemount": false, "_debugOwner": [FiberNode], "_debugStack": [Error: react-stack-top-frame], "_debugTask": null, "actualDuration": 1, "actualStartTime": 1793344099719, "alternate": [FiberNode], "child": [FiberNode], "childLanes": 0, "deletions": null, "dependencies": null, "elementType": [Function Touchable], "flags": 67108865, "index": 0, "key": "Sửa lại", "lanes": 0, "memoizedProps": [Object], "memoizedState": null, "mode": 3, "pendingProps": [Object], "ref": null, "refCleanup": null, "return": [FiberNode], "selfBaseDuration": 0, "sibling": [FiberNode], "stateNode": null, "subtreeFlags": 14158341, "tag": 0, "treeBaseDuration": 1, "type": [Function Touchable], "updateQueue": null}}
+
+      178 |     .mocked(homeWidget.closeQuickEntry)
+      179 |     .mockRejectedValueOnce(Error('Bridge unavailable'));
+    > 180 |   if (kind === 'Vay/Nợ')
+          |                         ^
+      181 |     jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+      182 |   else jest.mocked(saveWidgetEntry).mockResolvedValueOnce(result);
+      183 |   const oldConfirm = control('Xác nhận lưu').props.onPress;
+
+      at toBeUndefined (__tests__/WidgetQuickEntry.test.tsx:180:30)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 1 failed, 1 total
+Tests:       6 failed, 10 passed, 16 total
+Snapshots:   0 total
+Time:        106.902 s
+Ran all test suites matching /__tests__\\WidgetQuickEntry.test.tsx/i.

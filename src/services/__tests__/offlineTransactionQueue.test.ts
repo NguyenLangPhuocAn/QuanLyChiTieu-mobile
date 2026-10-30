@@ -61,6 +61,42 @@ describe('offlineTransactionQueue', () => {
     );
   });
 
+  it.each(['manual', 'bank'] as const)(
+    'rejects changed %s payloads for an existing key without overwriting the draft',
+    async kind => {
+      const draft = await offlineTransactionQueue.enqueue(7, {
+        wallet_id: 2,
+        category_id: 3,
+        amount: '1000',
+        type: 'EXPENSE',
+        receipt_items: [{ name: 'Ca phe', amount: 1000 }],
+        ...(kind === 'bank'
+          ? { source: 'BANK_NOTIFICATION' as const, source_ref: 'c'.repeat(64) }
+          : { client_request_id: 'txn_queue_conflict_12345678' }),
+      });
+      // Equivalent JSON with keys in a different order is still the same request.
+      const reordered = Object.fromEntries(
+        Object.entries(draft.payload).reverse(),
+      );
+      await expect(
+        offlineTransactionQueue.enqueue(7, reordered as typeof draft.payload),
+      ).resolves.toEqual(draft);
+      for (const changed of [
+        { ...draft.payload, amount: '2000' },
+        { ...draft.payload, receipt_items: [{ name: 'Tra', amount: 1000 }] },
+      ])
+        await expect(
+          offlineTransactionQueue.enqueue(7, changed),
+        ).rejects.toMatchObject({
+          status: 409,
+          code: 'OFFLINE_DRAFT_CONFLICT',
+        });
+      expect(await offlineTransactionQueue.list(7)).toEqual([draft]);
+      expect(setItem).toHaveBeenCalledTimes(1);
+      expect(createTransaction).not.toHaveBeenCalled();
+    },
+  );
+
   it('keeps a bank notification idempotency key without adding a conflicting client key', async () => {
     const sourceRef = 'b'.repeat(64);
     const draft = await offlineTransactionQueue.enqueue(7, {

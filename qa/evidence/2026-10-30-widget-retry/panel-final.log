@@ -1,0 +1,23 @@
+PASS __tests__/WidgetQuickEntry.test.tsx (8.077 s)
+  √ previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (1051 ms)
+  √ previews Cho vay with a person and wallet, never sends a normal transaction, and reuses its key on retry (198 ms)
+  √ keeps the same Chi request after a failed save and repeated preview (125 ms)
+  √ keeps the same Thu request after a failed save and repeated preview (160 ms)
+  √ only retries closing after Chi is SAVED (64 ms)
+  √ only retries closing after Chi is PENDING (62 ms)
+  √ only retries closing after Vay/Nợ is SAVED (111 ms)
+  √ requires wallet and preview before saving, locks repeated confirms, then closes the panel (389 ms)
+  √ cancel never writes and a stale widget link cannot show financial fields (30 ms)
+  √ camera fills editable items and amount but never saves or attaches its photo (91 ms)
+  √ updates the complete category cache while keeping the entered amount (123 ms)
+  √ recovers in place when the initial cache is missing and later arrives (47 ms)
+  √ accepts formatted VND and preserves an empty item amount while editing (157 ms)
+  √ locks repeated camera taps immediately and ignores cancelled OCR after manual input (91 ms)
+  √ keeps decimal-comma input for a non-VND wallet instead of treating it as thousands (73 ms)
+  √ keeps the income draft and wallet through temporary auth-controller restoration (179 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       16 passed, 16 total
+Snapshots:   0 total
+Time:        8.457 s, estimated 103 s
+Ran all test suites matching /__tests__\\WidgetQuickEntry.test.tsx/i.

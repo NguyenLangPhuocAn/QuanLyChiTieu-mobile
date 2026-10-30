@@ -73,6 +73,16 @@ const parseDrafts = (raw: string | null): OfflineTransactionDraft[] => {
 const save = (userId: number, drafts: OfflineTransactionDraft[]) =>
   AsyncStorage.setItem(storageKey(userId), JSON.stringify(drafts));
 
+// Compare the complete JSON payload without depending on property order.
+const payloadFingerprint = (payload: CreateTransactionPayload) =>
+  JSON.stringify(payload, (_key, value: unknown) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : value,
+  );
+
 export const isRetryableOfflineTransactionError = (error: unknown) =>
   !(error instanceof ApiError) || error.status === 0 || error.status >= 500;
 
@@ -187,14 +197,28 @@ export const offlineTransactionQueue = {
       const requestId = isBankNotification
         ? `bank_${payload.source_ref}`
         : payload.client_request_id ?? createClientRequestId();
+      const bankPayload = { ...payload };
+      delete bankPayload.client_request_id;
+      const nextPayload = isBankNotification
+        ? bankPayload
+        : { ...payload, client_request_id: requestId };
       const existing = drafts.find(
         item => item.id === requestId && item.server === server,
       );
-      if (existing) return existing;
+      if (existing) {
+        if (
+          payloadFingerprint(existing.payload) !==
+          payloadFingerprint(nextPayload)
+        )
+          throw new ApiError(
+            'Bản nháp này đã có trong hàng chờ với nội dung khác. Kiểm tra hàng chờ trước khi nhập lại.',
+            409,
+            'OFFLINE_DRAFT_CONFLICT',
+          );
+        return existing;
+      }
 
       const now = new Date().toISOString();
-      const bankPayload = { ...payload };
-      delete bankPayload.client_request_id;
       const draft: OfflineTransactionDraft = {
         server,
         id: requestId,
@@ -202,9 +226,7 @@ export const offlineTransactionQueue = {
         updatedAt: now,
         status: 'PENDING',
         attempts: 0,
-        payload: isBankNotification
-          ? bankPayload
-          : { ...payload, client_request_id: requestId },
+        payload: nextPayload,
       };
       drafts.push(draft);
       await save(userId, drafts);

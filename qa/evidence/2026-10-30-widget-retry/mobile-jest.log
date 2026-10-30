@@ -1,0 +1,19 @@
+PASS __tests__/MainScreenDrafts.test.tsx (91.848 s)
+PASS __tests__/App.test.tsx (10.226 s)
+PASS __tests__/WidgetQuickEntry.test.tsx
+PASS __tests__/WidgetCategoryPicker.test.tsx
+PASS __tests__/AuthContext.test.tsx
+PASS __tests__/api.test.ts
+PASS __tests__/widgetQuickEntry.test.ts
+PASS __tests__/widgetLoanEntry.test.ts
+PASS __tests__/OfflineSessionSync.test.tsx
+PASS src/services/__tests__/offlineTransactionQueue.test.ts
+PASS __tests__/sharedProvider.test.tsx
+PASS __tests__/widget.test.ts
+PASS __tests__/billReminderLinking.test.ts
+
+Test Suites: 13 passed, 13 total
+Tests:       114 passed, 114 total
+Snapshots:   0 total
+Time:        111.453 s
+Ran all test suites matching /__tests__\\AuthContext.test.tsx|__tests__\\OfflineSessionSync.test.tsx|__tests__\\api.test.ts|__tests__\\widget.test.ts|__tests__\\billReminderLinking.test.ts|__tests__\\MainScreenDrafts.test.tsx|__tests__\\App.test.tsx|src\\services\\__tests__\\offlineTransactionQueue.test.ts|__tests__\\WidgetQuickEntry.test.tsx|__tests__\\widgetQuickEntry.test.ts|__tests__\\widgetLoanEntry.test.ts|__tests__\\sharedProvider.test.tsx|__tests__\\WidgetCategoryPicker.test.tsx/i.
