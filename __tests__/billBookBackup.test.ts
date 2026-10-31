@@ -97,6 +97,9 @@ beforeEach(async () => {
   jest.restoreAllMocks();
   jest.clearAllMocks();
   await AsyncStorage.removeItem(key);
+  await AsyncStorage.removeItem(
+    key.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   jest.mocked(RNFS.stat).mockResolvedValue({ size: 100 } as never);
   jest.mocked(RNFS.readFile).mockResolvedValue(text());
 });
@@ -107,7 +110,7 @@ it('exports ordinary UTF8 JSON with full metadata and no API/password/encryption
     Buffer.from(result.base64, 'base64').toString('utf8'),
   );
   expect(data.book).toEqual(imported);
-  expect(data.version).toBe(2);
+  expect(data.version).toBe(3);
   expect(data.ciphertext).toBeUndefined();
   expect(apiRequest).not.toHaveBeenCalled();
   expect(apiUploadRequest).not.toHaveBeenCalled();
@@ -199,6 +202,9 @@ it('preserves corrupt local data, rejects oversized files before reading, and ne
   await expect(backup.preview(scope, file)).rejects.toThrow();
   expect(await AsyncStorage.getItem(key)).toBe('bad-local');
   await AsyncStorage.removeItem(key);
+  await AsyncStorage.removeItem(
+    key.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   jest
     .mocked(RNFS.stat)
     .mockResolvedValueOnce({ size: 512 * 1024 + 1 } as never);

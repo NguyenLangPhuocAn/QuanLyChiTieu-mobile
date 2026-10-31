@@ -39,6 +39,8 @@ import {
   type MoneyPlan,
 } from '../../utils/moneyCalendar';
 import type { BillBook } from '../../utils/recurringBills';
+import PlanningSyncControls from '../../components/PlanningSyncControls';
+import BillBookBackup from '../../components/BillBookBackup';
 import { toDateKey } from '../../utils/budgetPeriod';
 import { formatCurrency } from '../../utils/format';
 import {
@@ -454,6 +456,13 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
             ))}
           </>
         )}
+        <PlanningSyncControls scope={scope} />
+        <BillBookBackup
+          scope={scope}
+          onRestored={async () => {
+            setRevision(value => value + 1);
+          }}
+        />
       </ScrollView>
     </SafeAreaView>
   );

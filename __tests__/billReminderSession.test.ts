@@ -33,7 +33,19 @@ beforeEach(async () => {
   jest.restoreAllMocks();
   await billReminderSession.set(null);
   await AsyncStorage.removeItem('recurring-bills:v1:https://qa.invalid:1');
+  await AsyncStorage.removeItem(
+    'recurring-bills:v1:https://qa.invalid:1'.replace(
+      'recurring-bills:v1:',
+      'planning-local:v1:',
+    ),
+  );
   await AsyncStorage.removeItem('recurring-bills:v1:https://qa.invalid:2');
+  await AsyncStorage.removeItem(
+    'recurring-bills:v1:https://qa.invalid:2'.replace(
+      'recurring-bills:v1:',
+      'planning-local:v1:',
+    ),
+  );
   jest.clearAllMocks();
 });
 

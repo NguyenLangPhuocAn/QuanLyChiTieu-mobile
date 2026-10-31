@@ -1,11 +1,11 @@
 import RNFS from 'react-native-fs';
 import type { PickedDocument } from '../native/documentPicker';
-import {
-  parseBillBook,
-  recurringBillsService,
-  type BillScope,
-} from './recurringBills';
+import { parseBillBook, type BillScope } from './recurringBills';
 import type { BillBook } from '../utils/recurringBills';
+import { planningLocalStore } from './planningLocalStore';
+import { parseMoneyPlans } from './moneyCalendarPlans';
+import { replacePlanningSnapshot, snapshotOf } from './planningSnapshot';
+import type { MoneyPlan } from '../utils/moneyCalendar';
 const format = 'SO_THU_CHI_NOVA_BILL_BOOK';
 export type BillBackupPreview = {
   createdAt: string;
@@ -13,6 +13,9 @@ export type BillBackupPreview = {
   expected: string;
   book: BillBook;
   currentCount: { bills: number; periods: number };
+  plans: MoneyPlan[] | null;
+  expectedPlans: string;
+  currentPlanCount: number;
 };
 const boundedBook = (value: unknown) => {
   const json = JSON.stringify(value);
@@ -60,6 +63,7 @@ export const billBackupPreview = (
   scope: BillScope,
   current: BillBook,
   text: string,
+  currentPlans: MoneyPlan[] = [],
 ): BillBackupPreview => {
   if (typeof text !== 'string' || text.length > 512 * 1024)
     throw new Error('File lịch quá lớn.');
@@ -71,7 +75,7 @@ export const billBackupPreview = (
   }
   if (
     data?.format !== format ||
-    data.version !== 2 ||
+    ![2, 3].includes(data.version) ||
     typeof data.createdAt !== 'string' ||
     !Number.isFinite(Date.parse(data.createdAt))
   )
@@ -88,6 +92,10 @@ export const billBackupPreview = (
     text,
     expected: JSON.stringify(current),
     book: boundedBook(data.book),
+    plans:
+      data.version === 3 ? parseMoneyPlans(JSON.stringify(data.plans)) : null,
+    expectedPlans: JSON.stringify(currentPlans),
+    currentPlanCount: currentPlans.length,
     currentCount: {
       bills: current.bills.length,
       periods: current.periods.length,
@@ -102,14 +110,16 @@ const readFile = async (file: PickedDocument) => {
 };
 export const billBookBackupService = {
   async export(scope: BillScope) {
-    const book = boundedBook(await recurringBillsService.load(scope)),
+    const snapshot = snapshotOf(await planningLocalStore.read(scope));
+    const book = boundedBook(snapshot.book),
       createdAt = new Date().toISOString();
     const text = JSON.stringify({
       format,
-      version: 2,
+      version: 3,
       source: { userId: scope.userId, server: scope.server.replace(/\/$/, '') },
       createdAt,
       book,
+      plans: snapshot.plans,
     });
     const base64 = encodeBackupBase64(text);
     if (base64.length > Math.ceil((512 * 1024) / 3) * 4)
@@ -117,14 +127,19 @@ export const billBookBackupService = {
         'File lịch vượt quá 512 KB. Dữ liệu trên máy được giữ nguyên.',
       );
     return {
-      filename: `nova-lich-hoa-don-${createdAt.slice(0, 10)}.stcn-backup`,
+      filename: `nova-lich-tien-${createdAt.slice(0, 10)}.stcn-backup`,
       mimeType: 'application/json',
       base64,
     };
   },
   async preview(scope: BillScope, file: PickedDocument) {
-    const current = await recurringBillsService.load(scope);
-    return billBackupPreview(scope, current, await readFile(file));
+    const current = snapshotOf(await planningLocalStore.read(scope));
+    return billBackupPreview(
+      scope,
+      current.book,
+      await readFile(file),
+      current.plans,
+    );
   },
   async restore(
     scope: BillScope,
@@ -134,13 +149,36 @@ export const billBookBackupService = {
   ) {
     if (!isCurrent()) throw new Error('Hãy xem trước lại file.');
     const text = await readFile(file),
-      checked = billBackupPreview(scope, parseBillBook(preview.expected), text);
+      checked = billBackupPreview(
+        scope,
+        parseBillBook(preview.expected),
+        text,
+        parseMoneyPlans(preview.expectedPlans),
+      );
     if (text !== preview.text)
       throw new Error('File đã thay đổi. Hãy xem trước lại.');
-    await recurringBillsService.restoreBackup(
+    await planningLocalStore.update(
       scope,
-      preview.expected,
-      JSON.stringify(checked.book),
+      state => {
+        const current = snapshotOf(state);
+        if (
+          JSON.stringify(current.book) !== preview.expected ||
+          (checked.plans !== null &&
+            JSON.stringify(current.plans) !== preview.expectedPlans)
+        )
+          throw Error(
+            'Lịch trên máy đã thay đổi. Hãy xem trước lại trước khi khôi phục.',
+          );
+        replacePlanningSnapshot(
+          state,
+          {
+            version: 1,
+            book: checked.book,
+            plans: checked.plans ?? current.plans,
+          },
+          false,
+        );
+      },
       isCurrent,
     );
   },

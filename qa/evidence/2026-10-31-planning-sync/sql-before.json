@@ -1,0 +1,48 @@
+{
+  "wallets": [
+    {
+      "id": 8,
+      "balance": "1023750"
+    },
+    {
+      "id": 9,
+      "balance": "0"
+    },
+    {
+      "id": 10,
+      "balance": "0"
+    },
+    {
+      "id": 11,
+      "balance": "0"
+    }
+  ],
+  "transactions": [
+    {
+      "id": 27,
+      "amount": "-25000"
+    },
+    {
+      "id": 28,
+      "amount": "100000"
+    },
+    {
+      "id": 29,
+      "amount": "-50000"
+    },
+    {
+      "id": 30,
+      "amount": "-1250"
+    }
+  ],
+  "loans": [
+    {
+      "id": 1,
+      "principal_amount": "100000"
+    },
+    {
+      "id": 2,
+      "principal_amount": "50000"
+    }
+  ]
+}

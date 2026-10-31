@@ -47,6 +47,9 @@ beforeEach(async () => {
   jest.restoreAllMocks();
   jest.clearAllMocks();
   await AsyncStorage.removeItem(storageKey);
+  await AsyncStorage.removeItem(
+    storageKey.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
 });
 
 it('uses calendar slots before tracking, preserving day31, leap day, weekly rhythm and tolerances', () => {
@@ -358,6 +361,9 @@ it('replaces old evidence versions of an event, prunes expired choices and refus
   expect(readBillAlertKey('[]')).toBeNull();
   expect(readBillAlertKey('{}')).toBeNull();
   const broken = JSON.stringify({ ...book, reviewedAlerts: ['broken'] });
+  await AsyncStorage.removeItem(
+    storageKey.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   await AsyncStorage.setItem(storageKey, broken);
   await expect(service.load(scope)).rejects.toThrow('Giữ nguyên dữ liệu');
   await expect(

@@ -1,4 +1,5 @@
 import React from 'react';
+jest.mock('../src/components/PlanningSyncControls', () => () => null);
 import { Alert } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -81,6 +82,12 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.removeItem(
     'recurring-bills:v1:https://suggestions.invalid:87',
+  );
+  await AsyncStorage.removeItem(
+    'recurring-bills:v1:https://suggestions.invalid:87'.replace(
+      'recurring-bills:v1:',
+      'planning-local:v1:',
+    ),
   );
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   jest.mocked(transactionsService.getPage).mockResolvedValue(response);

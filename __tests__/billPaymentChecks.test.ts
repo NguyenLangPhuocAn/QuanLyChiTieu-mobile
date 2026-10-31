@@ -60,8 +60,11 @@ const response = (ids: number[], data: ApiTransaction[] = [transaction]) => ({
   data,
   missingIds: ids.filter(id => !data.some(row => row.id === id)),
 });
-const seed = () =>
-  AsyncStorage.setItem(
+const seed = async () => {
+  await AsyncStorage.removeItem(
+    storageKey.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
+  await AsyncStorage.setItem(
     storageKey,
     JSON.stringify({
       version: 1,
@@ -69,6 +72,7 @@ const seed = () =>
       periods: [target.period],
     }),
   );
+};
 beforeEach(async () => {
   jest.restoreAllMocks();
   jest.clearAllMocks();

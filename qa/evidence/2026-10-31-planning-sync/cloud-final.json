@@ -1,0 +1,44 @@
+{
+  "revision": 5,
+  "snapshot": {
+    "book": {
+      "bills": [
+        {
+          "id": "qa_bill_b",
+          "kind": "FIXED",
+          "note": "",
+          "cycle": "MONTHLY",
+          "label": "Internet QA B",
+          "paused": false,
+          "archived": false,
+          "currency": "VND",
+          "maxAmount": 100000,
+          "minAmount": 100000,
+          "anchorDate": "2026-11-01"
+        }
+      ],
+      "periods": [],
+      "version": 1
+    },
+    "plans": [
+      {
+        "id": "txn_mvw0aa5t_pj80p8hnbsmg9o68qh7y",
+        "date": "2026-10-31",
+        "type": "INCOME",
+        "label": "Luong QA A",
+        "amount": 5000000,
+        "currency": "VND"
+      },
+      {
+        "id": "qa_device_b",
+        "date": "2026-11-02",
+        "type": "EXPENSE",
+        "label": "Tiền mạng QA B",
+        "amount": 80000,
+        "currency": "VND"
+      }
+    ],
+    "version": 1
+  },
+  "updatedAt": "2026-10-31T06:40:04.268Z"
+}

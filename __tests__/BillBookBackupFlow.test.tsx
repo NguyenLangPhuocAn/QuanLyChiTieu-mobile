@@ -85,7 +85,6 @@ const prepare = async () => {
   await act(async () => {
     press('Chọn file sao lưu lịch');
   });
-  await act(async () => press('Xem trước lịch trong file'));
 };
 const accept = () => {
   const buttons = (Alert.alert as jest.Mock).mock.calls.at(-1)![2] as Array<{
@@ -117,6 +116,42 @@ beforeEach(() => {
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
   jest.restoreAllMocks();
+});
+it('previews planned amounts and dates as soon as the selected version3 file is read, without restoring automatically', async () => {
+  jest.mocked(backup.preview).mockResolvedValueOnce({
+    ...fixture,
+    plans: [
+      {
+        id: 'salary',
+        label: 'Lương trong file QA',
+        amount: 5000000,
+        currency: 'VND',
+        type: 'INCOME',
+        date: '2026-11-01',
+      },
+    ],
+  });
+  await prepare();
+  expect(contents()).toContain('Lương trong file QA');
+  expect(contents()).toContain('01/11/2026');
+  expect(backup.preview).toHaveBeenCalledTimes(1);
+  expect(backup.restore).not.toHaveBeenCalled();
+});
+it('clears the chosen file and prevents an old confirmation from restoring into a changed account', async () => {
+  await prepare();
+  await act(async () => press('Khôi phục lịch từ file'));
+  const stale = accept();
+  await act(async () =>
+    renderer.update(
+      <BillBookBackup
+        scope={{ ...scope, userId: 589 }}
+        onRestored={onRestored}
+      />,
+    ),
+  );
+  expect(contents()).not.toContain('Internet QA');
+  await act(async () => stale());
+  expect(backup.restore).not.toHaveBeenCalled();
 });
 it('exports readable file without password fields and guards a double tap', async () => {
   await open();
@@ -157,13 +192,13 @@ it('invalidates pending confirmation when file changes, app backgrounds or scree
   await act(async () => press('Chọn file sao lưu lịch'));
   await act(async () => stale());
   expect(backup.restore).not.toHaveBeenCalled();
-  await act(async () => press('Xem trước lịch trong file'));
   await act(async () => press('Khôi phục lịch từ file'));
   const background = accept();
   await act(async () => listeners.forEach(l => l('background')));
   await act(async () => background());
   expect(backup.restore).not.toHaveBeenCalled();
-  await act(async () => press('Xem trước lịch trong file'));
+  await act(async () => listeners.forEach(l => l('active')));
+  await act(async () => press('Chọn file sao lưu lịch'));
   await act(async () => press('Khôi phục lịch từ file'));
   const unmounted = accept();
   await act(async () => renderer.unmount());
@@ -198,7 +233,7 @@ it('discards late preview after background, keeps original file on picker cancel
         resolvePreview = resolve;
       }),
   );
-  await act(async () => press('Xem trước lịch trong file'));
+  await act(async () => press('Chọn file sao lưu lịch'));
   await act(async () => listeners.forEach(l => l('background')));
   await act(async () => resolvePreview(fixture));
   expect(contents()).not.toContain('Internet QA');

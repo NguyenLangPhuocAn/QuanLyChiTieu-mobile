@@ -8,6 +8,7 @@ import AppUpdateManager from './src/components/AppUpdateManager';
 import BillReminderSession from './src/components/BillReminderSession';
 import OfflineSessionSync from './src/components/OfflineSessionSync';
 import HomeWidgetSession from './src/components/HomeWidgetSession';
+import PlanningSyncSession from './src/components/PlanningSyncSession';
 
 const AccountWorkspace = () => {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ const AccountWorkspace = () => {
       <BillReminderSession />
       <OfflineSessionSync />
       <HomeWidgetSession />
+      <PlanningSyncSession />
       <AppNavigator />
     </FinanceProvider>
   );

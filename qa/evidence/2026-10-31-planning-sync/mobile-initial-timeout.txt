@@ -1,0 +1,140 @@
+FAIL __tests__/WidgetQuickEntry.test.tsx (26.634 s)
+  ● previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      122 | });
+      123 |
+    > 124 | it.each(['Vay', 'Cho vay'])(
+          |                            ^
+      125 |   'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+      126 |   async label => {
+      127 |     await mount();
+
+      at node_modules/jest-each/build/bind.js:47:15
+          at Array.forEach (<anonymous>)
+      at Object.<anonymous> (__tests__/WidgetQuickEntry.test.tsx:124:28)
+
+PASS __tests__/MainScreenDrafts.test.tsx (19.25 s)
+PASS __tests__/App.test.tsx (8.784 s)
+PASS __tests__/LoanDebtFormScreen.test.tsx
+PASS __tests__/ChatbotScreen.test.tsx
+PASS __tests__/StatisticsReportScreen.test.tsx
+PASS __tests__/HistoryScreen.test.tsx
+PASS __tests__/RecurringBillsScreen.test.tsx
+PASS __tests__/BillActivityFlow.test.tsx
+PASS __tests__/CategoriesScreen.test.tsx
+PASS __tests__/TransactionSearchScreen.test.tsx (5.418 s)
+PASS __tests__/BillPaymentReviewFlow.test.tsx (6.887 s)
+PASS __tests__/BudgetsScreen.test.tsx (8.095 s)
+PASS __tests__/WidgetCategoryPicker.test.tsx (6.796 s)
+PASS __tests__/BillSuggestionsFlow.test.tsx
+PASS __tests__/WalletTransfersScreen.test.tsx
+PASS __tests__/FinancialPlanScreen.test.tsx
+PASS __tests__/ProfileScreen.test.tsx
+PASS __tests__/LoanDebtDetailScreen.test.tsx
+PASS __tests__/LoanDebtsScreen.test.tsx
+PASS __tests__/overviewSavingsRows.test.ts
+PASS __tests__/overviewBudgetRows.test.ts
+PASS __tests__/CategoryIcon.test.tsx
+PASS __tests__/PersonalBackupFlow.test.tsx
+PASS __tests__/MoneyCalendarScreen.test.tsx
+PASS __tests__/notificationsService.test.ts
+PASS __tests__/PlanWorkbench.test.tsx
+PASS __tests__/transactionClassification.test.ts
+PASS __tests__/BillBookBackupFlow.test.tsx
+PASS __tests__/billActivity.test.ts
+PASS __tests__/recurringBills.test.ts
+PASS __tests__/SavingsRoadmapDetails.test.tsx
+PASS __tests__/mediaUrls.test.ts
+PASS __tests__/LaunchScreen.test.tsx
+PASS __tests__/BillReminderSettings.test.tsx
+PASS __tests__/planningBackup.test.ts
+PASS __tests__/PlanningSyncControls.test.tsx
+PASS __tests__/FinanceContext.test.tsx
+PASS __tests__/walletTransfersService.test.ts
+PASS src/utils/__tests__/evidenceMatcher.test.ts
+PASS __tests__/bankNotificationExtraction.test.ts
+PASS __tests__/latestBankNotification.test.ts
+PASS __tests__/mapTransactions.test.ts
+PASS __tests__/widgetLoanEntry.test.ts
+PASS __tests__/billReminderSession.test.ts
+PASS __tests__/ChatPlanSuggestions.test.tsx
+PASS __tests__/api.test.ts
+PASS __tests__/appUpdate.test.ts
+PASS src/utils/__tests__/voiceTransactionDraft.test.ts
+PASS src/services/__tests__/offlineTransactionQueue.test.ts
+PASS __tests__/billPaymentChecks.test.ts
+PASS src/utils/__tests__/financialInsights.test.ts
+PASS __tests__/apiEndpoints.test.ts
+PASS __tests__/widgetQuickEntry.test.ts
+PASS __tests__/sharedProvider.test.tsx
+PASS __tests__/budgetsService.test.ts
+PASS __tests__/budgetRenewal.test.ts
+PASS __tests__/transactionPeriods.test.ts
+PASS __tests__/moneyCalendarPlans.test.ts
+PASS __tests__/billSuggestions.test.ts
+PASS src/services/personalBackup.spec.ts
+PASS src/utils/__tests__/financialReminder.test.ts
+PASS __tests__/AuthContext.test.tsx
+PASS __tests__/billBookBackup.test.ts
+PASS __tests__/budgetFilters.test.ts
+PASS __tests__/billReminderLinking.test.ts
+PASS __tests__/useLatestBankNotification.test.tsx
+PASS src/services/__tests__/financialCaptureInbox.test.ts
+PASS __tests__/billSuggestionHistory.test.ts
+PASS __tests__/statisticsReportService.test.ts
+PASS src/services/__tests__/financialPlanning.test.ts
+PASS __tests__/loanDebtPeriodFilter.test.ts
+PASS __tests__/hashtags.test.ts
+PASS __tests__/planningSync.test.ts
+PASS __tests__/smartRules.test.ts
+PASS __tests__/moneyInput.test.ts
+PASS src/utils/__tests__/bankNotificationParser.test.ts
+PASS __tests__/useVoiceInput.test.tsx
+PASS __tests__/categoryStats.test.ts
+PASS __tests__/transactionsReceiptService.test.ts
+PASS __tests__/OfflineSessionSync.test.tsx
+PASS src/services/__tests__/bankNotificationSync.test.ts
+PASS __tests__/chatTransactionDraft.test.ts
+PASS __tests__/budgetPeriod.test.ts
+PASS __tests__/bankAiConsent.test.ts
+PASS __tests__/useSingleFlight.test.tsx
+PASS __tests__/moneyCalendar.test.ts
+PASS __tests__/budgetAlerts.test.ts
+PASS __tests__/budgetForecast.test.ts
+PASS __tests__/loanDebt.test.ts
+PASS src/utils/__tests__/naturalTransactionSearch.test.ts
+PASS __tests__/widget.test.ts
+PASS __tests__/searchWeeks.test.ts
+PASS __tests__/financialPlansService.test.ts
+PASS __tests__/format.test.ts
+PASS __tests__/loanDebtsService.test.ts
+PASS __tests__/savedFinancialPlan.test.ts
+
+Summary of all failing tests
+FAIL __tests__/WidgetQuickEntry.test.tsx (26.634 s)
+  ● previews Vay with a person and wallet, never sends a normal transaction, and reuses its key on retry
+
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout."
+
+      122 | });
+      123 |
+    > 124 | it.each(['Vay', 'Cho vay'])(
+          |                            ^
+      125 |   'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+      126 |   async label => {
+      127 |     await mount();
+
+      at node_modules/jest-each/build/bind.js:47:15
+          at Array.forEach (<anonymous>)
+      at Object.<anonymous> (__tests__/WidgetQuickEntry.test.tsx:124:28)
+
+
+Test Suites: 1 failed, 96 passed, 97 total
+Tests:       1 failed, 610 passed, 611 total
+Snapshots:   0 total
+Time:        168.775 s
+Ran all test suites.

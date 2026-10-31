@@ -1,0 +1,16 @@
+{
+  "server": "QA3303",
+  "realMySQL": true,
+  "authenticatedGet": 200,
+  "noAuth": 401,
+  "upload": 200,
+  "identicalReplayRevision": 1,
+  "concurrentCasStatuses": [
+    200,
+    409
+  ],
+  "invalidDuplicate": 400,
+  "otherUserUnchanged": true,
+  "moneyUnchanged": true,
+  "productionMigrationApplied": false
+}

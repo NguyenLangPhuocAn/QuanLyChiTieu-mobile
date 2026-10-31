@@ -1,4 +1,5 @@
 import React from 'react';
+jest.mock('../src/components/PlanningSyncControls', () => () => null);
 import { AppState, type AppStateStatus } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -124,7 +125,16 @@ beforeEach(async () => {
     });
   await AsyncStorage.removeItem(key);
   await AsyncStorage.removeItem(
+    key.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
+  await AsyncStorage.removeItem(
     'recurring-bills:v1:https://activity.invalid:289',
+  );
+  await AsyncStorage.removeItem(
+    'recurring-bills:v1:https://activity.invalid:289'.replace(
+      'recurring-bills:v1:',
+      'planning-local:v1:',
+    ),
   );
   for (const [label, amount] of [
     ['Internet QA', 100000],

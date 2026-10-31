@@ -1,5 +1,12 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Lịch tiền và sao lưu — 31/10/2026
+
+- Bật đồng bộ lịch hóa đơn và khoản thu/chi dự kiến giữa thiết bị sau khi xem trước, xác nhận. Mất mạng giữ bản trên máy; hai bên cùng sửa sẽ yêu cầu chọn bản cần giữ.
+- Một file JSON thường cho cả lịch và khoản dự kiến. Chọn file tự hiện tên, số tiền và ngày. Nhận file lịch cũ vẫn giữ khoản dự kiến hiện có. Khôi phục có xác nhận, không nhân đôi hoặc thay số dư; nhắc từng lịch được tắt sau khôi phục.
+- Lựa chọn bật nhắc riêng từng điện thoại. Tự đồng bộ khi app mở và có mạng; chưa chạy khi force-stop. Cần triển khai bảng/API mới trước bản app thật.
+- Mobile611/611, backend377/377 và Android local/API/MySQL QA đã kiểm; còn hai điện thoại thật/OEM/4G. Chưa phát hành APK hoặc đổi server/web. Bằng chứng qa/evidence/2026-10-31-planning-sync/README.md.
+
 ## Camera widget: chọn ảnh trước khi mở form — 30/10/2026
 
 - Sửa việc mở form tiền phía sau hộp chọn nguồn ảnh. Camera ngoài widget nay hỏi Chụp ảnh/Thư viện trên launcher trước. Chưa chọn ảnh, đang đọc hoặc lỗi đọc đều chưa hiện form; chỉ hiện sau khi nhận kết quả OCR.

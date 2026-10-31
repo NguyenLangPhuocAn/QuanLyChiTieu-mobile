@@ -30,11 +30,18 @@ export default function BillBookBackup({
     revision = useRef(0),
     working = useRef(false),
     nativePicker = useRef(false);
+  const latest = useRef(scope);
+  latest.current = scope;
   const invalidate = useCallback(() => {
     revision.current += 1;
     setPreview(null);
     setMessage(null);
   }, []);
+  useEffect(() => {
+    invalidate();
+    setFile(null);
+    setOpen(false);
+  }, [scope.userId, scope.server, invalidate]);
   useFocusEffect(
     useCallback(() => {
       alive.current = true;
@@ -59,7 +66,11 @@ export default function BillBookBackup({
     setBusy(label);
     setMessage(null);
     const rev = revision.current,
-      current = () => alive.current && revision.current === rev;
+      current = () =>
+        alive.current &&
+        revision.current === rev &&
+        latest.current.userId === scope.userId &&
+        latest.current.server === scope.server;
     try {
       await operation(current);
     } catch (reason) {
@@ -95,8 +106,9 @@ export default function BillBookBackup({
         setMessage(`Đã lưu ${saved.name}.`);
       }
     });
-  const choose = () =>
-    operate('Đang chọn file', async current => {
+  const choose = () => {
+    invalidate();
+    operate('Đang đọc file', async current => {
       nativePicker.current = true;
       let picked;
       try {
@@ -104,18 +116,9 @@ export default function BillBookBackup({
       } finally {
         nativePicker.current = false;
       }
-      if (current() && picked) {
-        revision.current += 1;
-        setFile(picked);
-        setPreview(null);
-        setMessage(null);
-      }
-    });
-  const read = () => {
-    if (!file) return;
-    setPreview(null);
-    operate('Đang đọc file', async current => {
-      const result = await billBookBackupService.preview(scope, file);
+      if (!current() || !picked) return;
+      setFile(picked);
+      const result = await billBookBackupService.preview(scope, picked);
       if (current()) {
         setPreview(result);
         setVisible(5);
@@ -128,7 +131,13 @@ export default function BillBookBackup({
       chosen = preview;
     Alert.alert(
       'Thay lịch trên máy bằng bản sao lưu?',
-      `${chosen.book.bills.length} lịch và ${chosen.book.periods.length} kỳ đã xử lý trong file sẽ thay toàn bộ lịch hiện tại. Không tạo giao dịch hoặc đổi số dư. Nhắc từng lịch được tắt; các liên kết cũ cần kiểm tra lại nguồn.`,
+      `${chosen.book.bills.length} lịch và ${
+        chosen.book.periods.length
+      } kỳ đã xử lý sẽ thay toàn bộ lịch hiện tại. ${
+        chosen.plans === null
+          ? 'Giữ nguyên các khoản dự kiến đang có.'
+          : `Thay các khoản dự kiến bằng ${chosen.plans.length} khoản trong file.`
+      } Không tạo giao dịch hoặc đổi số dư. Nhắc từng lịch được tắt; các liên kết cũ cần kiểm tra lại nguồn.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -163,10 +172,11 @@ export default function BillBookBackup({
       />
       {open ? (
         <>
-          <Text style={styles.title}>Sao lưu lịch hóa đơn</Text>
+          <Text style={styles.title}>Sao lưu lịch và khoản dự kiến</Text>
           <Text style={styles.text}>
             File thường, không cần mật khẩu. Lưu và khôi phục ngay trên máy,
-            không cần mạng. Chỉ dùng cho lịch hóa đơn; chưa tự đồng bộ.
+            không cần mạng. Gồm lịch hóa đơn và thu/chi dự kiến. Chọn file sẽ tự
+            hiện bản xem trước.
           </Text>
           <ActionButton
             label="Lưu file lịch"
@@ -180,12 +190,6 @@ export default function BillBookBackup({
             secondary
             disabled={!!busy}
           />
-          <ActionButton
-            label="Xem trước lịch trong file"
-            onPress={read}
-            secondary
-            disabled={!!busy || !file}
-          />
           {preview ? (
             <View style={styles.preview}>
               <Text style={styles.title}>
@@ -194,7 +198,8 @@ export default function BillBookBackup({
               </Text>
               <Text style={styles.text}>
                 Trên máy hiện có {preview.currentCount.bills} lịch ·{' '}
-                {preview.currentCount.periods} kỳ đã xử lý.
+                {preview.currentCount.periods} kỳ đã xử lý ·{' '}
+                {preview.currentPlanCount} khoản dự kiến.
               </Text>
               <Text style={styles.text}>
                 {preview.book.bills.length} lịch ·{' '}
@@ -204,7 +209,10 @@ export default function BillBookBackup({
                   preview.book.periods.filter(p => p.status === 'SKIPPED')
                     .length
                 }{' '}
-                kỳ bỏ qua
+                kỳ bỏ qua ·{' '}
+                {preview.plans === null
+                  ? 'giữ khoản dự kiến trên máy'
+                  : preview.plans.length + ' khoản dự kiến trong file'}
               </Text>
               {preview.book.bills.slice(0, visible).map(b => (
                 <Text key={b.id} style={styles.text}>
@@ -224,6 +232,28 @@ export default function BillBookBackup({
                   onPress={() => setVisible(n => n + 20)}
                 />
               ) : null}
+              {!!preview.plans?.length && (
+                <>
+                  <Text style={styles.title}>Khoản dự kiến trong file</Text>
+                  {preview.plans.slice(0, visible).map(plan => (
+                    <Text key={plan.id} style={styles.text}>
+                      {plan.label} · {plan.type === 'INCOME' ? '+' : '−'}
+                      {formatCurrency(plan.amount, plan.currency)} ·{' '}
+                      {plan.date.split('-').reverse().join('/')}
+                    </Text>
+                  ))}
+                  {preview.plans.length > visible && (
+                    <ActionButton
+                      label={`Xem thêm ${Math.min(
+                        20,
+                        preview.plans.length - visible,
+                      )} khoản dự kiến`}
+                      secondary
+                      onPress={() => setVisible(n => n + 20)}
+                    />
+                  )}
+                </>
+              )}
               <Text style={styles.text}>
                 Thay toàn bộ lịch hiện tại, không cộng dồn hoặc tạo giao dịch.
                 Tắt nhắc từng lịch sau khôi phục. File không chứa ảnh hoặc toàn

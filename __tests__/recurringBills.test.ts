@@ -37,6 +37,9 @@ const create = async (patch: Partial<BillInput> = {}) => {
 beforeEach(async () => {
   jest.restoreAllMocks();
   await AsyncStorage.removeItem(key);
+  await AsyncStorage.removeItem(
+    key.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   jest.clearAllMocks();
 });
 
@@ -123,7 +126,10 @@ describe('account-scoped bill storage and settlements', () => {
       status: 'PAID',
       payment: { id: 10, date: '2026-02-28', amount: 100000 },
     });
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith(key, expect.any(String));
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      key.replace('recurring-bills:v1:', 'planning-local:v1:'),
+      expect.any(String),
+    );
     expect(book.bills[0]).toEqual(bill);
   });
   it('rejects the same transaction in different periods even when submissions race', async () => {

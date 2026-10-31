@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { planningLocalStore } from './planningLocalStore';
 import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from '../utils/mapTransactions';
 import { getCashFlowType } from '../utils/transactionClassification';
@@ -24,15 +24,6 @@ import {
 } from '../utils/recurringBills';
 
 export type BillScope = { userId: number; server: string };
-const listeners = new Set<(scope: BillScope) => void>();
-const keyFor = (scope: BillScope) => {
-  if (!Number.isSafeInteger(scope.userId) || scope.userId <= 0 || !scope.server)
-    throw new Error('Chưa xác định được tài khoản.');
-  return `recurring-bills:v1:${scope.server.replace(/\/$/, '')}:${
-    scope.userId
-  }`;
-};
-const queues = new Map<string, Promise<unknown>>();
 const empty = (): BillBook => ({ version: 1, bills: [], periods: [] });
 const corrupt = () =>
   new Error(
@@ -122,34 +113,16 @@ export const parseBillBook = (raw: string): BillBook => {
     throw corrupt();
   }
 };
-const read = async (key: string): Promise<BillBook> => {
-  const raw = await AsyncStorage.getItem(key);
-  return raw === null ? empty() : parseBillBook(raw);
-};
 const mutate = <T>(
   scope: BillScope,
   change: (book: BillBook) => T,
-): Promise<T> => {
-  const key = keyFor(scope);
-  const operation = (queues.get(key) ?? Promise.resolve())
-    .catch(() => undefined)
-    .then(async () => {
-      const book = await read(key);
-      const result = change(book);
-      await AsyncStorage.setItem(key, JSON.stringify(book));
-      listeners.forEach(listener => listener(scope));
-      return result;
-    });
-  const tail = operation.then(
-    () => undefined,
-    () => undefined,
-  );
-  queues.set(key, tail);
-  tail.then(() => {
-    if (queues.get(key) === tail) queues.delete(key);
+): Promise<T> =>
+  planningLocalStore.update(scope, state => {
+    const book = state.book === null ? empty() : parseBillBook(state.book);
+    const result = change(book);
+    state.book = JSON.stringify(book);
+    return result;
   });
-  return operation;
-};
 const findBill = (book: BillBook, id: string) => {
   const bill = book.bills.find(item => item.id === id && !item.archived);
   if (!bill) throw new Error('Lịch hóa đơn không còn tồn tại.');
@@ -189,15 +162,11 @@ export const recurringBillsService = {
     });
   },
   subscribe(listener: (scope: BillScope) => void) {
-    listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
+    return planningLocalStore.subscribe(listener);
   },
   async load(scope: BillScope) {
-    const key = keyFor(scope);
-    await queues.get(key);
-    return read(key);
+    const state = await planningLocalStore.read(scope);
+    return state.book === null ? empty() : parseBillBook(state.book);
   },
   save(
     scope: BillScope,

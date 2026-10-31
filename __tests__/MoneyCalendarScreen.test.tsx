@@ -1,4 +1,5 @@
 import React from 'react';
+jest.mock('../src/components/PlanningSyncControls', () => () => null);
 import TestRenderer, { act } from 'react-test-renderer';
 import { Alert } from 'react-native';
 import MoneyCalendarScreen from '../src/screens/home/MoneyCalendarScreen';
@@ -71,12 +72,10 @@ const press = async (label: string) =>
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers().setSystemTime(new Date('2026-10-30T05:00:00Z'));
-  jest
-    .mocked(dashboardCache.read)
-    .mockResolvedValue({
-      wallets: [{ id: 1, currency: 'VND', balance: 1000000 }],
-      updatedAt: '2026-10-30T05:00:00Z',
-    } as never);
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    wallets: [{ id: 1, currency: 'VND', balance: 1000000 }],
+    updatedAt: '2026-10-30T05:00:00Z',
+  } as never);
   jest.mocked(recurringBillsService.load).mockResolvedValue(book);
   jest.mocked(offlineTransactionQueue.list).mockResolvedValue([]);
   jest.mocked(moneyCalendarPlans.read).mockResolvedValue([]);
@@ -90,12 +89,10 @@ it('recalculates when a bill is skipped and opens its source screen', async () =
   expect(JSON.stringify(tree.toJSON())).toContain('23.333');
   await press('Cách tính Chi an toàn');
   expect(JSON.stringify(tree.toJSON())).toContain('300.000');
-  jest
-    .mocked(recurringBillsService.load)
-    .mockResolvedValue({
-      ...book,
-      periods: [{ billId: 'rent', dueDate: '2026-10-31', status: 'SKIPPED' }],
-    });
+  jest.mocked(recurringBillsService.load).mockResolvedValue({
+    ...book,
+    periods: [{ billId: 'rent', dueDate: '2026-10-31', status: 'SKIPPED' }],
+  });
   await act(async () =>
     jest
       .mocked(recurringBillsService.subscribe)

@@ -40,6 +40,9 @@ const empty: BillBook = { version: 1, bills: [], periods: [] };
 beforeEach(async () => {
   jest.restoreAllMocks();
   await AsyncStorage.removeItem(storageKey);
+  await AsyncStorage.removeItem(
+    storageKey.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   jest.clearAllMocks();
 });
 
@@ -215,6 +218,9 @@ it('keeps decisions separated by backend/account and never overwrites corrupt de
     ...empty,
     suggestions: [{ key: item.key, status: 'TRACKED', billId: 'missing' }],
   });
+  await AsyncStorage.removeItem(
+    storageKey.replace('recurring-bills:v1:', 'planning-local:v1:'),
+  );
   await AsyncStorage.setItem(storageKey, corrupt);
   await expect(
     service.decideSuggestion(scope, item.key, 'IGNORED'),
