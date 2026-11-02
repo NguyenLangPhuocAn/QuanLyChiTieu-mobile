@@ -123,7 +123,8 @@ export const bankNotificationExtraction = {
     postedAt: number,
     signal?: AbortSignal,
   ): Promise<ParsedBankNotification> {
-    // Called only after consent. No local field extraction or regex fallback selects Thu/Chi.
+    // Called only for a bell/shake read with Android notification access.
+    // No local field extraction or regex fallback selects Thu/Chi.
     const prepared = prepareBankNotificationText(text);
     if (!(await bankNotificationExtraction.isAvailable(token, signal)))
       throw new Error(

@@ -18,7 +18,7 @@ export default function BillBookBackup({
   onRestored,
 }: {
   scope: BillScope;
-  onRestored: () => Promise<void>;
+  onRestored?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false),
     [file, setFile] = useState<PickedDocument | null>(null);
@@ -152,7 +152,7 @@ export default function BillBookBackup({
               setMessage(
                 'Đã khôi phục lịch. Nhắc từng lịch đang tắt; hãy kiểm tra liên kết trước khi bật nhắc lại.',
               );
-              await onRestored();
+              await onRestored?.();
             });
           },
         },

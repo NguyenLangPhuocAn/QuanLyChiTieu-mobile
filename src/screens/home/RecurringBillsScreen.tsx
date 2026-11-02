@@ -24,7 +24,7 @@ import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
 import BillSuggestions from '../../components/BillSuggestions';
 import BillUpcomingSummary from '../../components/BillUpcomingSummary';
-import BillBookBackup from '../../components/BillBookBackup';
+import BillPaymentEntry from '../../components/BillPaymentEntry';
 import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
@@ -137,6 +137,7 @@ function RecurringBillsContent({
     }
   }, [route.params?.reminderDate]);
   const [picker, setPicker] = useState<Picker | null>(null);
+  const [paymentEntry, setPaymentEntry] = useState<BillOccurrence | null>(null);
   const [today, setToday] = useState(() =>
     getTransactionDateKey(new Date().toISOString()),
   );
@@ -522,9 +523,6 @@ function RecurringBillsContent({
             {!editor && !reminderFilter ? (
               <BillReminderSettings scope={scope} book={book} />
             ) : null}
-            {!editor && !reminderFilter ? (
-              <BillBookBackup scope={scope} onRestored={load} />
-            ) : null}
             {reminderFilter ? (
               <View style={styles.card}>
                 <Text style={styles.muted}>
@@ -869,23 +867,32 @@ function RecurringBillsContent({
                       onRefresh={confirmPaymentRefresh}
                     />
                     {['PENDING', 'OVERDUE'].includes(item.status) ? (
-                      <View style={styles.row}>
-                        <View style={styles.grow}>
-                          <ActionButton
-                            label="Chọn giao dịch đã trả"
-                            disabled={busy}
-                            onPress={() => fetchPayments(item)}
-                          />
-                        </View>
-                        <TouchableOpacity
+                      <View style={styles.paymentActions}>
+                        <ActionButton
+                          label="Tạo giao dịch và trả"
+                          accessibilityLabel={`Tạo giao dịch và trả ${item.bill.label} kỳ ${item.dueDate}`}
                           disabled={busy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Bỏ qua ${item.bill.label} kỳ ${item.dueDate}`}
-                          onPress={() => confirmPeriod(item)}
-                          style={styles.smallButton}
-                        >
-                          <Text style={styles.label}>Bỏ qua</Text>
-                        </TouchableOpacity>
+                          onPress={() => setPaymentEntry(item)}
+                        />
+                        <View style={styles.row}>
+                          <View style={styles.grow}>
+                            <ActionButton
+                              label="Chọn giao dịch đã trả"
+                              secondary
+                              disabled={busy}
+                              onPress={() => fetchPayments(item)}
+                            />
+                          </View>
+                          <TouchableOpacity
+                            disabled={busy}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Bỏ qua ${item.bill.label} kỳ ${item.dueDate}`}
+                            onPress={() => confirmPeriod(item)}
+                            style={styles.smallButton}
+                          >
+                            <Text style={styles.label}>Bỏ qua</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     ) : (
                       <ActionButton
@@ -1100,6 +1107,18 @@ function RecurringBillsContent({
           </View>
         </SafeAreaView>
       </Modal>
+      {paymentEntry ? (
+        <BillPaymentEntry
+          occurrence={paymentEntry}
+          scope={scope}
+          token={token}
+          onClose={() => setPaymentEntry(null)}
+          onLinked={async () => {
+            setPaymentEntry(null);
+            await load();
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -1143,6 +1162,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '700', color: '#4A2B1A' },
   content: { padding: 20, paddingTop: 0, paddingBottom: 40, gap: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  paymentActions: { gap: 8 },
   grow: { flex: 1, minWidth: 0 },
   muted: { fontSize: 13, color: '#886449', lineHeight: 20 },
   card: {

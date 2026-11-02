@@ -1,9 +1,15 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
-## Gọn form thêm giao dịch — 02/11/2026
+## Đọc thông báo ngân hàng bằng AI — 03/11/2026
 
-- Bỏ dòng/nút “Quyền dùng AI” trong form. Chuyển thao tác đặt lại lựa chọn AI đọc thông báo ngân hàng vào **Thông báo → Cài đặt thông báo**, vẫn hỏi xác nhận trước khi đặt lại.
-- Android QA đã chụp form, vị trí cài đặt và hộp xác nhận; 34/34 kiểm thử liên quan, TypeScript/ESLint đạt. Xem `qa/evidence/2026-11-02-remove-ai-caption/README.md`. Chưa cập nhật APK.
+- Bỏ dòng “Quyền dùng AI”, hộp hỏi riêng và mục đặt lại quyền AI. Khi người dùng bấm chuông hoặc lắc điện thoại, app đọc thông báo mới nhất bằng AI mặc định; vẫn cần cấp quyền truy cập thông báo của Android. Chỉ điền bản nháp để kiểm tra, không tự lưu giao dịch.
+- Phần chữ liên quan được gửi qua máy chủ và Gemini để trích xuất; nội dung này được nêu khi app xin quyền Android lần đầu. Ảnh form local ở `qa/evidence/2026-11-02-ai-default/`. Bằng chứng ngày 02/11 ở `qa/evidence/2026-11-02-remove-ai-caption/` là trạng thái trung gian đã được thay thế. Chưa thử thông báo ngân hàng thật trên điện thoại vật lý.
+
+## Trả hóa đơn ngay trong kỳ — 03/11/2026
+
+- Bỏ nút sao lưu/khôi phục khỏi trang Hóa đơn định kỳ; giữ thao tác này trong Dữ liệu và xuất nhập. Mỗi kỳ chưa trả có thêm **Tạo giao dịch và trả**, bên cạnh **Chọn giao dịch đã trả**.
+- Chọn ví, danh mục nếu có, số tiền và ngày; xem trước rồi xác nhận mới tạo giao dịch chi và liên kết kỳ. Tài khoản BASIC chưa có danh mục vẫn được lưu giao dịch chưa phân loại. Mã yêu cầu cố định theo tài khoản/lịch/kỳ để chống tạo trùng khi thử lại; kỳ đã trả hoặc bị sửa không ghi lại tiền.
+- Android local `com.mobile.dev`/API QA: xác nhận khoản thử 300.000đ tạo giao dịch #47, kỳ FPT 31/01/2027 chuyển sang Đã liên kết. Ảnh/XML và giới hạn tại `qa/evidence/2026-11-03-bill-payment/README.md`. Chưa cập nhật APK/web hoặc server production.
 
 ## Tên người trong Vay/Nợ — 02/11/2026
 

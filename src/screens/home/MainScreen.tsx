@@ -1835,8 +1835,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               </Text>
               <Text style={styles.voiceEntryHint}>
                 {latestBank.shakeAvailable === false
-                  ? 'Bấm chuông để lấy thông báo ngân hàng mới nhất.'
-                  : 'Lắc điện thoại hoặc bấm chuông để lấy thông báo ngân hàng mới nhất.'}
+                  ? 'Bấm chuông để AI đọc thông báo ngân hàng mới nhất.'
+                  : 'Lắc điện thoại hoặc bấm chuông để AI đọc thông báo ngân hàng mới nhất.'}
               </Text>
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>

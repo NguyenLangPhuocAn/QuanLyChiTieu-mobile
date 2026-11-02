@@ -50,6 +50,7 @@ import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 import { homeWidget } from '../../native/homeWidget';
 import { getApiBaseUrl } from '../../services/api';
 import PlanningSyncControls from '../../components/PlanningSyncControls';
+import BillBookBackup from '../../components/BillBookBackup';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -543,9 +544,14 @@ const DataManagementScreen = () => {
         </View>
 
         {user?.id ? (
-          <PlanningSyncControls
-            scope={{ userId: user.id, server: getApiBaseUrl() }}
-          />
+          <>
+            <PlanningSyncControls
+              scope={{ userId: user.id, server: getApiBaseUrl() }}
+            />
+            <BillBookBackup
+              scope={{ userId: user.id, server: getApiBaseUrl() }}
+            />
+          </>
         ) : null}
 
         <View style={styles.draftCard}>

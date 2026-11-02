@@ -6,7 +6,6 @@ import {
   bankNotificationExtraction,
   manualBankNotification,
 } from '../services/bankNotificationExtraction';
-import { bankAiConsent } from '../services/bankAiConsent';
 import { prepareBankNotificationText } from '../utils/bankNotificationText';
 import type {
   BankNotificationItem,
@@ -21,12 +20,9 @@ export function useLatestBankNotification(
   token?: string | null,
 ) {
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<'idle' | 'reading' | 'consent' | 'ai'>(
+  const [phase, setPhase] = useState<'idle' | 'reading' | 'ai'>(
     'idle',
   );
-  const pendingConsent = useRef<
-    ((choice: 'once' | 'always' | 'manual') => void) | null
-  >(null);
   const cached = useRef<{
     userId: number;
     token: string;
@@ -57,8 +53,6 @@ export function useLatestBankNotification(
     requestController.current?.abort();
     requestController.current = null;
     permissionPrompt.current = false;
-    pendingConsent.current?.('manual');
-    pendingConsent.current = null;
     if (alive.current) {
       setBusy(false);
       setPhase('idle');
@@ -99,7 +93,7 @@ export function useLatestBankNotification(
         permissionPrompt.current = true;
         Alert.alert(
           'Cho phép đọc thông báo',
-          'Bật quyền truy cập thông báo cho Nova một lần để dùng chuông hoặc lắc điện thoại. App đọc chữ thông báo trực tiếp trên máy, không chụp màn hình và không tự lưu giao dịch.',
+          'Bật quyền truy cập thông báo cho Nova một lần để dùng chuông hoặc lắc điện thoại. Khi bạn dùng chức năng này, app gửi phần chữ liên quan qua máy chủ và Gemini để trích xuất; không chụp màn hình và không tự lưu giao dịch.',
           [
             {
               text: 'Để sau',
@@ -131,7 +125,7 @@ export function useLatestBankNotification(
       if (!valid()) return;
       const events = await bankNotificationReader.getPendingEvents(id);
       if (!valid()) return;
-      // Collection ends before consent/model network work starts.
+      // Collection ends before model network work starts.
       await bankNotificationReader.setConfiguration(null, []);
       if (!valid()) return;
       const event = latestBankNotificationEvent(events, id);
@@ -173,64 +167,23 @@ export function useLatestBankNotification(
               'Máy chủ chưa bật đọc thông báo bằng AI. Bạn có thể nhập giao dịch bằng tay.',
             );
           if (!valid()) return;
-          const remembered = await bankAiConsent.has(id);
-          let choice: 'once' | 'always' | 'manual' = remembered
-            ? 'always'
-            : 'manual';
+          setPhase('ai');
           if (!valid()) return;
-          if (choice !== 'always') {
-            setPhase('consent');
-            choice = await new Promise(resolve => {
-              pendingConsent.current = resolve;
-              const choose = (value: 'once' | 'always' | 'manual') => {
-                if (pendingConsent.current !== resolve) return;
-                pendingConsent.current = null;
-                resolve(value);
-              };
-              Alert.alert(
-                'Dùng AI đọc thông báo?',
-                `Phần chữ này sẽ được gửi đến máy chủ và Gemini để trích xuất Thu/Chi, số tiền và nội dung. Không gửi ảnh; không tự lưu giao dịch.\n\n${prepared}\n\nBạn có thể đặt lại quyền AI trong form giao dịch.`,
-                [
-                  {
-                    text: 'Nhập tay',
-                    style: 'cancel',
-                    onPress: () => choose('manual'),
-                  },
-                  { text: 'Chỉ lần này', onPress: () => choose('once') },
-                  { text: 'Luôn cho phép', onPress: () => choose('always') },
-                ],
-                { onDismiss: () => choose('manual') },
-              );
-            });
-          }
+          parsed = await bankNotificationExtraction.analyze(
+            sessionToken,
+            prepared,
+            event.postedAt,
+            controller.signal,
+          );
           if (!valid()) return;
-          if (choice === 'manual') {
-            parsed = manualBankNotification(
-              raw,
-              event.postedAt,
-              'Bạn đã chọn nhập tay; nội dung chưa được gửi để AI phân tích.',
-            );
-          } else {
-            if (choice === 'always' && !remembered)
-              await bankAiConsent.allow(id).catch(() => undefined);
-            if (!valid()) return;
-            setPhase('ai');
-            parsed = await bankNotificationExtraction.analyze(
-              sessionToken,
-              prepared,
-              event.postedAt,
-              controller.signal,
-            );
-            if (!valid()) return;
-            cached.current = {
-              userId: id,
-              token: sessionToken,
-              eventId: event.id,
-              text: prepared,
-              until: Date.now() + 120000,
-              parsed,
-            };
-          }
+          cached.current = {
+            userId: id,
+            token: sessionToken,
+            eventId: event.id,
+            text: prepared,
+            until: Date.now() + 120000,
+            parsed,
+          };
         }
       } catch (error) {
         parsed = manualBankNotification(
@@ -311,29 +264,5 @@ export function useLatestBankNotification(
     },
     [],
   );
-  const resetAiConsent = useCallback(() => {
-    const id = current.current.userId;
-    if (!id) return;
-    Alert.alert(
-      'Đặt lại quyền AI?',
-      'Lần đọc tiếp theo sẽ hỏi lại trước khi gửi chữ thông báo đến Gemini.',
-      [
-        { text: 'Giữ nguyên', style: 'cancel' },
-        {
-          text: 'Đặt lại',
-          onPress: () => {
-            if (current.current.userId !== id) return;
-            cancel();
-            cached.current = null;
-            bankAiConsent
-              .reset(id)
-              .catch(() =>
-                Alert.alert('Chưa đặt lại được quyền AI', 'Vui lòng thử lại.'),
-              );
-          },
-        },
-      ],
-    );
-  }, [cancel]);
-  return { read, cancel, busy, phase, resetAiConsent, shakeAvailable };
+  return { read, cancel, busy, phase, shakeAvailable };
 }

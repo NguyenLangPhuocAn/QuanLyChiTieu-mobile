@@ -18,13 +18,6 @@ import { ApiError, getApiBaseUrl } from '../src/services/api';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 import type { RepeatTransactionRequest } from '../src/utils/repeatTransaction';
 
-jest.mock('../src/services/bankAiConsent', () => ({
-  bankAiConsent: {
-    has: jest.fn().mockResolvedValue(true),
-    allow: jest.fn().mockResolvedValue(undefined),
-    reset: jest.fn().mockResolvedValue(undefined),
-  },
-}));
 jest.mock('../src/services/bankNotificationExtraction', () => ({
   ...jest.requireActual('../src/services/bankNotificationExtraction'),
   bankNotificationExtraction: {

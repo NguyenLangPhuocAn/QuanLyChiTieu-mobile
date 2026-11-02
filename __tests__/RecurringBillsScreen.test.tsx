@@ -23,6 +23,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://test.invalid',
+  apiRequest: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../src/services/transactions', () => ({
   transactionsService: {
@@ -163,6 +164,14 @@ it('only links after preview and explicit confirmation; differing actual amounts
   ]);
   expect(transactionsService.create).not.toHaveBeenCalled();
   expect(transactionsService.update).not.toHaveBeenCalled();
+});
+it('offers creating and paying in the bill, without the backup button on this screen', async () => {
+  await service.save(scope, bill);
+  await mount();
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Sao lưu và khôi phục lịch');
+  await act(async () => press(`Tạo giao dịch và trả Tiền nhà kỳ ${today}`));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Tạo giao dịch và trả');
+  expect(transactionsService.create).not.toHaveBeenCalled();
 });
 it('a dismissed picker invalidates an outstanding confirmation', async () => {
   await service.save(scope, bill);
