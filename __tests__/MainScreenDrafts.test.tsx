@@ -1,6 +1,12 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Alert, Text, TextInput, TouchableOpacity } from 'react-native';
+import {
+  Alert,
+  AppState,
+  Text,
+  TextInput,
+  TouchableOpacity,
+} from 'react-native';
 import MainScreen from '../src/screens/home/MainScreen';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
@@ -8,6 +14,9 @@ import { transactionsService } from '../src/services/transactions';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
 import { bankNotificationExtraction } from '../src/services/bankNotificationExtraction';
+import { ApiError, getApiBaseUrl } from '../src/services/api';
+import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
+import type { RepeatTransactionRequest } from '../src/utils/repeatTransaction';
 
 jest.mock('../src/services/bankAiConsent', () => ({
   bankAiConsent: {
@@ -176,6 +185,54 @@ const draftVisible = () =>
     accessibilityLabel: 'Đóng bản nháp giao dịch',
   }).length > 0;
 const chat = () => tree.root.findByType(ChatbotScreen).props;
+const repeatSource: RepeatTransactionRequest['transaction'] = {
+  id: '88',
+  walletId: 1,
+  categoryId: 4,
+  wallet: 'Tiền mặt',
+  category: 'Ăn uống',
+  type: 'expense',
+  cashFlowType: 'normal',
+  amount: -79000,
+  currency: 'VND',
+  displayAmount: 3,
+  displayCurrency: 'USD',
+  note: 'Cà phê nhập lại QA',
+  date: '2020-01-01',
+  receiptImage: '/old.jpg',
+  receiptItems: [{ name: 'Bạc xỉu (2)', amount: 94000 }],
+  tags: ['ăn uống'],
+};
+const openRepeat = async (patch: Partial<RepeatTransactionRequest> = {}) => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  // Load the current account's local lists before consuming a navigation event.
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () =>
+    tree.update(
+      <MainScreen
+        route={
+          {
+            params: {
+              repeatTransaction: {
+                transaction: repeatSource,
+                includeItems: true,
+                userId: 7,
+                server: getApiBaseUrl(),
+                requestId: 'repeat-event',
+                ...patch,
+              },
+            },
+          } as any
+        }
+      />,
+    ),
+  );
+};
+const acceptRepeat = () =>
+  jest
+    .mocked(Alert.alert)
+    .mock.calls.at(-1)![2]!
+    .find(b => b.text === 'Xác nhận lưu')!.onPress!;
 const button = (label: string) =>
   tree.root
     .findAllByType(TouchableOpacity)
@@ -1135,4 +1192,108 @@ it('shows selectable hashtags even without recent tag history', async () => {
     tree.root.findByProps({ placeholder: 'Ví dụ: #antrua #congviec' }).props
       .value,
   ).toBe('#ăn uống');
+});
+
+it('prefills repeat for today, optional items and original money, then requires explicit confirmation', async () => {
+  jest
+    .mocked(transactionsService.create)
+    .mockResolvedValue({ id: 900 } as never);
+  await openRepeat();
+  expect(amount()).toBe('79.000');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => acceptRepeat()());
+  expect(transactionsService.create).toHaveBeenCalledTimes(1);
+  const payload = jest.mocked(transactionsService.create).mock.calls[0][1];
+  expect(payload).toMatchObject({
+    wallet_id: 1,
+    category_id: 4,
+    amount: '79000',
+    type: 'EXPENSE',
+    receipt_items: [{ name: 'Bạc xỉu (2)', amount: 94000 }],
+  });
+  expect(payload.transaction_date).not.toBe('2020-01-01');
+  expect(payload.client_request_id).toBeTruthy();
+  expect(payload).not.toHaveProperty('source_ref');
+  expect(payload).not.toHaveProperty('receipt_image');
+  expect(transactionsService.uploadReceipt).not.toHaveBeenCalled();
+  expect(bankNotificationReader.markProcessed).not.toHaveBeenCalled();
+});
+it('keeps the same request key for a retry and ignores a second confirmation tap while saving', async () => {
+  jest
+    .mocked(transactionsService.create)
+    .mockRejectedValueOnce(new ApiError('Kiểm tra QA', 400));
+  await openRepeat();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  await act(async () => acceptRepeat()());
+  const first = jest.mocked(transactionsService.create).mock.calls[0][1];
+  let finish!: (value: any) => void;
+  jest.mocked(transactionsService.create).mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  const accept = acceptRepeat();
+  await act(async () => {
+    accept();
+    accept();
+  });
+  expect(transactionsService.create).toHaveBeenCalledTimes(2);
+  expect(
+    jest.mocked(transactionsService.create).mock.calls[1][1].client_request_id,
+  ).toBe(first.client_request_id);
+  await act(async () => finish({ id: 901 }));
+  await act(async () => accept());
+  expect(transactionsService.create).toHaveBeenCalledTimes(2);
+});
+it('queues the confirmed repeat with the same key after network failure, without an old bank identity', async () => {
+  const enqueue = jest
+    .spyOn(offlineTransactionQueue, 'enqueue')
+    .mockResolvedValue({ id: 'queued' } as never);
+  jest
+    .mocked(transactionsService.create)
+    .mockRejectedValueOnce(new ApiError('Network request failed', 0));
+  await openRepeat();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  expect(enqueue).not.toHaveBeenCalled();
+  await act(async () => acceptRepeat()());
+  expect(enqueue).toHaveBeenCalledWith(
+    7,
+    jest.mocked(transactionsService.create).mock.calls[0][1],
+  );
+  expect(draftVisible()).toBe(false);
+});
+it('discards confirmation after closing the form or backgrounding, and rejects stale account requests', async () => {
+  const listeners: Array<(value: any) => void> = [];
+  jest
+    .spyOn(AppState, 'addEventListener')
+    .mockImplementation((_event, callback) => {
+      listeners.push(callback);
+      return { remove: jest.fn() };
+    });
+  await act(async () => tree.unmount());
+  await act(async () => {
+    tree = TestRenderer.create(<MainScreen />);
+  });
+  await openRepeat();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  const old = acceptRepeat();
+  await act(async () => listeners.forEach(l => l('background')));
+  await act(async () => old());
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => listeners.forEach(l => l('active')));
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  const closed = acceptRepeat();
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Đóng bản nháp giao dịch' })
+      .props.onPress(),
+  );
+  await act(async () => closed());
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await openRepeat({ requestId: 'wrong-account', userId: 8 });
+  expect(draftVisible()).toBe(false);
 });

@@ -22,4 +22,13 @@ Phạm vi rà soát: luồng nhập giao dịch, widget, đọc ảnh, Excel, b�
 - Đọc ảnh: tái sử dụng kết quả cùng ảnh trong phiên, hủy yêu cầu khi đổi ảnh/rời màn; đo thời gian nén/upload/model trên điện thoại và4G trước khi chọn mức nén.
 - Danh sách giao dịch: tiếp tục dùng cache, phân trang và tránh tải lại toàn bộ sau mỗi lần lưu; chỉ thêm tối ưu nếu số đo chỉ ra điểm chậm.
 
-Chưa thay APK, web tải hoặc server ổn định trong đợt này. Các đề xuất1–3 cần đợt triển khai và kiểm thử riêng.
+Cập nhật02/11: mục1 đã có source, kiểm thử và Android/API/MySQL QA đạt (xem biên bản nhập lại). Mục2 nhớ mẫu Excel và mục3 nhớ bộ lọc xuất vẫn chưa triển khai. Backend mới đã triển khai theo xác nhận; APK1.2.4 đang chuẩn bị, web giữ nguyên.
+
+
+## Nhập lại giao dịch — 02/11/2026
+
+- Đã triển khai từ Chi tiết giao dịch thu/chi: tiền, ghi chú, hashtag, danh mục/ví còn hợp lệ; ngày hôm nay. Kèm món phải tự bật, không sao chép ảnh, ID ngân hàng hoặc khóa cũ. Xem trước/xác nhận trước khi ghi.
+- Giữ một mã yêu cầu mới cho retry và hàng chờ offline; hủy xác nhận cũ sau đóng form/ra nền/đổi tài khoản. Không áp dụng vay/nợ hoặc chuyển tiết kiệm.
+- Mobile624/624 qua99bộ, TypeScript/ESLint đạt; backend377/377. Android local/API3303/MySQL QA: chưa xác nhận giữ944.750đ; xác nhận thêm đúng một khoản79.000đ, còn865.750đ. Hai replay trả cùngID32, không trừ tiếp. Bằng chứng qa/evidence/2026-11-02-repeat-transaction.
+- Backend hỗ trợ lịch/sao lưu/widget mới đã triển khai ngày02/11 theo xác nhận người dùng: thêm planning_snapshots, giữ nguyên bảng tiền; health local/public200, planning-sync thiếuJWT401. Giữ dist cũ riêng để quay lui. Không đổi web quảng bá.
+- Đang chuẩn bị phát hành APK1.2.4/code9 theo yêu cầu chốt. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.

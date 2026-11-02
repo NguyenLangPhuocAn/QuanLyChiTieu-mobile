@@ -1,5 +1,15 @@
 # Bản kế tiếp — bản nháp, chưa phát hành
 
+## Nhập lại giao dịch — 02/11/2026
+
+- Đã triển khai từ Chi tiết giao dịch thu/chi: tiền, ghi chú, hashtag, danh mục/ví còn hợp lệ; ngày hôm nay. Kèm món phải tự bật, không sao chép ảnh, ID ngân hàng hoặc khóa cũ. Xem trước/xác nhận trước khi ghi.
+- Giữ một mã yêu cầu mới cho retry và hàng chờ offline; hủy xác nhận cũ sau đóng form/ra nền/đổi tài khoản. Không áp dụng vay/nợ hoặc chuyển tiết kiệm.
+- Mobile624/624 qua99bộ, TypeScript/ESLint đạt; backend377/377. Android local/API3303/MySQL QA: chưa xác nhận giữ944.750đ; xác nhận thêm đúng một khoản79.000đ, còn865.750đ. Hai replay trả cùngID32, không trừ tiếp. Bằng chứng qa/evidence/2026-11-02-repeat-transaction.
+- Backend hỗ trợ lịch/sao lưu/widget mới đã triển khai ngày02/11 theo xác nhận người dùng: thêm planning_snapshots, giữ nguyên bảng tiền; health local/public200, planning-sync thiếuJWT401. Giữ dist cũ riêng để quay lui. Không đổi web quảng bá.
+- Đang chuẩn bị phát hành APK1.2.4/code9 theo yêu cầu chốt. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.
+
+
+
 ## Lịch tiền và sao lưu — 31/10/2026
 
 - Bật đồng bộ lịch hóa đơn và khoản thu/chi dự kiến giữa thiết bị sau khi xem trước, xác nhận. Mất mạng giữ bản trên máy; hai bên cùng sửa sẽ yêu cầu chọn bản cần giữ.

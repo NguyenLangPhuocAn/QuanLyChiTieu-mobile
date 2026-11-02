@@ -1,0 +1,89 @@
+{
+  "wallet": {
+    "id": 8,
+    "user_id": 8,
+    "balance": "944750"
+  },
+  "rows": [
+    {
+      "id": 27,
+      "wallet_id": 8,
+      "category_id": 22,
+      "amount": "-25000",
+      "currency": "VND",
+      "converted_amount": "25000",
+      "converted_currency": "VND",
+      "exchange_rate_used": "1",
+      "note": null,
+      "receipt_image": null,
+      "receipt_items": null,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "created_at": "2026-10-29T17:32:22.000Z"
+    },
+    {
+      "id": 28,
+      "wallet_id": 8,
+      "category_id": 28,
+      "amount": "100000",
+      "currency": "VND",
+      "converted_amount": "100000",
+      "converted_currency": "VND",
+      "exchange_rate_used": "1",
+      "note": "Tiền đi vay: Widget Vay QA",
+      "receipt_image": null,
+      "receipt_items": null,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "created_at": "2026-10-29T18:42:28.000Z"
+    },
+    {
+      "id": 29,
+      "wallet_id": 8,
+      "category_id": 29,
+      "amount": "-50000",
+      "currency": "VND",
+      "converted_amount": "50000",
+      "converted_currency": "VND",
+      "exchange_rate_used": "1",
+      "note": "Cho vay: Widget Cho vay QA",
+      "receipt_image": null,
+      "receipt_items": null,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "created_at": "2026-10-29T18:47:20.000Z"
+    },
+    {
+      "id": 30,
+      "wallet_id": 8,
+      "category_id": 22,
+      "amount": "-1250",
+      "currency": "VND",
+      "converted_amount": "1250",
+      "converted_currency": "VND",
+      "exchange_rate_used": "1",
+      "note": "Widget retry QA",
+      "receipt_image": null,
+      "receipt_items": null,
+      "transaction_date": "2026-10-30T00:00:00.000Z",
+      "created_at": "2026-10-30T07:20:23.000Z"
+    },
+    {
+      "id": 31,
+      "wallet_id": 8,
+      "category_id": 11,
+      "amount": "-79000",
+      "currency": "VND",
+      "converted_amount": "79000",
+      "converted_currency": "VND",
+      "exchange_rate_used": "1",
+      "note": "Ca phe nhap lai QA",
+      "receipt_image": null,
+      "receipt_items": [
+        {
+          "name": "Bac xiu (2)",
+          "amount": 94000
+        }
+      ],
+      "transaction_date": "2026-11-02T00:00:00.000Z",
+      "created_at": "2026-11-02T07:24:59.000Z"
+    }
+  ]
+}

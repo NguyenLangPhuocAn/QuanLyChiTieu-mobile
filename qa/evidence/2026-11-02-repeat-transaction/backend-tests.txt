@@ -1,0 +1,8 @@
+[Nest] 22276  - 11/02/2026, 2:28:05 PM    WARN [TransactionsService] Transaction saved, but budget notification generation failed.
+[Nest] 22276  - 11/02/2026, 2:29:18 PM    WARN [GeminiClient] Gemini request timed out
+
+Test Suites: 52 passed, 52 total
+Tests:       377 passed, 377 total
+Snapshots:   0 total
+Time:        100.697 s
+Ran all test suites.

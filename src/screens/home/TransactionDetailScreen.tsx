@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Image,
   ScrollView,
+  Switch,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -22,11 +23,24 @@ import { Colors } from '../../constants/Colors';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { resolveReceiptUrl } from '../../utils/mediaUrls';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
+import { useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../../context/AuthContext';
+import { getApiBaseUrl } from '../../services/api';
+import { createClientRequestId } from '../../services/offlineTransactionQueue';
+import { canRepeatTransaction } from '../../utils/repeatTransaction';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TransactionDetail'>;
 
 const TransactionDetailScreen = ({ navigation, route }: Props) => {
   const { transaction } = route.params;
+  const { user } = useAuth();
+  const [includeItems, setIncludeItems] = useState(false);
+  const opening = useRef(false);
+  useFocusEffect(
+    React.useCallback(() => {
+      opening.current = false;
+    }, []),
+  );
   const receiptUrl = resolveReceiptUrl(transaction.receiptImage);
   const receiptItems = transaction.receiptItems ?? [];
   const receiptItemTotal = receiptItems.reduce(
@@ -76,6 +90,42 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
             {formatCurrency(transaction.amount, transaction.currency)}
           </Text>
           <Text style={styles.typeText}>{typeLabel}</Text>
+          {user?.id && canRepeatTransaction(transaction) ? (
+            <View style={styles.repeatBox}>
+              {receiptItems.length > 0 && (
+                <View style={styles.repeatItems}>
+                  <Text style={styles.infoValue}>Kèm chi tiết món</Text>
+                  <Switch
+                    accessibilityLabel="Kèm chi tiết món khi nhập lại"
+                    value={includeItems}
+                    onValueChange={setIncludeItems}
+                    trackColor={{ false: '#D6CEC7', true: '#FFBA73' }}
+                    thumbColor="#FFF8F0"
+                  />
+                </View>
+              )}
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Nhập lại giao dịch"
+                style={styles.repeatButton}
+                onPress={() => {
+                  if (opening.current) return;
+                  opening.current = true;
+                  navigation.navigate('Main', {
+                    repeatTransaction: {
+                      transaction,
+                      includeItems,
+                      userId: user.id,
+                      server: getApiBaseUrl(),
+                      requestId: createClientRequestId(),
+                    },
+                  });
+                }}
+              >
+                <Text style={styles.repeatText}>Nhập lại</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.infoCard}>
@@ -227,6 +277,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerSpacer: { width: 42 },
+  repeatBox: { width: '100%', marginTop: 16, gap: 10 },
+  repeatItems: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  repeatButton: {
+    backgroundColor: '#FFF0DF',
+    padding: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  repeatText: { color: '#9A4D00', fontSize: 15, fontWeight: '700' },
   content: { padding: 16, paddingBottom: 40, gap: 14 },
   heroCard: {
     backgroundColor: Colors.white,

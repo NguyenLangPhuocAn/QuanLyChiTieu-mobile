@@ -77,6 +77,7 @@ export type RootStackParamList = {
     | {
         financialDraftId?: string;
         editTransaction?: TransactionItem;
+        repeatTransaction?: import('../utils/repeatTransaction').RepeatTransactionRequest;
         widgetType?: 'INCOME' | 'EXPENSE' | 'LOAN_DEBT';
         widgetEvent?: string;
         widgetAction?: 'FORM' | 'VOICE' | 'CAMERA';

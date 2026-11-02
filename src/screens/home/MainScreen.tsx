@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -117,6 +118,8 @@ import type { BankNotificationItem } from '../../types/bankNotification';
 import { useLatestBankNotification } from '../../hooks/useLatestBankNotification';
 import { useWidgetPanelOpen } from '../../services/widgetPanelState';
 import { financeRefresh } from '../../services/financeRefresh';
+import { getApiBaseUrl } from '../../services/api';
+import { repeatTransactionDraft } from '../../utils/repeatTransaction';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -197,6 +200,28 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user, isOfflineSession } = useAuth();
+  const server = getApiBaseUrl();
+  const [repeatDraft, setRepeatDraft] = useState<{
+    requestId: string;
+    label: string;
+  } | null>(null);
+  const repeatReviewEpoch = useRef(0);
+  const lastRepeatEvent = useRef('');
+  const latestRepeatSave = useRef<(reviewed: string) => void>(() => undefined);
+  const repeatScope = useRef({ userId: user?.id, server });
+  repeatScope.current = { userId: user?.id, server };
+  useEffect(() => {
+    const invalidateReview = () => {
+      repeatReviewEpoch.current++;
+    };
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') invalidateReview();
+    });
+    return () => {
+      invalidateReview();
+      sub.remove();
+    };
+  }, [user?.id, server]);
   const isScreenFocused = useIsFocused();
   const widgetPanelOpen = useWidgetPanelOpen();
   const { run: runSaveTransaction, busy: savingTransaction } =
@@ -221,6 +246,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  useEffect(() => {
+    if (!isModalVisible || !isScreenFocused) repeatReviewEpoch.current++;
+  }, [isModalVisible, isScreenFocused]);
   const [widgetAction, setWidgetAction] = useState<'VOICE' | 'CAMERA' | null>(
     null,
   );
@@ -505,7 +533,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   ]);
 
   useEffect(() => {
-    if (!isModalVisible || transactionEntryType === 'LOAN_DEBT') return;
+    if (!isModalVisible || transactionEntryType === 'LOAN_DEBT' || repeatDraft)
+      return;
     const rule = findMatchingSmartRule(transactionNote, smartRules);
     if (!rule) return;
 
@@ -526,6 +555,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     smartRules,
     transactionEntryType,
     transactionNote,
+    repeatDraft,
   ]);
 
   useFocusEffect(
@@ -719,6 +749,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
+    repeatReviewEpoch.current++;
+    setRepeatDraft(null);
     hasWidgetCategory.current = false;
     setWidgetAction(null);
     latestBank.cancel();
@@ -1218,6 +1250,51 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     navigation.setParams({ editTransaction: undefined });
   }, [navigation, route?.params?.editTransaction]);
 
+  useEffect(() => {
+    const request = route?.params?.repeatTransaction;
+    if (!request || !user?.id || !isScreenFocused) return;
+    const event = `${user.id}:${server}:${request.requestId}`;
+    navigation.setParams({ repeatTransaction: undefined });
+    if (lastRepeatEvent.current === event) return;
+    lastRepeatEvent.current = event;
+    if (isModalVisible) {
+      Alert.alert(
+        'Đang có giao dịch chưa lưu',
+        'Lưu hoặc đóng bản đang nhập trước khi nhập lại giao dịch khác.',
+      );
+      return;
+    }
+    try {
+      const next = repeatTransactionDraft(
+        request,
+        { userId: user.id, server },
+        spendableWallets,
+        normalTransactionCategories,
+      );
+      resetTransactionForm();
+      setActiveFinancialDraftId(null);
+      setIsChatDraft(true);
+      setChatDraftCurrency(next.currency);
+      setTransactionEntryType(next.type);
+      setSelectedTransactionCategory(next.category);
+      setSelectedWalletId(next.walletId);
+      setTransactionAmount(next.amount);
+      setTransactionNote(next.note);
+      setTransactionTags(next.tags);
+      setReceiptItems(next.receiptItems);
+      setIsReceiptItemsExpanded(next.receiptItems.length > 0);
+      setRepeatDraft({
+        requestId: createClientRequestId(),
+        label: next.note || 'Giao dịch',
+      });
+      setIsModalVisible(true);
+    } catch (e) {
+      Alert.alert('Chưa nhập lại được', (e as Error).message);
+    }
+    // A request is consumed once; subsequent form edits or cache refreshes must not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route?.params?.repeatTransaction, isScreenFocused, user?.id, server]);
+
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
     amount: number,
@@ -1274,7 +1351,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     );
   };
 
-  const handleSaveTransaction = () =>
+  const saveTransaction = (reviewed?: string) =>
     runSaveTransaction(async () => {
       if (!token || isOcrLoading || isVoiceEntryVisible) return;
       if (activeBankNotificationEventId && requiresBankDirectionConfirmation) {
@@ -1371,6 +1448,20 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       if (!selectedTransactionCategory) {
         return;
       }
+      if (
+        repeatDraft &&
+        !normalTransactionCategories.some(
+          c =>
+            c.id === selectedTransactionCategory.id &&
+            c.type === selectedTransactionCategory.type,
+        )
+      ) {
+        Alert.alert(
+          'Danh mục đã thay đổi',
+          'Chọn lại danh mục còn sử dụng trước khi lưu.',
+        );
+        return;
+      }
 
       const transactionType =
         selectedTransactionCategory.type === 'INCOME' ? 'income' : 'expense';
@@ -1390,8 +1481,57 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               source: 'BANK_NOTIFICATION' as const,
               source_ref: activeBankNotificationEventId!,
             }
-          : { client_request_id: createClientRequestId() }),
+          : {
+              client_request_id:
+                repeatDraft?.requestId ?? createClientRequestId(),
+            }),
       };
+      if (repeatDraft) {
+        const fingerprint = JSON.stringify({
+          payload: createPayload,
+          receiptFile,
+        });
+        if (reviewed && reviewed !== fingerprint) {
+          Alert.alert(
+            'Thông tin đã thay đổi',
+            'Hãy kiểm tra lại giao dịch trước khi lưu.',
+          );
+          return;
+        }
+        if (!reviewed) {
+          const epoch = repeatReviewEpoch.current;
+          const scope = { userId: user?.id, server };
+          Alert.alert(
+            'Kiểm tra giao dịch nhập lại',
+            `${transactionType === 'income' ? 'Thu' : 'Chi'} ${formatCurrency(
+              amount,
+              selectedWallet.currency,
+            )}\n${selectedWallet.name} · ${
+              selectedTransactionCategory.name
+            }\n${formatShortDate(
+              transactionDate.toISOString(),
+            )}\n${transactionNote.trim()}\n${
+              normalizedReceiptItems.length
+            } món. Đây là giao dịch mới.`,
+            [
+              { text: 'Sửa lại', style: 'cancel' },
+              {
+                text: 'Xác nhận lưu',
+                onPress: () => {
+                  if (
+                    repeatReviewEpoch.current !== epoch ||
+                    repeatScope.current.userId !== scope.userId ||
+                    repeatScope.current.server !== scope.server
+                  )
+                    return;
+                  return latestRepeatSave.current(fingerprint);
+                },
+              },
+            ],
+          );
+          return;
+        }
+      }
       let createdTransaction;
       try {
         if (isOfflineSession) throw new Error('LOCAL_OFFLINE_SESSION');
@@ -1483,6 +1623,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         );
       }
     });
+  latestRepeatSave.current = reviewed =>
+    saveTransaction(reviewed).catch(() => undefined);
+  const handleSaveTransaction = () => saveTransaction();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -1682,6 +1825,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                       }${
                         chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
                       }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
+                  : repeatDraft
+                  ? 'Nhập lại cho hôm nay. Kiểm tra ví, số tiền và ngày trước khi xác nhận lưu.'
                   : isChatDraft
                   ? `Bản nháp${
                       chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
@@ -1798,7 +1943,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 </View>
               ) : null}
               <View style={styles.typeSegment}>
-                {(activeBankNotificationEventId
+                {(activeBankNotificationEventId || repeatDraft
                   ? (['EXPENSE', 'INCOME'] as const)
                   : (['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const)
                 ).map(type => {
