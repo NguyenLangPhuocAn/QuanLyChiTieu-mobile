@@ -1,5 +1,10 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Lịch sử khi rớt mạng — 02/11/2026
+
+- Lịch sử hiển thị các giao dịch đã tải trên máy khi kết nối gián đoạn, ghi rõ phạm vi cache. Khóa sửa và ẩn tổng thu/chi của danh sách có thể chưa đầy đủ; nối mạng rồi làm mới sẽ lấy dữ liệu máy chủ.
+- Android QA đã bật chế độ máy bay và xác nhận không tới host, chụp trước/sau khi sửa và sau kết nối lại. 22/22 kiểm thử tập trung, TypeScript và ESLint đạt. Xem `qa/evidence/2026-11-02-offline-demo/README.md`. Chưa phát hành APK mới; chưa kiểm cold start offline trên bản standalone/điện thoại thật.
+
 ## Giao diện lịch gọn hơn — 02/11/2026
 
 - Chuyển nút quản lý đồng bộ lịch từ Hóa đơn định kỳ và Lịch tiền sang Dữ liệu và xuất nhập. Giữ nhắc, sao lưu, lịch đã tạo và cơ chế đồng bộ hiện có.

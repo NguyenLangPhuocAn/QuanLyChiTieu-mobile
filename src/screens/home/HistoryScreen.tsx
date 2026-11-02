@@ -69,6 +69,8 @@ import {
   parsePositiveMoneyInput,
 } from '../../utils/moneyInput';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { dashboardCache } from '../../services/dashboardCache';
+import { ApiError } from '../../services/api';
 
 type HistoryScreenProps = {
   wallets?: Wallet[];
@@ -202,7 +204,7 @@ const HistoryScreen = ({
   const { run: runTransactionMutation } = useSingleFlight();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { token, user } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
   const {
     preferredCurrency,
     selectedTransactionCategory,
@@ -222,6 +224,10 @@ const HistoryScreen = ({
   });
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedView, setCachedView] = useState<{
+    count: number;
+    updatedAt: string;
+  } | null>(null);
   const loadRevision = useRef(0);
   const [selectedTransaction, setSelectedTransaction] =
     useState<TransactionItem | null>(null);
@@ -311,7 +317,38 @@ const HistoryScreen = ({
     setIsPageLoading(true);
     setLoadError(null);
 
+    const loadLocalPage = async () => {
+      if (!user?.id || [
+        transactionQuery.from,
+        transactionQuery.to,
+        transactionQuery.wallet_id,
+        transactionQuery.category_id,
+        transactionQuery.type,
+        transactionQuery.cash_flow,
+        transactionQuery.tag,
+        transactionQuery.q,
+      ].some(Boolean)) return false;
+      const cached = await dashboardCache.read(user.id);
+      if (revision !== loadRevision.current || !cached?.transactions.length)
+        return false;
+      const rows = mapApiTransactions(
+        cached.transactions,
+        wallets.length ? wallets : cached.wallets,
+      );
+      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      if (page > totalPages) {
+        setPage(totalPages);
+        return true;
+      }
+      setServerTransactions(rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
+      setServerMeta({ total: rows.length, totalPages, income: 0, expense: 0, net: 0 });
+      setCachedView({ count: rows.length, updatedAt: cached.updatedAt });
+      setLoadError(null);
+      return true;
+    };
+
     try {
+      if (isOfflineSession && (await loadLocalPage())) return;
       const response = await transactionsService.getPage(
         token,
         transactionQuery,
@@ -323,6 +360,7 @@ const HistoryScreen = ({
         return;
       }
       setServerTransactions(mapApiTransactions(response.data, wallets));
+      setCachedView(null);
       setServerMeta({
         total: response.meta.total,
         totalPages: response.meta.totalPages,
@@ -332,6 +370,11 @@ const HistoryScreen = ({
       });
     } catch (error) {
       if (revision === loadRevision.current) {
+        if (
+          !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+          (await loadLocalPage())
+        ) return;
+        setCachedView(null);
         setLoadError(
           getUserFriendlyErrorMessage(
             error,
@@ -342,7 +385,7 @@ const HistoryScreen = ({
     } finally {
       if (revision === loadRevision.current) setIsPageLoading(false);
     }
-  }, [token, transactionQuery, wallets]);
+  }, [token, transactionQuery, wallets, user?.id, isOfflineSession, page]);
 
   useEffect(() => {
     fetchTransactionPage();
@@ -847,7 +890,14 @@ const HistoryScreen = ({
           </View>
         </View>
 
-        {!loadError ? (
+        {cachedView ? (
+          <Text style={styles.offlineNotice}>
+            Dữ liệu trên máy · {cachedView.count} giao dịch đã tải. Cần kết nối
+            để xem lịch sử đầy đủ hoặc sửa giao dịch.
+          </Text>
+        ) : null}
+
+        {!loadError && !cachedView ? (
           <View style={styles.summaryRow}>
             <View style={styles.summaryCard}>
               <Text style={styles.summaryLabel}>Tổng thu</Text>
@@ -905,6 +955,8 @@ const HistoryScreen = ({
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={`Sửa giao dịch ${item.id}`}
+                  accessibilityState={{ disabled: Boolean(cachedView) }}
+                  disabled={Boolean(cachedView)}
                   key={item.id}
                   style={styles.card}
                   activeOpacity={0.86}
@@ -1540,6 +1592,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  offlineNotice: {
+    color: '#795036',
+    backgroundColor: '#FFF9F2',
+    borderColor: '#E8B680',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    fontSize: 13,
+    lineHeight: 20,
     marginBottom: 14,
   },
   headerActions: {
