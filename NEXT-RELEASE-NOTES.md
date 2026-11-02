@@ -1,5 +1,10 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Gọn form thêm giao dịch — 02/11/2026
+
+- Bỏ dòng/nút “Quyền dùng AI” trong form. Chuyển thao tác đặt lại lựa chọn AI đọc thông báo ngân hàng vào **Thông báo → Cài đặt thông báo**, vẫn hỏi xác nhận trước khi đặt lại.
+- Android QA đã chụp form, vị trí cài đặt và hộp xác nhận; 34/34 kiểm thử liên quan, TypeScript/ESLint đạt. Xem `qa/evidence/2026-11-02-remove-ai-caption/README.md`. Chưa cập nhật APK.
+
 ## Tên người trong Vay/Nợ — 02/11/2026
 
 - Chọn **Vay**: trường tên hiện **Tên người cho vay**. Chọn **Cho vay**: hiện **Tên người vay** trong form thêm giao dịch, form Vay/Nợ riêng và form widget.

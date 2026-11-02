@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   Bell,
   BellRing,
+  ChevronRight,
   Clock3,
   PiggyBank,
   TrendingUp,
@@ -30,6 +31,7 @@ import {
 } from '../../native/financialReminder';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { notificationsService } from '../../services/notifications';
+import { bankAiConsent } from '../../services/bankAiConsent';
 import type { NotificationSettings } from '../../types/notification';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import {
@@ -87,7 +89,7 @@ const getErrorMessage = (error: unknown, fallback: string) =>
   getUserFriendlyErrorMessage(error, fallback);
 
 const NotificationSettingsScreen = ({ navigation }: Props) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
@@ -372,6 +374,42 @@ const NotificationSettingsScreen = ({ navigation }: Props) => {
                 <Text style={styles.testButtonText}>Gửi thông báo thử</Text>
               </TouchableOpacity>
             </View>
+          ) : null}
+          {user?.id ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Đặt lại quyền AI đọc thông báo"
+              style={styles.settingCard}
+              onPress={() => {
+                const userId = user.id;
+                Alert.alert(
+                  'Đặt lại quyền AI?',
+                  'Lần đọc thông báo ngân hàng tiếp theo sẽ hỏi lại trước khi gửi chữ đến Gemini.',
+                  [
+                    { text: 'Giữ nguyên', style: 'cancel' },
+                    {
+                      text: 'Đặt lại',
+                      onPress: () => {
+                        bankAiConsent.reset(userId).catch(() =>
+                          Alert.alert('Chưa đặt lại được quyền AI', 'Vui lòng thử lại.'),
+                        );
+                      },
+                    },
+                  ],
+                );
+              }}
+            >
+              <View style={styles.settingIcon}>
+                <Bell size={20} color="#D87219" />
+              </View>
+              <View style={styles.settingCopy}>
+                <Text style={styles.settingLabel}>Đọc thông báo ngân hàng bằng AI</Text>
+                <Text style={styles.settingDescription}>
+                  Đặt lại lựa chọn để được hỏi trước lần đọc tiếp theo.
+                </Text>
+              </View>
+              <ChevronRight size={18} color="#A67652" />
+            </TouchableOpacity>
           ) : null}
         </ScrollView>
       )}

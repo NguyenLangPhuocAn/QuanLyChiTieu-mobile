@@ -1838,12 +1838,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   ? 'Bấm chuông để lấy thông báo ngân hàng mới nhất.'
                   : 'Lắc điện thoại hoặc bấm chuông để lấy thông báo ngân hàng mới nhất.'}
               </Text>
-              <TouchableOpacity
-                onPress={latestBank.resetAiConsent}
-                accessibilityLabel="Đặt lại quyền đọc thông báo bằng AI"
-              >
-                <Text style={styles.voiceEntryHint}>Quyền dùng AI</Text>
-              </TouchableOpacity>
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>
                   <Text
