@@ -27,7 +27,7 @@ export default function BillUpcomingSummary({
           <View key={total.currency} style={styles.total}>
             <Text style={styles.amount}>
               {total.min === null || total.max === null
-                ? `${total.currency}: tổng quá lớn để hiển thị chính xác`
+                ? 'Tổng quá lớn để hiển thị'
                 : `${formatCurrency(total.min, total.currency)}${
                     total.min !== total.max
                       ? ` – ${formatCurrency(total.max, total.currency)}`
@@ -35,18 +35,13 @@ export default function BillUpcomingSummary({
                   }`}
             </Text>
             <Text style={styles.text}>
-              {total.periods} kỳ của {total.bills} lịch · {total.currency}
+              {total.periods} kỳ của {total.bills} lịch
             </Text>
           </View>
         ))
       ) : (
         <Text style={styles.text}>Chưa có kỳ chưa xử lý trong khoảng này.</Text>
       )}
-      <Text style={styles.text}>
-        Theo mức đã đặt trong lịch, chưa tự điều chỉnh theo cảnh báo tăng tiền.
-        Loại kỳ quá hạn, đã liên kết, bỏ qua hoặc lịch tạm dừng/xóa. Khoản đã chi
-        nhưng chưa liên kết vẫn có thể được tính. Tách riêng tiền tệ, không quy đổi.
-      </Text>
     </View>
   );
 }

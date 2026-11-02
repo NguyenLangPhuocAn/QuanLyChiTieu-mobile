@@ -253,7 +253,7 @@ export default function BillPaymentEntry({
             ) : null}
             {!loading && !optionsError ? (
               <>
-                <Text style={styles.label}>Ví thanh toán · {currency}</Text>
+                <Text style={styles.label}>Ví thanh toán</Text>
                 <View style={styles.options}>
                   {availableWallets.map(wallet => (
                     <TouchableOpacity

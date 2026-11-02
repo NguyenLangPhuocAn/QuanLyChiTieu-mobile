@@ -70,6 +70,12 @@ const cycleNames: Record<BillCycle, string> = {
   QUARTERLY: 'Hằng quý',
   YEARLY: 'Hằng năm',
 };
+const cycleShortNames: Record<BillCycle, string> = {
+  WEEKLY: 'Tuần',
+  MONTHLY: 'Tháng',
+  QUARTERLY: 'Quý',
+  YEARLY: 'Năm',
+};
 const dateLabel = (date: string) => date.split('-').reverse().join('/');
 const amountLabel = (
   bill: Pick<RecurringBill, 'kind' | 'minAmount' | 'maxAmount' | 'currency'>,
@@ -114,11 +120,6 @@ function RecurringBillsContent({
   const [editor, setEditor] = useState<Editor | null>(null);
   const editorRef = useRef(editor);
   editorRef.current = editor;
-  const scrollRef = useRef<ScrollView>(null);
-  const editorIsOpen = Boolean(editor);
-  useEffect(() => {
-    if (editorIsOpen) scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [editorIsOpen]);
   const [sourceSuggestion, setSourceSuggestion] =
     useState<BillSuggestion | null>(null);
   const [showDate, setShowDate] = useState(false);
@@ -465,8 +466,12 @@ function RecurringBillsContent({
       value
         ? {
             ...value,
-            ...((patch.anchorDate && patch.anchorDate !== value.anchorDate) ||
-            (patch.cycle && patch.cycle !== value.cycle)
+            ...(patch.cycle && patch.cycle !== value.cycle
+              ? {
+                  anchorDate: value.startDate ?? value.anchorDate,
+                  startDate: undefined,
+                }
+              : patch.anchorDate && patch.anchorDate !== value.anchorDate
               ? { startDate: undefined }
               : {}),
             ...patch,
@@ -477,6 +482,12 @@ function RecurringBillsContent({
     change({
       [field]: normalizeMoneyInputForCurrency(value, editor?.currency),
     });
+  const closeEditor = () => {
+    if (busy) return;
+    setEditor(null);
+    setSourceSuggestion(null);
+    setShowDate(false);
+  };
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -495,13 +506,9 @@ function RecurringBillsContent({
         </View>
       </View>
       <ScrollView
-        ref={scrollRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.muted}>
-          Lưu riêng trên máy theo tài khoản. Lịch dự kiến không thay đổi số dư.
-        </Text>
         {error ? (
           <View style={styles.card}>
             <Text style={styles.error}>{error}</Text>
@@ -539,185 +546,207 @@ function RecurringBillsContent({
                 />
               </View>
             ) : null}
-            {!editor ? (
-              !reminderFilter ? (
-                <ActionButton
-                  label="Thêm lịch hóa đơn"
-                  onPress={() => editBill()}
-                />
-              ) : null
-            ) : (
-              <View style={styles.card} pointerEvents={busy ? 'none' : 'auto'}>
-                <View style={styles.row}>
-                  <Text style={[styles.heading, styles.grow]}>
-                    {editor.id ? 'Sửa lịch' : 'Lịch mới'}
-                  </Text>
-                  <TouchableOpacity
-                    disabled={busy}
-                    accessibilityRole="button"
-                    accessibilityLabel="Đóng form lịch hóa đơn"
-                    style={styles.smallButton}
-                    onPress={() => {
-                      setEditor(null);
-                      setSourceSuggestion(null);
-                      setShowDate(false);
-                    }}
-                  >
-                    <X size={22} color="#79563D" />
-                  </TouchableOpacity>
-                </View>
-                {sourceSuggestion ? (
-                  <Text style={styles.muted}>
-                    Gợi ý từ {sourceSuggestion.evidence.length} lần chi đã tải.
-                    Hãy kiểm tra tên, chu kỳ và khoảng tiền trước khi tạo lịch.
-                  </Text>
-                ) : null}
-                <FormField
-                  label="Tên hóa đơn"
-                  accessibilityLabel="Tên hóa đơn"
-                  value={editor.label}
-                  onChangeText={label => change({ label })}
-                  maxLength={100}
-                  placeholder="Ví dụ: Tiền nhà"
-                />
-                <Text style={styles.label}>Lặp lại</Text>
-                <View style={styles.row}>
-                  {(Object.keys(cycleNames) as BillCycle[]).map(cycle => (
-                    <TouchableOpacity
-                      key={cycle}
-                      accessibilityRole="button"
-                      accessibilityLabel={cycleNames[cycle]}
-                      accessibilityState={{ selected: editor.cycle === cycle }}
-                      style={[
-                        styles.option,
-                        styles.cycleOption,
-                        editor.cycle === cycle && styles.selected,
-                      ]}
-                      onPress={() => change({ cycle })}
-                    >
-                      <Text style={styles.label}>{cycleNames[cycle]}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.label}>
-                  {editor.startDate
-                    ? 'Ngày gốc của chu kỳ'
-                    : 'Ngày đến hạn đầu tiên'}
-                </Text>
-                {editor.startDate ? (
-                  <Text style={styles.muted}>
-                    Theo dõi từ {dateLabel(editor.startDate)}. Không thêm các kỳ
-                    cũ trước ngày này.
-                  </Text>
-                ) : null}
-                <TouchableOpacity
-                  accessibilityRole="button"
-                  accessibilityLabel="Chọn ngày đến hạn đầu tiên"
-                  style={styles.date}
-                  onPress={() => setShowDate(true)}
-                >
-                  <Text style={styles.label}>
-                    {dateLabel(editor.anchorDate)}
-                  </Text>
-                </TouchableOpacity>
-                {showDate ? (
-                  <DateTimePicker
-                    value={new Date(`${editor.anchorDate}T12:00:00`)}
-                    mode="date"
-                    minimumDate={new Date(2000, 0, 1)}
-                    maximumDate={new Date(2199, 11, 31)}
-                    onChange={(_event, date) => {
-                      setShowDate(false);
-                      if (date)
-                        change({
-                          anchorDate: `${date.getFullYear()}-${String(
-                            date.getMonth() + 1,
-                          ).padStart(2, '0')}-${String(date.getDate()).padStart(
-                            2,
-                            '0',
-                          )}`,
-                        });
-                    }}
-                  />
-                ) : null}
-                <Text style={styles.muted}>
-                  Tháng thiếu ngày đã chọn sẽ dùng ngày cuối tháng, giữ nguyên
-                  ngày gốc cho các tháng sau.
-                </Text>
-                <View style={styles.row}>
-                  {(['FIXED', 'VARIABLE'] as const).map(kind => (
-                    <TouchableOpacity
-                      key={kind}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        kind === 'FIXED' ? 'Tiền cố định' : 'Tiền biến thiên'
-                      }
-                      accessibilityState={{ selected: editor.kind === kind }}
-                      style={[
-                        styles.option,
-                        editor.kind === kind && styles.selected,
-                      ]}
-                      onPress={() => change({ kind })}
-                    >
-                      <Text style={styles.label}>
-                        {kind === 'FIXED' ? 'Cố định' : 'Khoảng dự kiến'}
+            {!editor && !reminderFilter ? (
+              <ActionButton
+                label="Thêm lịch hóa đơn"
+                onPress={() => editBill()}
+              />
+            ) : null}
+            {editor ? (
+              <Modal
+                visible
+                transparent
+                animationType="fade"
+                onRequestClose={closeEditor}
+              >
+                <SafeAreaView style={styles.editorOverlay}>
+                  <View style={styles.editorSheet}>
+                    <View style={styles.editorHeader}>
+                      <Text style={[styles.heading, styles.grow]}>
+                        {editor.id ? 'Sửa lịch' : 'Lịch mới'}
                       </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <FormField
-                  label="Tiền tệ"
-                  accessibilityLabel="Tiền tệ hóa đơn"
-                  autoCapitalize="characters"
-                  maxLength={3}
-                  value={editor.currency}
-                  onChangeText={value =>
-                    change({ currency: value.toUpperCase(), min: '', max: '' })
-                  }
-                />
-                <View style={styles.row}>
-                  <View style={styles.grow}>
-                    <FormField
-                      label={editor.kind === 'FIXED' ? 'Số tiền' : 'Từ'}
-                      accessibilityLabel="Số tiền hóa đơn"
-                      keyboardType="decimal-pad"
-                      value={formatMoneyInputForCurrency(
-                        editor.min,
-                        editor.currency,
-                      )}
-                      onChangeText={value => updateMoney('min', value)}
-                    />
-                  </View>
-                  {editor.kind === 'VARIABLE' ? (
-                    <View style={styles.grow}>
-                      <FormField
-                        label="Đến"
-                        accessibilityLabel="Số tiền tối đa"
-                        keyboardType="decimal-pad"
-                        value={formatMoneyInputForCurrency(
-                          editor.max,
-                          editor.currency,
-                        )}
-                        onChangeText={value => updateMoney('max', value)}
+                      <TouchableOpacity
+                        disabled={busy}
+                        accessibilityRole="button"
+                        accessibilityLabel="Đóng form lịch hóa đơn"
+                        style={styles.smallButton}
+                        onPress={closeEditor}
+                      >
+                        <X size={22} color="#79563D" />
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView
+                      style={styles.editorScroll}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.editorContent}
+                    >
+                      <View
+                        pointerEvents={busy ? 'none' : 'auto'}
+                        style={styles.editorFields}
+                      >
+                        {sourceSuggestion ? (
+                          <Text style={styles.muted}>
+                            Gợi ý từ {sourceSuggestion.evidence.length} lần chi
+                            đã tải. Hãy kiểm tra tên, chu kỳ và khoảng tiền
+                            trước khi tạo lịch.
+                          </Text>
+                        ) : null}
+                        <FormField
+                          label="Tên hóa đơn"
+                          accessibilityLabel="Tên hóa đơn"
+                          value={editor.label}
+                          onChangeText={label => change({ label })}
+                          maxLength={100}
+                          placeholder="Ví dụ: Tiền nhà"
+                        />
+                        <Text style={styles.label}>Lặp lại</Text>
+                        <View style={styles.row}>
+                          {(Object.keys(cycleNames) as BillCycle[]).map(
+                            cycle => (
+                              <TouchableOpacity
+                                key={cycle}
+                                accessibilityRole="button"
+                                accessibilityLabel={cycleNames[cycle]}
+                                accessibilityState={{
+                                  selected: editor.cycle === cycle,
+                                }}
+                                style={[
+                                  styles.option,
+                                  styles.cycleOption,
+                                  editor.cycle === cycle && styles.selected,
+                                ]}
+                                onPress={() => change({ cycle })}
+                              >
+                                <Text style={styles.label}>
+                                  {cycleShortNames[cycle]}
+                                </Text>
+                              </TouchableOpacity>
+                            ),
+                          )}
+                        </View>
+                        <Text style={styles.label}>Ngày đến hạn đầu tiên</Text>
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          accessibilityLabel="Chọn ngày đến hạn đầu tiên"
+                          style={styles.date}
+                          onPress={() => setShowDate(true)}
+                        >
+                          <Text style={styles.label}>
+                            {dateLabel(editor.startDate ?? editor.anchorDate)}
+                          </Text>
+                        </TouchableOpacity>
+                        {showDate ? (
+                          <DateTimePicker
+                            value={
+                              new Date(
+                                `${
+                                  editor.startDate ?? editor.anchorDate
+                                }T12:00:00`,
+                              )
+                            }
+                            mode="date"
+                            minimumDate={new Date(2000, 0, 1)}
+                            maximumDate={new Date(2199, 11, 31)}
+                            onChange={(_event, date) => {
+                              setShowDate(false);
+                              if (date)
+                                change({
+                                  anchorDate: `${date.getFullYear()}-${String(
+                                    date.getMonth() + 1,
+                                  ).padStart(2, '0')}-${String(
+                                    date.getDate(),
+                                  ).padStart(2, '0')}`,
+                                  ...(editor.startDate
+                                    ? {
+                                        startDate: `${date.getFullYear()}-${String(
+                                          date.getMonth() + 1,
+                                        ).padStart(2, '0')}-${String(
+                                          date.getDate(),
+                                        ).padStart(2, '0')}`,
+                                      }
+                                    : {}),
+                                });
+                            }}
+                          />
+                        ) : null}
+                        <View style={styles.row}>
+                          {(['FIXED', 'VARIABLE'] as const).map(kind => (
+                            <TouchableOpacity
+                              key={kind}
+                              accessibilityRole="button"
+                              accessibilityLabel={
+                                kind === 'FIXED'
+                                  ? 'Tiền cố định'
+                                  : 'Tiền biến thiên'
+                              }
+                              accessibilityState={{
+                                selected: editor.kind === kind,
+                              }}
+                              style={[
+                                styles.option,
+                                editor.kind === kind && styles.selected,
+                              ]}
+                              onPress={() => change({ kind })}
+                            >
+                              <Text style={styles.label}>
+                                {kind === 'FIXED'
+                                  ? 'Cố định'
+                                  : 'Khoảng dự kiến'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <View style={styles.row}>
+                          <View style={styles.grow}>
+                            <FormField
+                              label={editor.kind === 'FIXED' ? 'Số tiền' : 'Từ'}
+                              accessibilityLabel="Số tiền hóa đơn"
+                              keyboardType="decimal-pad"
+                              value={formatMoneyInputForCurrency(
+                                editor.min,
+                                editor.currency,
+                              )}
+                              onChangeText={value => updateMoney('min', value)}
+                            />
+                          </View>
+                          {editor.kind === 'VARIABLE' ? (
+                            <View style={styles.grow}>
+                              <FormField
+                                label="Đến"
+                                accessibilityLabel="Số tiền tối đa"
+                                keyboardType="decimal-pad"
+                                value={formatMoneyInputForCurrency(
+                                  editor.max,
+                                  editor.currency,
+                                )}
+                                onChangeText={value =>
+                                  updateMoney('max', value)
+                                }
+                              />
+                            </View>
+                          ) : null}
+                        </View>
+                        <FormField
+                          label="Ghi chú"
+                          accessibilityLabel="Ghi chú hóa đơn"
+                          value={editor.note}
+                          onChangeText={note => change({ note })}
+                          multiline
+                          maxLength={500}
+                        />
+                      </View>
+                    </ScrollView>
+                    <View style={styles.editorFooter}>
+                      <ActionButton
+                        label="Lưu lịch"
+                        loading={busy}
+                        onPress={saveEditor}
                       />
                     </View>
-                  ) : null}
-                </View>
-                <FormField
-                  label="Ghi chú"
-                  accessibilityLabel="Ghi chú hóa đơn"
-                  value={editor.note}
-                  onChangeText={note => change({ note })}
-                  multiline
-                  maxLength={500}
-                />
-                <ActionButton
-                  label="Lưu lịch"
-                  loading={busy}
-                  onPress={saveEditor}
-                />
-              </View>
-            )}
+                  </View>
+                </SafeAreaView>
+              </Modal>
+            ) : null}
             {!reminderFilter ? (
               <BillSuggestions
                 scope={scope}
@@ -775,9 +804,7 @@ function RecurringBillsContent({
             {tab !== 'BILLS' ? (
               <>
                 <Text style={styles.muted}>
-                  Đến {dateLabel(billDateOffset(today, 90))}, gồm các kỳ cũ chưa
-                  xử lý. Lịch tạm dừng ẩn các kỳ chưa trả; khi bật lại, các kỳ
-                  này xuất hiện lại.
+                  Các kỳ đến hạn đến {dateLabel(billDateOffset(today, 90))}.
                 </Text>
                 {tab === 'DONE' && paymentChecks.targets.length ? (
                   <View style={styles.card}>
@@ -937,11 +964,6 @@ function RecurringBillsContent({
                         {cycleNames[bill.cycle]} · từ{' '}
                         {dateLabel(bill.startDate ?? bill.anchorDate)}
                       </Text>
-                      {bill.startDate ? (
-                        <Text style={styles.muted}>
-                          Ngày gốc chu kỳ: {dateLabel(bill.anchorDate)}
-                        </Text>
-                      ) : null}
                       {bill.note ? (
                         <Text style={styles.muted}>{bill.note}</Text>
                       ) : null}
@@ -1042,9 +1064,9 @@ function RecurringBillsContent({
               </TouchableOpacity>
             </View>
             <Text style={styles.muted}>
-              Khoản chi {picker?.occurrence.bill.currency} trong 31 ngày
-              trước/sau kỳ {picker ? dateLabel(picker.occurrence.dueDate) : ''}.
-              Chọn giao dịch rồi xác nhận liên kết.
+              Khoản chi trong 31 ngày trước/sau kỳ{' '}
+              {picker ? dateLabel(picker.occurrence.dueDate) : ''}. Chọn giao
+              dịch rồi xác nhận liên kết.
             </Text>
             <ScrollView contentContainerStyle={styles.pickerRows}>
               {picker?.rows.map(transaction => (
@@ -1076,8 +1098,7 @@ function RecurringBillsContent({
               !picker.error &&
               !picker.rows.length ? (
                 <Text style={styles.empty}>
-                  Chưa có khoản chi phù hợp trong khoảng ngày này. Hãy ghi giao
-                  dịch trước, rồi quay lại liên kết.
+                  Chưa có khoản chi phù hợp trong khoảng ngày này.
                 </Text>
               ) : null}
               {picker?.error ? (
@@ -1161,6 +1182,36 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: '700', color: '#4A2B1A' },
   content: { padding: 20, paddingTop: 0, paddingBottom: 40, gap: 16 },
+  editorOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00000066',
+  },
+  editorSheet: {
+    width: '92%',
+    maxWidth: 520,
+    height: '72%',
+    borderRadius: 22,
+    backgroundColor: '#FFF9F3',
+    overflow: 'hidden',
+  },
+  editorScroll: { flex: 1 },
+  editorHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editorContent: { padding: 20, paddingBottom: 12 },
+  editorFields: { gap: 12 },
+  editorFooter: {
+    padding: 16,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F0DCCB',
+  },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   paymentActions: { gap: 8 },
   grow: { flex: 1, minWidth: 0 },
@@ -1187,7 +1238,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
   },
-  cycleOption: { flexBasis: '46%' },
+  cycleOption: { flexBasis: '22%' },
   selected: { backgroundColor: '#FFF0DF', borderColor: '#FF8C00' },
   date: {
     padding: 14,

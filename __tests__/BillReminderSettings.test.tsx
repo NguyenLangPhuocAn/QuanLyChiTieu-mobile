@@ -17,7 +17,6 @@ jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (effect: () => void) =>
     require('react').useEffect(effect, [effect]),
 }));
-jest.mock('@react-native-community/datetimepicker', () => 'TimePicker');
 const scope = { userId: 8, server: 'https://qa.invalid' };
 const state = {
   enabled: false,
@@ -64,9 +63,19 @@ it('requires explicit opt-in and saves the selected account only', async () => {
   expect(billReminder.save).not.toHaveBeenCalled();
   await act(async () => toggle(true));
   expect(billReminder.save).toHaveBeenCalledWith(scope, true, 20, 0);
-  expect(JSON.stringify(renderer.toJSON())).toContain(
-    'Không hiện tên dịch vụ hoặc số tiền',
-  );
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('Giờ nhắc');
+});
+it('shows the next reminder as a date without exposing an hour or battery note', async () => {
+  jest.mocked(billReminder.state).mockResolvedValue({
+    ...state,
+    enabled: true,
+    nextAt: new Date(2027, 3, 27, 20, 0).getTime(),
+  });
+  await mount();
+  const content = JSON.stringify(renderer.toJSON());
+  expect(content).toContain('Ngày nhắc tới');
+  expect(content).not.toContain('20:00');
+  expect(content).not.toContain('tiết kiệm pin');
 });
 it('does not enable reminders when permission is denied', async () => {
   jest.mocked(requestFinancialReminderPermission).mockResolvedValue(false);

@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { billReminder, type BillReminderState } from '../native/billReminder';
 import { requestFinancialReminderPermission } from '../native/financialReminder';
@@ -26,7 +25,6 @@ export default function BillReminderSettings({
   const [state, setState] = useState<BillReminderState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showTime, setShowTime] = useState(false);
   const load = useCallback(async () => {
     // Refresh the native mirror after this persisted book changes, including paid/skipped periods.
     if (book.version !== 1) throw new Error('Lịch hóa đơn chưa hợp lệ.');
@@ -76,12 +74,6 @@ export default function BillReminderSettings({
         Nhắc ngoài app cần bản Android hỗ trợ tính năng này.
       </Text>
     );
-  const time = state
-    ? `${String(state.hour).padStart(2, '0')}:${String(state.minute).padStart(
-        2,
-        '0',
-      )}`
-    : '…';
   return (
     <View style={styles.card}>
       <View style={styles.row}>
@@ -103,31 +95,17 @@ export default function BillReminderSettings({
         />
       </View>
       {state?.enabled ? (
-        <>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Chọn giờ nhắc hóa đơn"
-            disabled={busy}
-            onPress={() => setShowTime(true)}
-            style={styles.time}
-          >
-            <Text style={styles.title}>Giờ nhắc</Text>
-            <Text style={styles.timeText}>{time}</Text>
-          </TouchableOpacity>
-          <Text style={styles.detail}>
-            {!state.permissionGranted
-              ? 'Thông báo đang bị chặn trong Cài đặt Android.'
-              : !state.synced
-              ? 'Lịch nhắc chưa đồng bộ. Hãy thử lại.'
-              : state.nextAt
-              ? `Lần tới: ${new Date(state.nextAt).toLocaleString('vi-VN')}`
-              : 'Chưa có kỳ cần nhắc sắp tới.'}
-          </Text>
-          <Text style={styles.detail}>
-            Không hiện tên dịch vụ hoặc số tiền trên thông báo. Giờ nhận có thể
-            trễ khi máy tiết kiệm pin.
-          </Text>
-        </>
+        <Text style={styles.detail}>
+          {!state.permissionGranted
+            ? 'Thông báo đang bị chặn trong Cài đặt Android.'
+            : !state.synced
+            ? 'Lịch nhắc chưa cập nhật. Hãy thử lại.'
+            : state.nextAt
+            ? `Ngày nhắc tới: ${new Date(state.nextAt).toLocaleDateString(
+                'vi-VN',
+              )}`
+            : 'Chưa có kỳ cần nhắc sắp tới.'}
+        </Text>
       ) : null}
       {error ? (
         <TouchableOpacity
@@ -155,18 +133,6 @@ export default function BillReminderSettings({
           <Text style={styles.link}>Mở cài đặt thông báo</Text>
         </TouchableOpacity>
       ) : null}
-      {showTime && state ? (
-        <DateTimePicker
-          mode="time"
-          is24Hour
-          value={new Date(2026, 0, 1, state.hour, state.minute)}
-          onChange={(event, date) => {
-            setShowTime(false);
-            if (event.type === 'set' && date)
-              save(state.enabled, date.getHours(), date.getMinutes());
-          }}
-        />
-      ) : null}
     </View>
   );
 }
@@ -183,13 +149,6 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   title: { color: '#54321F', fontSize: 15, fontWeight: '700' },
   detail: { color: '#8C654D', fontSize: 13, lineHeight: 20 },
-  time: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    minHeight: 44,
-  },
-  timeText: { color: '#AB570F', fontWeight: '700', fontSize: 17 },
   error: { color: '#BA3527', lineHeight: 20 },
   link: {
     color: '#AB570F',

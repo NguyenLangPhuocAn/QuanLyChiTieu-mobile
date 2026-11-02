@@ -154,7 +154,7 @@ it('only scans on request, reveals evidence and requires explicit schedule confi
     ).length,
   ).toBeGreaterThan(0);
   await act(async () => press('Theo dõi Internet QA'));
-  expect(text()).toContain('Theo dõi từ');
+  expect(text()).toContain('Ngày đến hạn đầu tiên');
   expect((await recurringBillsService.load(scope)).bills).toHaveLength(0);
   await act(async () => press('Lưu lịch'));
   expect(Alert.alert).toHaveBeenLastCalledWith(

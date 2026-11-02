@@ -1,5 +1,12 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Lịch hóa đơn gọn hơn — 03/11/2026
+
+- Nhắc hóa đơn chỉ hiện ngày nhắc tới, không còn chọn giờ, giờ `20:00` và ghi chú tiết kiệm pin. Giữ nhắc trước 3 ngày, 1 ngày và đúng ngày; giờ chạy nội bộ Android không còn là một tùy chọn trong màn này.
+- Bỏ câu dẫn dài đầu trang, ghi chú ngày gốc và ghi chú giải thích dài ở phần dự kiến. Form thêm/sửa lịch không còn ô mã tiền tệ: lịch mới lấy tiền tệ tài khoản; lịch cũ giữ tiền tệ đã lưu.
+- Sửa lịch mở trong hộp giữa màn hình, có tiêu đề/Đóng và nút Lưu cố định; ngày đầu tiên hiển thị 31/01/2027 cho lịch bắt đầu năm 2027. Không đổi âm thầm mốc chu kỳ hoặc kỳ đã trả.
+- Android QA đã chụp 4 màn cùng XML gốc ở `qa/evidence/2026-11-03-bill-editor-cleanup/README.md`; 35/35 ca tập trung, TypeScript và ESLint đạt. Chưa phát hành APK/web hoặc thay backend.
+
 ## Đọc thông báo ngân hàng bằng AI — 03/11/2026
 
 - Bỏ dòng “Quyền dùng AI”, hộp hỏi riêng và mục đặt lại quyền AI. Khi người dùng bấm chuông hoặc lắc điện thoại, app đọc thông báo mới nhất bằng AI mặc định; vẫn cần cấp quyền truy cập thông báo của Android. Chỉ điền bản nháp để kiểm tra, không tự lưu giao dịch.

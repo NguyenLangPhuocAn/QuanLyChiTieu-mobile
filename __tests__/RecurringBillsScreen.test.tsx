@@ -13,11 +13,12 @@ import { billDateOffset } from '../src/utils/recurringBills';
 jest.setTimeout(20000);
 let mockToken = 'token';
 let mockUserId = 99;
+let mockCurrency = 'VND';
 let mockRouteParams: { reminderDate?: string } | undefined;
 
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: mockUserId, currency_default: 'VND' },
+    user: { id: mockUserId, currency_default: mockCurrency },
     token: mockToken,
   }),
 }));
@@ -84,6 +85,7 @@ const confirm = () => {
 beforeEach(async () => {
   mockToken = 'token';
   mockUserId = 99;
+  mockCurrency = 'VND';
   mockRouteParams = undefined;
   await AsyncStorage.removeItem(key);
   await AsyncStorage.removeItem(
@@ -168,7 +170,9 @@ it('only links after preview and explicit confirmation; differing actual amounts
 it('offers creating and paying in the bill, without the backup button on this screen', async () => {
   await service.save(scope, bill);
   await mount();
-  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Sao lưu và khôi phục lịch');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain(
+    'Sao lưu và khôi phục lịch',
+  );
   await act(async () => press(`Tạo giao dịch và trả Tiền nhà kỳ ${today}`));
   expect(JSON.stringify(renderer!.toJSON())).toContain('Tạo giao dịch và trả');
   expect(transactionsService.create).not.toHaveBeenCalled();
@@ -219,11 +223,11 @@ it('fails closed when local data cannot be read', async () => {
 });
 
 it('accepts a decimal comma for a variable bill in a foreign currency', async () => {
+  mockCurrency = 'USD';
   await mount();
   await act(async () => press('Thêm lịch hóa đơn'));
   await act(async () => {
     field('Tên hóa đơn', 'Hosting');
-    field('Tiền tệ hóa đơn', 'USD');
     press('Tiền biến thiên');
   });
   await act(async () => {
@@ -236,6 +240,58 @@ it('accepts a decimal comma for a variable bill in a foreign currency', async ()
     currency: 'USD',
     minAmount: 12.5,
     maxAmount: 20.75,
+  });
+  expect(
+    renderer!.root.findAllByProps({ accessibilityLabel: 'Tiền tệ hóa đơn' }),
+  ).toHaveLength(0);
+});
+
+it('opens an existing schedule in a centered modal with its first tracked date', async () => {
+  await service.save(scope, {
+    ...bill,
+    anchorDate: '2026-01-31',
+    startDate: '2027-01-31',
+    cycle: 'QUARTERLY',
+  });
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Sửa lịch'));
+  const editorModal = renderer!.root
+    .findAllByType(require('react-native').Modal)
+    .find(node => node.props.animationType === 'fade');
+  expect(editorModal?.props.visible).toBe(true);
+  const content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('31/01/2027');
+  expect(content).not.toContain('Ngày gốc của chu kỳ');
+  expect(content).not.toContain('31/01/2026');
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0]).toMatchObject({
+    anchorDate: '2026-01-31',
+    startDate: '2027-01-31',
+  });
+});
+
+it('moves the first tracked date when the user changes it in the editor', async () => {
+  await service.save(scope, {
+    ...bill,
+    anchorDate: '2026-01-31',
+    startDate: '2027-01-31',
+    cycle: 'QUARTERLY',
+  });
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Sửa lịch'));
+  await act(async () => press('Chọn ngày đến hạn đầu tiên'));
+  await act(async () =>
+    renderer!.root
+      .findByType('DatePicker' as React.ElementType)
+      .props.onChange({ type: 'set' }, new Date(2027, 3, 30)),
+  );
+  expect(JSON.stringify(renderer!.toJSON())).toContain('30/04/2027');
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0]).toMatchObject({
+    anchorDate: '2027-04-30',
+    startDate: '2027-04-30',
   });
 });
 
