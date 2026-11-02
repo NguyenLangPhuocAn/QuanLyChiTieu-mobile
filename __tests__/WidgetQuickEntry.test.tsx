@@ -686,7 +686,7 @@ it('ignores a late OCR result after cancelling the widget photo flow', async () 
   await mount(entryUrl + '&action=CAMERA');
   await pickPhoto('Chọn từ thư viện');
   await press('Hủy đọc ảnh');
-  await act(async () => resolve({ amount: 79000, warnings: [] }));
+  await act(async () => resolve({ amount: 79000, receipt_items: [], warnings: [] }));
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledTimes(1);
   expect(control('Số tiền widget')).toBeUndefined();
   expect(saveWidgetEntry).not.toHaveBeenCalled();
