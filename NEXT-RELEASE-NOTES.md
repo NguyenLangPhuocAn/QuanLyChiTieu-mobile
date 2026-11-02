@@ -1,5 +1,10 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Giao diện lịch gọn hơn — 02/11/2026
+
+- Chuyển nút quản lý đồng bộ lịch từ Hóa đơn định kỳ và Lịch tiền sang Dữ liệu và xuất nhập. Giữ nhắc, sao lưu, lịch đã tạo và cơ chế đồng bộ hiện có.
+- Android local kiểm tra ba màn; TypeScript/ESLint và 19/19 kiểm thử tập trung đạt. Chưa build hoặc phát hành APK mới.
+
 ## Hóa đơn định kỳ linh hoạt — 02/11/2026
 
 - Gợi ý **hằng quý**, hiển thị kỳ chưa tìm thấy giao dịch và các cách ghi tên dịch vụ khác nhau để người dùng kiểm tra. Vẫn giữ riêng các gói và tiền tệ; tên đổi hoàn toàn có thể cần nhập tay.

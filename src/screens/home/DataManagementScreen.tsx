@@ -48,6 +48,8 @@ import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 import { homeWidget } from '../../native/homeWidget';
+import { getApiBaseUrl } from '../../services/api';
+import PlanningSyncControls from '../../components/PlanningSyncControls';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -539,6 +541,12 @@ const DataManagementScreen = () => {
             </Text>
           </View>
         </View>
+
+        {user?.id ? (
+          <PlanningSyncControls
+            scope={{ userId: user.id, server: getApiBaseUrl() }}
+          />
+        ) : null}
 
         <View style={styles.draftCard}>
           <View style={styles.draftHeader}>
