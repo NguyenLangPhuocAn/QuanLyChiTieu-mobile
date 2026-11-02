@@ -821,7 +821,9 @@ function Panel({ entryUrl }: Props) {
                   <TextInput
                     accessibilityLabel="Tên người vay nợ widget"
                     placeholder={
-                      loanType === 'BORROWED' ? 'Vay từ ai?' : 'Cho ai vay?'
+                      loanType === 'BORROWED'
+                        ? 'Tên người cho vay'
+                        : 'Tên người vay'
                     }
                     value={personName}
                     onChangeText={setPersonName}

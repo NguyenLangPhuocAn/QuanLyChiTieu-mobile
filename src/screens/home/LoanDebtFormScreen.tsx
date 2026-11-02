@@ -261,7 +261,9 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
             ))}
           </View>
         ) : null}
-        <Text style={styles.label}>Tên người</Text>
+        <Text style={styles.label}>
+          {type === 'BORROWED' ? 'Tên người cho vay' : 'Tên người vay'}
+        </Text>
         <TextInput
           accessibilityLabel="Tên người vay nợ"
           editable={!isSaving}

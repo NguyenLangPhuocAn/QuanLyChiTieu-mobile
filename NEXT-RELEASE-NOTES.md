@@ -1,5 +1,10 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Tên người trong Vay/Nợ — 02/11/2026
+
+- Chọn **Vay**: trường tên hiện **Tên người cho vay**. Chọn **Cho vay**: hiện **Tên người vay** trong form thêm giao dịch, form Vay/Nợ riêng và form widget.
+- Android QA đã chụp hai trạng thái trong app; 64/64 kiểm thử liên quan, TypeScript và ESLint đạt. Xem `qa/evidence/2026-11-02-loan-name-label/README.md`. Chưa phát hành APK.
+
 ## Lịch sử khi rớt mạng — 02/11/2026
 
 - Lịch sử hiển thị các giao dịch đã tải trên máy khi kết nối gián đoạn, ghi rõ phạm vi cache. Khóa sửa và ẩn tổng thu/chi của danh sách có thể chưa đầy đủ; nối mạng rồi làm mới sẽ lấy dữ liệu máy chủ.

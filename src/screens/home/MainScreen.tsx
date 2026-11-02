@@ -2033,7 +2033,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     ))}
                   </View>
 
-                  <Text style={styles.fieldLabel}>Tên người</Text>
+                  <Text style={styles.fieldLabel}>
+                    {loanDebtType === 'BORROWED'
+                      ? 'Tên người cho vay'
+                      : 'Tên người vay'}
+                  </Text>
                   <TextInput
                     style={styles.input}
                     placeholder="Ví dụ: Nguyễn Văn A"

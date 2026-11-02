@@ -228,6 +228,9 @@ it('opens the loan form directly from the full widget loan selection', async () 
       .replace('&category=9', ''),
   );
   expect(control('Tên người vay nợ widget')).toBeDefined();
+  expect(control('Tên người vay nợ widget').props.placeholder).toBe('Tên người cho vay');
+  await press('Cho vay');
+  expect(control('Tên người vay nợ widget').props.placeholder).toBe('Tên người vay');
   expect(control('Chọn danh mục')).toBeUndefined();
   expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
 });
