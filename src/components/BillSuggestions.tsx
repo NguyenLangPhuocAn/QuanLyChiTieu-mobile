@@ -23,6 +23,7 @@ import {
 import { billDateOffset, type BillBook } from '../utils/recurringBills';
 import {
   suggestBills,
+  billSuggestionNotes,
   suggestionVisibility,
   type BillSuggestion,
 } from '../utils/billSuggestions';
@@ -40,6 +41,7 @@ type Props = {
 const cycleNames = {
   WEEKLY: 'Hằng tuần',
   MONTHLY: 'Hằng tháng',
+  QUARTERLY: 'Hằng quý',
   YEARLY: 'Hằng năm',
 };
 const dateLabel = (date: string) => date.split('-').reverse().join('/');
@@ -254,6 +256,11 @@ export default function BillSuggestions({
                     {candidate.evidence.length} lần chi · Dự kiến{' '}
                     {dateLabel(candidate.nextDate)}
                   </Text>
+                  {billSuggestionNotes(candidate).map(note => (
+                    <Text key={note} style={styles.detail}>
+                      {note}
+                    </Text>
+                  ))}
                   <Text style={styles.amount}>
                     {formatCurrency(
                       candidate.input.minAmount,

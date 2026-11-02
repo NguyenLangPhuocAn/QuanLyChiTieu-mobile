@@ -96,6 +96,47 @@ afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
 });
 
+it('reviews quarterly gaps and equivalent service names before creating one schedule, without writing money', async () => {
+  const names = [
+    'Internet FPT',
+    'Cước FPT Telecom Internet',
+    'Thanh toán FPT Internet',
+  ];
+  const data = [9, 6, 0].map((ago, i) => ({
+    ...rows[i],
+    note: names[i],
+    transaction_date: new Date(
+      Date.UTC(year, month - 1 - ago, 1, 5),
+    ).toISOString(),
+  }));
+  jest
+    .mocked(transactionsService.getPage)
+    .mockResolvedValue({ ...response, data });
+  await mount();
+  await act(async () => press('Tìm khoản lặp'));
+  expect(text()).toContain('Hằng quý');
+  expect(text()).toContain('Chưa thấy giao dịch ở 1 kỳ');
+  expect(text()).toContain('Khác cách ghi tên');
+  await act(async () => press('Theo dõi Thanh toán FPT Internet'));
+  await act(async () => press('Lưu lịch'));
+  expect((await recurringBillsService.load(scope)).bills).toEqual([]);
+  const review = jest.mocked(Alert.alert).mock.calls.at(-1)![1]!;
+  expect(review).toContain('Hằng quý');
+  expect(review).toContain('Không đồng nghĩa chưa thanh toán');
+  expect(review).toContain('Khác cách ghi tên');
+  await act(async () => {
+    confirm();
+    confirm();
+  });
+  const saved = await recurringBillsService.load(scope);
+  expect(saved.bills).toHaveLength(1);
+  expect(saved.bills[0].cycle).toBe('QUARTERLY');
+  expect(saved.periods).toEqual([]);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  expect(transactionsService.update).not.toHaveBeenCalled();
+  expect(transactionsService.remove).not.toHaveBeenCalled();
+});
+
 it('only scans on request, reveals evidence and requires explicit schedule confirmation without writing money', async () => {
   await mount();
   expect(transactionsService.getPage).not.toHaveBeenCalled();

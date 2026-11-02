@@ -90,7 +90,7 @@ it('recognizes annual leap-day schedules even when first observation is a non-le
   expect(item.nextDate).toBe('2026-02-28');
   expect(billDueDate(item.input, 8)).toBe('2028-02-29');
 });
-it('supports a bounded weekly calendar but rejects daily habits and irregular/missing monthly cycles', () => {
+it('supports a bounded weekly calendar but rejects daily habits and irregular calendar cycles', () => {
   expect(
     suggestBills(
       transactions(['2026-10-01', '2026-10-08', '2026-10-15']),
@@ -100,7 +100,6 @@ it('supports a bounded weekly calendar but rejects daily habits and irregular/mi
   for (const dates of [
     ['2026-10-01', '2026-10-02', '2026-10-03'],
     ['2026-07-10', '2026-08-21', '2026-09-04'],
-    ['2026-01-01', '2026-04-01', '2026-07-01'],
   ])
     expect(suggestBills(transactions(dates), today)).toEqual([]);
 });

@@ -1,10 +1,12 @@
 import type { ApiTransaction } from '../types/transaction';
+import { billMerchantIdentity } from './billMerchantIdentity';
 import { billMerchant } from './billSuggestions';
 import { currentBillPayment } from './billPaymentChecks';
 import { getTransactionDateKey } from './mapTransactions';
 import { getCashFlowType } from './transactionClassification';
 import {
   billDateOffset,
+  billCycleMonths,
   billOccurrences,
   isBillDate,
   type BillBook,
@@ -39,7 +41,13 @@ const gap = (a: string, b: string) =>
 const month = (date: string) =>
   Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7));
 const recentDays = (cycle: BillCycle) =>
-  cycle === 'WEEKLY' ? 21 : cycle === 'MONTHLY' ? 75 : 400;
+  cycle === 'WEEKLY'
+    ? 21
+    : cycle === 'MONTHLY'
+    ? 75
+    : cycle === 'QUARTERLY'
+    ? 210
+    : 400;
 const evidenceSort = (a: BillEvidence, b: BillEvidence) =>
   a.date.localeCompare(b.date) || a.id - b.id;
 
@@ -47,9 +55,11 @@ export function billActivityMerchant(book: BillBook, bill: RecurringBill) {
   const source = book.suggestions
     ?.find(d => d.status === 'TRACKED' && d.billId === bill.id)
     ?.key.split(':');
-  return source?.[2] === bill.currency && source[3] === bill.cycle
-    ? source[4]
-    : billMerchant(bill.label);
+  return billMerchantIdentity(
+    source?.[2] === bill.currency && source[3] === bill.cycle
+      ? source[4]
+      : billMerchant(bill.label),
+  );
 }
 
 /** Calendar slot for analysis only, including evidence before tracking began. */
@@ -76,6 +86,11 @@ export function billActivitySlot(
         1,
       ),
     );
+    const anchorIndex =
+      Number(bill.anchorDate.slice(0, 4)) * 12 + anchorMonth - 1;
+    const choiceIndex = first.getUTCFullYear() * 12 + first.getUTCMonth();
+    if ((choiceIndex - anchorIndex) % billCycleMonths(bill.cycle) !== 0)
+      continue;
     const last = new Date(
       Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0),
     ).getUTCDate();
@@ -133,7 +148,7 @@ export function readBillAlertKey(value: unknown): AlertKey | null {
       typeof billId !== 'string' ||
       !billId ||
       billId.length > 256 ||
-      !['WEEKLY', 'MONTHLY', 'YEARLY'].includes(cycle) ||
+      !['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'].includes(cycle) ||
       !/^[A-Z]{3}$/.test(currency) ||
       !isBillDate(due) ||
       !Number.isSafeInteger(max) ||
@@ -248,7 +263,7 @@ export function analyzeBillActivity(
       );
     const date = dateCache.get(row.transaction_date)!;
     if (!isBillDate(date) || date > today) continue;
-    const merchant = billMerchant(row.note ?? '');
+    const merchant = billMerchantIdentity(billMerchant(row.note ?? ''));
     if (
       /^(chuyen vi|wallet transfer|hoan tien|refund)\b/.test(merchant) ||
       /\b(chuyen vi|wallet transfer)\b/.test(
@@ -353,8 +368,7 @@ export function analyzeBillActivity(
         .every((date, i) =>
           bill.cycle === 'WEEKLY'
             ? gap(date, dates[i]) === 7
-            : month(date) - month(dates[i]) ===
-              (bill.cycle === 'YEARLY' ? 12 : 1),
+            : month(date) - month(dates[i]) === billCycleMonths(bill.cycle),
         )
     )
       continue;

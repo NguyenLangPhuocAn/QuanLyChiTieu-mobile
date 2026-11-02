@@ -6,6 +6,26 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class BillReminderPlannerTest {
+  @Test fun quarterlyPeriodsKeepMonthEndAndOnlyScheduleEveryThreeMonths() {
+    val b = ReminderBill("quarter", LocalDate.parse("2026-01-31"), "QUARTERLY", LocalDate.parse("2026-10-31"))
+    assertEquals("2026-04-30", BillReminderPlanner.due(b, 1).toString())
+    assertEquals("2026-07-31", BillReminderPlanner.due(b, 2).toString())
+    val entries = BillReminderPlanner.entries(listOf(b), emptySet(), LocalDate.parse("2026-01-01"), LocalDate.parse("2027-02-28"))
+    assertEquals(setOf("2026-10-31", "2027-01-31"), entries.map { it.due.toString() }.toSet())
+    assertEquals(6, entries.size)
+  }
+  @Test fun quarterlyLeapDayReturnsAndHandledQuarterIsNotRemindedAgain() {
+    val b = ReminderBill("leap-quarter", LocalDate.parse("2024-02-29"), "QUARTERLY")
+    assertEquals("2025-02-28", BillReminderPlanner.due(b, 4).toString())
+    assertEquals("2028-02-29", BillReminderPlanner.due(b, 16).toString())
+    val entries = BillReminderPlanner.entries(listOf(b), setOf("leap-quarter|2026-11-29"), LocalDate.parse("2026-11-01"), LocalDate.parse("2026-12-31"))
+    assertTrue(entries.isEmpty())
+  }
+  @Test fun oldQuarterlyAnchorsDoNotSkipAnUpcomingReminder() {
+    val b = ReminderBill("old-quarter", LocalDate.parse("2000-01-31"), "QUARTERLY")
+    val entries = BillReminderPlanner.entries(listOf(b), emptySet(), LocalDate.parse("2026-10-28"), LocalDate.parse("2026-11-02"))
+    assertTrue(entries.any { it.day == LocalDate.parse("2026-10-28") && it.due == LocalDate.parse("2026-10-31") })
+  }
   @Test fun trackingStartExcludesHistoricalPeriodsButStillRemindsBeforeFirstFutureDue() {
     val b = ReminderBill("future", LocalDate.parse("2026-01-31"), "MONTHLY", LocalDate.parse("2026-11-30"))
     val entries = BillReminderPlanner.entries(listOf(b), emptySet(), LocalDate.parse("2026-01-01"), LocalDate.parse("2026-12-31"))

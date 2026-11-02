@@ -21,6 +21,7 @@ object BillReminderPlanner {
   fun due(bill: ReminderBill, index: Long): LocalDate = when (bill.cycle) {
     "WEEKLY" -> bill.anchor.plusWeeks(index)
     "MONTHLY" -> bill.anchor.plusMonths(index)
+    "QUARTERLY" -> bill.anchor.plusMonths(index * 3)
     "YEARLY" -> bill.anchor.plusYears(index)
     else -> error("Invalid bill cycle")
   }
@@ -33,6 +34,7 @@ object BillReminderPlanner {
     val start = maxOf(0L, when (bill.cycle) {
       "WEEKLY" -> ChronoUnit.WEEKS.between(bill.anchor, from) - 1
       "MONTHLY" -> ChronoUnit.MONTHS.between(YearMonth.from(bill.anchor), YearMonth.from(from)) - 1
+      "QUARTERLY" -> ChronoUnit.MONTHS.between(YearMonth.from(bill.anchor), YearMonth.from(from)) / 3 - 1
       "YEARLY" -> (from.year - bill.anchor.year).toLong() - 1
       else -> error("Invalid bill cycle")
     })

@@ -1,6 +1,8 @@
 import type { BillSuggestionDecision } from './billSuggestions';
 
-export type BillCycle = 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+export type BillCycle = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY';
+export const billCycleMonths = (cycle: BillCycle) =>
+  cycle === 'YEARLY' ? 12 : cycle === 'QUARTERLY' ? 3 : 1;
 export type BillInput = {
   label: string;
   cycle: BillCycle;
@@ -78,7 +80,7 @@ export const validateBillInput = (input: BillInput): BillInput => {
   )
     throw new Error('Tên hóa đơn cần từ 1 đến 100 ký tự.');
   if (
-    !['WEEKLY', 'MONTHLY', 'YEARLY'].includes(input.cycle) ||
+    !['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'].includes(input.cycle) ||
     !isBillDate(input.anchorDate)
   )
     throw new Error('Chu kỳ hoặc ngày đến hạn chưa hợp lệ.');
@@ -128,7 +130,7 @@ export const billDueDate = (
     date = new Date(Date.UTC(year, month - 1, day + index * 7));
   } else {
     const first = new Date(
-      Date.UTC(year, month - 1 + index * (bill.cycle === 'YEARLY' ? 12 : 1), 1),
+      Date.UTC(year, month - 1 + index * billCycleMonths(bill.cycle), 1),
     );
     const lastDay = new Date(
       Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0),
@@ -155,11 +157,7 @@ export const isBillDueDate = (bill: BillInput, dueDate: string) => {
       Date.parse(`${bill.anchorDate}T00:00:00Z`)) /
     86400000;
   const index =
-    bill.cycle === 'WEEKLY'
-      ? days / 7
-      : bill.cycle === 'YEARLY'
-      ? months / 12
-      : months;
+    bill.cycle === 'WEEKLY' ? days / 7 : months / billCycleMonths(bill.cycle);
   return Number.isInteger(index) && billDueDate(bill, index) === dueDate;
 };
 

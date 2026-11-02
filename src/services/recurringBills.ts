@@ -10,6 +10,7 @@ import {
 } from '../utils/billPaymentChecks';
 import {
   isSuggestionKey,
+  equivalentSuggestionKeys,
   type BillSuggestionDecision,
 } from '../utils/billSuggestions';
 import {
@@ -181,7 +182,9 @@ export const recurringBillsService = {
       if (
         suggestionKey &&
         book.suggestions?.some(
-          item => item.key === suggestionKey && item.status === 'TRACKED',
+          item =>
+            equivalentSuggestionKeys(item.key, suggestionKey) &&
+            item.status === 'TRACKED',
         )
       )
         return;
@@ -222,7 +225,7 @@ export const recurringBillsService = {
         if (suggestionKey)
           book.suggestions = [
             ...(book.suggestions ?? []).filter(
-              item => item.key !== suggestionKey,
+              item => !equivalentSuggestionKeys(item.key, suggestionKey),
             ),
             { key: suggestionKey, status: 'TRACKED', billId: bill.id },
           ];
@@ -244,14 +247,18 @@ export const recurringBillsService = {
     return mutate(scope, book => {
       if (
         book.suggestions?.some(
-          item => item.key === key && item.status === 'TRACKED',
+          item =>
+            equivalentSuggestionKeys(item.key, key) &&
+            item.status === 'TRACKED',
         )
       )
         throw new Error('Khoản này đã được theo dõi.');
       const decision: BillSuggestionDecision =
         status === 'LATER' ? { key, status, until } : { key, status };
       book.suggestions = [
-        ...(book.suggestions ?? []).filter(item => item.key !== key),
+        ...(book.suggestions ?? []).filter(
+          item => !equivalentSuggestionKeys(item.key, key),
+        ),
         decision,
       ];
     });
@@ -260,7 +267,8 @@ export const recurringBillsService = {
     if (!isSuggestionKey(key)) throw new Error('Gợi ý chưa hợp lệ.');
     return mutate(scope, book => {
       book.suggestions = book.suggestions?.filter(
-        item => item.key !== key || item.status === 'TRACKED',
+        item =>
+          !equivalentSuggestionKeys(item.key, key) || item.status === 'TRACKED',
       );
     });
   },
@@ -292,7 +300,11 @@ export const recurringBillsService = {
       if (reviewed) {
         const cutoff = billDateOffset(
           parsed[5],
-          bill.cycle === 'YEARLY' ? -800 : -180,
+          bill.cycle === 'YEARLY'
+            ? -800
+            : bill.cycle === 'QUARTERLY'
+            ? -400
+            : -180,
         );
         const eventOf = (
           parts: NonNullable<ReturnType<typeof readBillAlertKey>>,

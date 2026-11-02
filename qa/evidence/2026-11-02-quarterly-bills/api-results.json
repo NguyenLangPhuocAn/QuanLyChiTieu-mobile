@@ -1,0 +1,7 @@
+{
+  "quarterlyRoundtrip": 200,
+  "identicalReplay": 200,
+  "nonQuarterPeriod": 400,
+  "metadataOnly": true,
+  "realMySQL": true
+}

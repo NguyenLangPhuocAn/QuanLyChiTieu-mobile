@@ -1,8 +1,10 @@
 import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from './mapTransactions';
+import { billMerchantIdentity } from './billMerchantIdentity';
 import { getCashFlowType } from './transactionClassification';
 import {
   billDueDate,
+  billCycleMonths,
   isBillDate,
   type BillBook,
   type BillCycle,
@@ -14,6 +16,8 @@ export type BillSuggestion = {
   merchant: string;
   input: BillInput;
   nextDate: string;
+  missingDates?: string[];
+  nameVariants?: string[];
   evidence: { id: number; date: string; amount: number; note: string }[];
 };
 export type BillSuggestionDecision = {
@@ -42,7 +46,7 @@ export const billMerchant = (note: string) =>
     .trim();
 export const isSuggestionKey = (key: unknown): key is string =>
   typeof key === 'string' &&
-  /^bill-suggest:v1:[A-Z]{3}:(WEEKLY|MONTHLY|YEARLY):[a-z0-9 ]{3,160}$/.test(
+  /^bill-suggest:v1:[A-Z]{3}:(WEEKLY|MONTHLY|QUARTERLY|YEARLY):[a-z0-9 ]{3,160}$/.test(
     key,
   );
 const dayGap = (a: string, b: string) =>
@@ -112,7 +116,22 @@ export function suggestBills(
       merchant.length > 160
     )
       continue;
-    const key = `${row.currency}|${merchant}`;
+    const identity = billMerchantIdentity(merchant);
+    if (
+      identity.length < 3 ||
+      identity.length > 160 ||
+      [
+        'chuyen khoan',
+        'thanh toan',
+        'giao dich',
+        'khac',
+        'chi',
+        'payment',
+      ].includes(identity) ||
+      /^(chuyen vi|wallet transfer|hoan tien|refund)\b/.test(identity)
+    )
+      continue;
+    const key = row.currency + '|' + identity;
     const current = groups.get(key);
     if (current) current.push(row);
     else groups.set(key, [row]);
@@ -134,60 +153,91 @@ export function suggestBills(
       continue;
     const [currency, merchant] = group.split('|');
     let found: BillSuggestion | undefined;
-    for (const cycle of ['MONTHLY', 'YEARLY', 'WEEKLY'] as BillCycle[]) {
+    for (const cycle of [
+      'MONTHLY',
+      'QUARTERLY',
+      'YEARLY',
+      'WEEKLY',
+    ] as BillCycle[]) {
       const first = evidence[0].date;
       const originalDay = Math.max(
         ...evidence.map(item => Number(item.date.slice(8))),
       );
+      const step = billCycleMonths(cycle);
       let anchorDate = first;
       if (cycle !== 'WEEKLY') {
         let year = Number(first.slice(0, 4)),
           month = Number(first.slice(5, 7));
         while (new Date(Date.UTC(year, month, 0)).getUTCDate() < originalDay) {
-          if (cycle === 'YEARLY') year -= 1;
-          else if (--month === 0) {
-            month = 12;
+          month -= step;
+          while (month < 1) {
+            month += 12;
             year -= 1;
           }
         }
-        anchorDate = `${year}-${String(month).padStart(2, '0')}-${String(
-          originalDay,
-        ).padStart(2, '0')}`;
+        anchorDate =
+          year +
+          '-' +
+          String(month).padStart(2, '0') +
+          '-' +
+          String(originalDay).padStart(2, '0');
       }
       if (!isBillDate(anchorDate)) continue;
-      const baseIndex =
+      const indexes = evidence.map(item =>
         cycle === 'WEEKLY'
-          ? 0
-          : (monthIndex(first) - monthIndex(anchorDate)) /
-            (cycle === 'YEARLY' ? 12 : 1);
-      const dates = evidence.map(item => item.date);
-      const consecutive = dates
-        .slice(1)
-        .every((date, i) =>
-          cycle === 'WEEKLY'
-            ? Math.abs(dayGap(date, dates[i]) - 7) <= 1
-            : monthIndex(date) - monthIndex(dates[i]) ===
-              (cycle === 'YEARLY' ? 12 : 1),
-        );
+          ? Math.round(dayGap(item.date, anchorDate) / 7)
+          : (monthIndex(item.date) - monthIndex(anchorDate)) / step,
+      );
       if (
-        !consecutive ||
-        dates.some(
-          (date, i) =>
+        indexes.some(
+          (index, i) =>
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index > 11000 ||
+            (i > 0 &&
+              (index <= indexes[i - 1] || index - indexes[i - 1] > 3)) ||
             Math.abs(
-              dayGap(date, billDueDate({ anchorDate, cycle }, i + baseIndex)),
+              dayGap(
+                evidence[i].date,
+                billDueDate({ anchorDate, cycle }, index),
+              ),
             ) > (cycle === 'WEEKLY' ? 1 : 3),
         )
       )
         continue;
-      let nextIndex = evidence.length + baseIndex;
-      let nextDate = billDueDate({ anchorDate, cycle }, nextIndex);
+      const firstIndex = indexes[0],
+        lastIndex = indexes.at(-1)!;
+      const missingCount = lastIndex - firstIndex + 1 - evidence.length;
+      // At least 3 observations, a real adjacent pair, >= 2/3 coverage,
+      // at most 2 missing slots: never turn arbitrary sparse purchases into a bill.
       if (
-        dayGap(today, evidence.at(-1)!.date) >
-        (cycle === 'WEEKLY' ? 21 : cycle === 'MONTHLY' ? 75 : 400)
+        missingCount > 2 ||
+        missingCount * 2 > evidence.length ||
+        !indexes.slice(1).some((n, i) => n - indexes[i] === 1)
       )
         continue;
-      while (nextDate < today && nextIndex < 11000)
+      if (
+        dayGap(today, evidence.at(-1)!.date) >
+        (cycle === 'WEEKLY'
+          ? 21
+          : cycle === 'MONTHLY'
+          ? 75
+          : cycle === 'QUARTERLY'
+          ? 210
+          : 400)
+      )
+        continue;
+      const seen = new Set(indexes);
+      const missingDates: string[] = [];
+      for (let i = firstIndex; i <= lastIndex; i++)
+        if (!seen.has(i))
+          missingDates.push(billDueDate({ anchorDate, cycle }, i));
+      let nextIndex = lastIndex + 1;
+      let nextDate = billDueDate({ anchorDate, cycle }, nextIndex);
+      while (nextDate < today && nextIndex < 11000) {
+        missingDates.push(nextDate);
         nextDate = billDueDate({ anchorDate, cycle }, ++nextIndex);
+      }
       if (!isBillDate(nextDate)) continue;
       const amounts = evidence.map(item => item.amount);
       const minAmount = Math.min(...amounts),
@@ -195,11 +245,16 @@ export function suggestBills(
       const label = cleanLabel(
         rows.find(row => row.id === evidence.at(-1)!.id)!.note ?? '',
       ).slice(0, 100);
+      const variants = new Map<string, string>();
+      for (const row of rows)
+        variants.set(billMerchant(row.note ?? ''), cleanLabel(row.note ?? ''));
       found = {
-        key: `bill-suggest:v1:${currency}:${cycle}:${merchant}`,
+        key: 'bill-suggest:v1:' + currency + ':' + cycle + ':' + merchant,
         merchant,
         nextDate,
         evidence,
+        missingDates,
+        nameVariants: variants.size > 1 ? [...variants.values()].sort() : [],
         input: {
           label,
           currency,
@@ -222,27 +277,64 @@ export function suggestBills(
   );
 }
 
+export function equivalentSuggestionKeys(a: string, b: string) {
+  if (!isSuggestionKey(a) || !isSuggestionKey(b)) return false;
+  const left = a.split(':'),
+    right = b.split(':');
+  return (
+    left[2] === right[2] &&
+    left[3] === right[3] &&
+    billMerchantIdentity(left[4]) === billMerchantIdentity(right[4])
+  );
+}
+
 export function suggestionVisibility(
   candidate: BillSuggestion,
   book: BillBook,
   today: string,
 ) {
-  const decision = book.suggestions?.find(item => item.key === candidate.key);
+  const decisions =
+    book.suggestions?.filter(item =>
+      equivalentSuggestionKeys(item.key, candidate.key),
+    ) ?? [];
   if (
-    decision?.status === 'TRACKED' ||
+    decisions.some(d => d.status === 'TRACKED') ||
     book.bills.some(
       bill =>
         !bill.archived &&
         bill.currency === candidate.input.currency &&
         bill.cycle === candidate.input.cycle &&
-        billMerchant(bill.label) === candidate.merchant,
+        billMerchantIdentity(billMerchant(bill.label)) === candidate.merchant,
     )
   )
     return 'TRACKED';
   if (
-    decision?.status === 'IGNORED' ||
-    (decision?.status === 'LATER' && decision.until! > today)
+    decisions.some(
+      d => d.status === 'IGNORED' || (d.status === 'LATER' && d.until! > today),
+    )
   )
     return 'HIDDEN';
   return 'VISIBLE';
+}
+
+export function billSuggestionNotes(candidate: BillSuggestion): string[] {
+  const notes: string[] = [];
+  if (candidate.missingDates?.length)
+    notes.push(
+      'Chưa thấy giao dịch ở ' +
+        candidate.missingDates.length +
+        ' kỳ: ' +
+        candidate.missingDates
+          .slice(0, 6)
+          .map(d => d.split('-').reverse().join('/'))
+          .join(', ') +
+        '. Không đồng nghĩa chưa thanh toán.',
+    );
+  if (candidate.nameVariants?.length)
+    notes.push(
+      'Khác cách ghi tên: ' +
+        candidate.nameVariants.slice(0, 3).join(' · ') +
+        '. Kiểm tra cùng dịch vụ và gói trước khi theo dõi.',
+    );
+  return notes;
 }

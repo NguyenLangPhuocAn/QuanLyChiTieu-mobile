@@ -1,5 +1,12 @@
 # Gợi ý khoản chi lặp — 27/10/2026
 
+## Mở rộng đã kiểm 02/11/2026
+
+- Thêm chu kỳ **hằng quý** xuyên suốt gợi ý, form, lịch, nhắc native, cảnh báo và đồng bộ backend. Ngày 31 đi qua tháng ngắn dùng ngày cuối tháng nhưng giữ ngày gốc.
+- Chấp nhận một hoặc hai kỳ thiếu khi còn ít nhất ba giao dịch, có kỳ liên tiếp và đủ độ phủ. Hiện ngày thiếu để kiểm tra; không tự coi là nợ hay tự tạo giao dịch. Tên dịch vụ có các tiền tố thanh toán hoặc cách ghi FPT/Viettel Internet tương đương được đối chiếu thận trọng; số gói, tiền tệ và các tên khác hẳn vẫn tách riêng. Quyết định bỏ qua/để sau/theo dõi cũ còn hiệu lực khi khóa gợi ý thay đổi.
+- Android local/API QA/MySQL: 14/14 dòng thành đúng hai gợi ý, FPT quý thiếu 31/07 và Music tháng thiếu 05/09. Xem chứng cứ, Hủy vẫn 0 lịch; xác nhận tạo một lịch quý bắt đầu 31/01/2027, 0 kỳ cũ được xử lý, số dư và 14 giao dịch không đổi. Mở lại và quét lại không gợi ý trùng FPT. Ảnh gốc và biên bản: [2026-11-02-quarterly-bills](evidence/2026-11-02-quarterly-bills/README.md).
+- Mobile639/639, tập trung sau sửa cuối33/33; backend381/381; JVM14/14, build/cài debug QA thành công. Đây là source local. Cần phát hành backend+APK mới cùng lúc theo yêu cầu gom bản cập nhật; bản1.2.4 đang cài chưa có chu kỳ quý.
+
 Đợt B, phần phát hiện/gợi ý trong Tài khoản → Hóa đơn định kỳ. Đây là lịch dự kiến do người dùng xác nhận, không phải kết luận dịch vụ đang tự gia hạn hoặc còn nợ. Không thay detector cũ của dự báo/FinancialCenter; chưa hoàn thành phần kiểm lại liên kết thanh toán và tích hợp backup/dự báo.
 
 ## Hành vi đã triển khai

@@ -30,7 +30,10 @@ import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
 import type { BillPaymentTarget } from '../../utils/billPaymentChecks';
-import type { BillSuggestion } from '../../utils/billSuggestions';
+import {
+  billSuggestionNotes,
+  type BillSuggestion,
+} from '../../utils/billSuggestions';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -65,6 +68,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'RecurringBills'>;
 const cycleNames: Record<BillCycle, string> = {
   WEEKLY: 'Hằng tuần',
   MONTHLY: 'Hằng tháng',
+  QUARTERLY: 'Hằng quý',
   YEARLY: 'Hằng năm',
 };
 const dateLabel = (date: string) => date.split('-').reverse().join('/');
@@ -435,7 +439,9 @@ function RecurringBillsContent({
             cycleNames[input.cycle]
           } · Theo dõi từ ${dateLabel(
             input.startDate ?? input.anchorDate,
-          )}\nChỉ tạo lịch dự kiến, không tạo giao dịch hoặc đánh dấu các khoản cũ đã trả. Áp dụng cài đặt nhắc hóa đơn hiện tại.`,
+          )}\n${billSuggestionNotes(sourceSuggestion).join('\n')}${
+            billSuggestionNotes(sourceSuggestion).length ? '\n' : ''
+          }Chỉ tạo lịch dự kiến, không tạo giao dịch hoặc đánh dấu các khoản cũ đã trả. Áp dụng cài đặt nhắc hóa đơn hiện tại.`,
           [
             { text: 'Hủy', style: 'cancel' },
             {
@@ -590,6 +596,7 @@ function RecurringBillsContent({
                       accessibilityState={{ selected: editor.cycle === cycle }}
                       style={[
                         styles.option,
+                        styles.cycleOption,
                         editor.cycle === cycle && styles.selected,
                       ]}
                       onPress={() => change({ cycle })}
@@ -1164,6 +1171,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
   },
+  cycleOption: { flexBasis: '46%' },
   selected: { backgroundColor: '#FFF0DF', borderColor: '#FF8C00' },
   date: {
     padding: 14,

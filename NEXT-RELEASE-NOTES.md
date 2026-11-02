@@ -1,4 +1,12 @@
-# Ghi chú thay đổi — 1.2.4 phát hành 02/11/2026
+# Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
+
+## Hóa đơn định kỳ linh hoạt — 02/11/2026
+
+- Gợi ý **hằng quý**, hiển thị kỳ chưa tìm thấy giao dịch và các cách ghi tên dịch vụ khác nhau để người dùng kiểm tra. Vẫn giữ riêng các gói và tiền tệ; tên đổi hoàn toàn có thể cần nhập tay.
+- Xem lại các khoản gốc, chỉnh lịch và xác nhận trước khi theo dõi. Lịch bắt đầu từ kỳ sắp tới, không tự tạo giao dịch hoặc đánh dấu các kỳ cũ đã trả. Nhắc hóa đơn và dự báo nhận chu kỳ quý.
+- Đã thử trên Android local với 14 giao dịch QA: tạo một lịch quý, mở lại và quét lại không trùng; số dư không đổi. Mobile639/639, backend381/381, JVM14/14. Chưa cập nhật APK hoặc backend production; cần phát hành hai phần cùng nhau và thử máy thật.
+
+## Bản đã phát hành — 1.2.4, 02/11/2026
 
 ## Nhập lại giao dịch — 02/11/2026
 

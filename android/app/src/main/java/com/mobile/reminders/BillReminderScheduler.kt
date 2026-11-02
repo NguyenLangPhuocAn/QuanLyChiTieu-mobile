@@ -98,7 +98,7 @@ object BillReminderScheduler {
       val startDate = if (row.has("startDate")) LocalDate.parse(row.getString("startDate")) else anchor
       check(startDate.year in 2000..2199 && !startDate.isBefore(anchor))
       val cycle = row.getString("cycle")
-      check(cycle in listOf("WEEKLY", "MONTHLY", "YEARLY"))
+      check(cycle in listOf("WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"))
       if (!row.getBoolean("paused") && !row.getBoolean("archived") && row.getBoolean("reminderEnabled")) {
         bills.add(ReminderBill(id, anchor, cycle, startDate))
       }

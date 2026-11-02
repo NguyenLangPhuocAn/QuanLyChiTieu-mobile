@@ -1,0 +1,10 @@
+{
+  "package": "com.mobile.dev",
+  "qaUserId": 9,
+  "activeOwnerIsIsolatedQa": true,
+  "quarterlyBills": 1,
+  "anchorDate": "2026-01-31",
+  "startDate": "2027-01-31",
+  "handledPeriods": 0,
+  "privateTokensIncluded": false
+}
