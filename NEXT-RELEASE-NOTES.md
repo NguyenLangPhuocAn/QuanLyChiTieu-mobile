@@ -1,4 +1,4 @@
-# Bản kế tiếp — bản nháp, chưa phát hành
+# Ghi chú thay đổi — 1.2.4 phát hành 02/11/2026
 
 ## Nhập lại giao dịch — 02/11/2026
 
@@ -6,7 +6,7 @@
 - Giữ một mã yêu cầu mới cho retry và hàng chờ offline; hủy xác nhận cũ sau đóng form/ra nền/đổi tài khoản. Không áp dụng vay/nợ hoặc chuyển tiết kiệm.
 - Mobile624/624 qua99bộ, TypeScript/ESLint đạt; backend377/377. Android local/API3303/MySQL QA: chưa xác nhận giữ944.750đ; xác nhận thêm đúng một khoản79.000đ, còn865.750đ. Hai replay trả cùngID32, không trừ tiếp. Bằng chứng qa/evidence/2026-11-02-repeat-transaction.
 - Backend hỗ trợ lịch/sao lưu/widget mới đã triển khai ngày02/11 theo xác nhận người dùng: thêm planning_snapshots, giữ nguyên bảng tiền; health local/public200, planning-sync thiếuJWT401. Giữ dist cũ riêng để quay lui. Không đổi web quảng bá.
-- Đang chuẩn bị phát hành APK1.2.4/code9 theo yêu cầu chốt. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.
+- Đã phát hành APK1.2.4/code9 qua CI41410274474; build Android11m7s, toàn bộ624test đạt. APK tải lại có SHA-256 khớp manifest, cùng chứng chỉ bản1.2.3, package com.mobile, ARMv7/ARM64 và API production; không có endpoint/fixture QA. Link: https://github.com/NguyenLangPhuocAn/QuanLyChiTieu-mobile/releases/download/v1.2.4/QuanLyChiTieu-1.2.4.apk. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.
 
 
 

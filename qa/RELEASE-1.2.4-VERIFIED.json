@@ -1,0 +1,24 @@
+{
+  "versionCode": 9,
+  "versionName": "1.2.4",
+  "apkUrl": "https://github.com/NguyenLangPhuocAn/QuanLyChiTieu-mobile/releases/download/v1.2.4/QuanLyChiTieu-1.2.4.apk",
+  "sha256": "7810E6053CD532FB8FE4CF68107A347CB70818CF9DA3F3423150612E71B6E3B8",
+  "notes": "# Sổ Thu Chi Nova 1.2.4\n\n## Nhập giao dịch nhanh\n- Widget Thu chi nhanh trên màn hình chính: Chi, Thu, Vay/Nợ, danh mục, nói và đọc ảnh. Form riêng trên launcher có ví cuộn ngang, lịch chọn ngày, xem trước và xác nhận.\n- Mic hiển thị thanh thu âm gọn. Camera cho chọn chụp mới hoặc thư viện trước khi mở form; ảnh quét không tự đính kèm.\n- Thêm Nhập lại từ chi tiết giao dịch thu/chi: giữ tiền, ghi chú, hashtag và danh mục/ví còn hợp lệ; ngày mặc định hôm nay. Tùy chọn kèm chi tiết món. Xem trước rồi xác nhận giao dịch mới; không mang ảnh hoặc mã ngân hàng cũ.\n- Giữ mã chống trùng khi thử lưu lại hoặc mất mạng; sửa tình huống đã lưu nhưng cửa sổ widget chưa đóng.\n\n## Lịch và dữ liệu\n- Lịch hóa đơn định kỳ, nhắc thanh toán và kiểm tra khoản có thể bỏ sót/tăng bất thường. Khoản thu/chi dự kiến và Chi an toàn có giải thích cách tính.\n- Tùy chọn đồng bộ lịch giữa thiết bị. Có mạng sẽ đồng bộ khi app đang mở; hai bên cùng sửa cần chọn bản giữ lại.\n- Sao lưu JSON thường, không mật khẩu. Lịch hóa đơn và khoản dự kiến nằm chung một file, có xem trước và xác nhận khôi phục.\n- Mất mạng sau khi từng đăng nhập: mở dữ liệu đã lưu, xếp hàng giao dịch thu/chi thường; gửi lại khi app mở và có mạng. Chưa tự đồng bộ khi force-stop.\n\n## Lưu ý khi dùng\n- Giao dịch từ thông báo, giọng nói và ảnh cần kiểm tra/chọn ví/xác nhận. Lắc/chuông lấy thông báo mới nhất còn trong thanh thông báo; không bảo đảm đó là banner đang nổi.\n- Vay/Nợ, Google, AI và OCR vẫn cần mạng. Nhận giọng nói/ảnh thật, quyền thông báo và nhắc lịch trên các hãng điện thoại cần thử thêm.\n- Backend hỗ trợ bản này đã được cập nhật ngày 02/11/2026. Trang web quảng bá giữ nguyên.",
+  "required": false,
+  "publishedAt": "2026-11-02T08:16:23.305Z",
+  "sha256Verified": true,
+  "signatureVerified": true,
+  "runId": 41410274474,
+  "sourceCommit": "6254e9bff99c3701858b70a3a30ab84cdd0ac99a",
+  "bytes": 50012370,
+  "verifiedAt": "2026-11-02T08:16:50.814Z",
+  "productionCertificateMatches": "1.2.3",
+  "certificateSha256": "8384ee424c8b86c514df26c8bb1d3baa3a212ab886c79533c40e4c09fb0b01ca",
+  "applicationId": "com.mobile",
+  "architectures": [
+    "armeabi-v7a",
+    "arm64-v8a"
+  ],
+  "productionApiVerified": true,
+  "qaFixtureAbsent": true
+}

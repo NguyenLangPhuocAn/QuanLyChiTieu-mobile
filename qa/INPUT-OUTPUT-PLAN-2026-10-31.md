@@ -22,7 +22,7 @@ Phạm vi rà soát: luồng nhập giao dịch, widget, đọc ảnh, Excel, b�
 - Đọc ảnh: tái sử dụng kết quả cùng ảnh trong phiên, hủy yêu cầu khi đổi ảnh/rời màn; đo thời gian nén/upload/model trên điện thoại và4G trước khi chọn mức nén.
 - Danh sách giao dịch: tiếp tục dùng cache, phân trang và tránh tải lại toàn bộ sau mỗi lần lưu; chỉ thêm tối ưu nếu số đo chỉ ra điểm chậm.
 
-Cập nhật02/11: mục1 đã có source, kiểm thử và Android/API/MySQL QA đạt (xem biên bản nhập lại). Mục2 nhớ mẫu Excel và mục3 nhớ bộ lọc xuất vẫn chưa triển khai. Backend mới đã triển khai theo xác nhận; APK1.2.4 đang chuẩn bị, web giữ nguyên.
+Cập nhật02/11: mục1 đã có source, kiểm thử và Android/API/MySQL QA đạt (xem biên bản nhập lại). Mục2 nhớ mẫu Excel và mục3 nhớ bộ lọc xuất vẫn chưa triển khai. Backend mới đã triển khai theo xác nhận; APK1.2.4 đã phát hành, web giữ nguyên.
 
 
 ## Nhập lại giao dịch — 02/11/2026
@@ -31,4 +31,4 @@ Cập nhật02/11: mục1 đã có source, kiểm thử và Android/API/MySQL QA
 - Giữ một mã yêu cầu mới cho retry và hàng chờ offline; hủy xác nhận cũ sau đóng form/ra nền/đổi tài khoản. Không áp dụng vay/nợ hoặc chuyển tiết kiệm.
 - Mobile624/624 qua99bộ, TypeScript/ESLint đạt; backend377/377. Android local/API3303/MySQL QA: chưa xác nhận giữ944.750đ; xác nhận thêm đúng một khoản79.000đ, còn865.750đ. Hai replay trả cùngID32, không trừ tiếp. Bằng chứng qa/evidence/2026-11-02-repeat-transaction.
 - Backend hỗ trợ lịch/sao lưu/widget mới đã triển khai ngày02/11 theo xác nhận người dùng: thêm planning_snapshots, giữ nguyên bảng tiền; health local/public200, planning-sync thiếuJWT401. Giữ dist cũ riêng để quay lui. Không đổi web quảng bá.
-- Đang chuẩn bị phát hành APK1.2.4/code9 theo yêu cầu chốt. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.
+- Đã phát hành APK1.2.4/code9 qua CI41410274474; build Android11m7s, toàn bộ624test đạt. APK tải lại có SHA-256 khớp manifest, cùng chứng chỉ bản1.2.3, package com.mobile, ARMv7/ARM64 và API production; không có endpoint/fixture QA. Link: https://github.com/NguyenLangPhuocAn/QuanLyChiTieu-mobile/releases/download/v1.2.4/QuanLyChiTieu-1.2.4.apk. Giới hạn máy thật/OEM/AI thật ghi riêng, không coi emulator là điện thoại thật.
