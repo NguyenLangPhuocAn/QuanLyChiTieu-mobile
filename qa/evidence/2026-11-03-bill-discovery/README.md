@@ -10,9 +10,9 @@
 ## Kiểm tra mã
 
 - Jest toàn bộ 651/651 đạt ở lần chạy trước khi thêm ca kỳ quá hạn; ca mới và toàn bộ 18/18 ca màn lịch đạt ở lần chạy sau. Kiểm thử gồm tự đối chiếu khi mở Đã xử lý, trả trước hạn, ghi chú khác tên hóa đơn, tìm lịch, mở form từ kỳ ngoài 90 ngày và ưu tiên kỳ quá hạn.
-- TypeScript, ESLint các file sửa và `git diff --check` đạt. CI phát hành sẽ chạy lại toàn bộ bộ kiểm thử.
+- TypeScript, ESLint các file sửa và `git diff --check` đạt. CI phát hành run `41576516799` chạy lại TypeScript/toàn bộ Jest, build, kiểm tra chữ ký và tạo Release thành công.
 
 ## Giới hạn
 
-- Chỉ kiểm tra trên Android giả lập với dữ liệu QA; chưa kiểm trên điện thoại thật hoặc APK phát hành. Không cập nhật server production trong đợt này.
+- Ảnh chỉ kiểm tra trên Android giả lập với dữ liệu QA; chưa thử luồng này trên điện thoại thật. Mã đã phát hành trong APK 1.2.5 sau đó; không cập nhật server production trong đợt này.
 - Trạng thái Đã trả xuất phát từ liên kết đã lưu; khi API không đối chiếu được, app giữ nguyên trạng thái và báo lỗi để thử lại, không tự coi là chưa trả.
