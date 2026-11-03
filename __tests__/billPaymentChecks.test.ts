@@ -101,7 +101,6 @@ it('distinguishes unchanged, modified, unavailable, and ineligible sources witho
     { transaction_date: '2026-10-28garbage' },
     { transaction_date: '2026-02-30T00:00:00Z' },
     { amount: true },
-    { transaction_date: '2026-08-01' },
     { category: { cash_flow_group: 'LOAN_DEBT' } },
     { category: { cash_flow_group: 'SAVING_TRANSFER' } },
     { category: { cash_flow_group: 'UNKNOWN' } },
@@ -111,6 +110,21 @@ it('distinguishes unchanged, modified, unavailable, and ineligible sources witho
         .kind,
     ).toBe('INELIGIBLE');
   expect(target.period.payment.amount).toBe(240000);
+});
+it('keeps an explicitly linked early payment even when its note differs from the bill name', () => {
+  const early = {
+    ...transaction,
+    note: 'FPT trả trước',
+    transaction_date: '2026-08-01',
+  };
+  const linked = {
+    ...target,
+    period: {
+      ...target.period,
+      payment: { ...target.period.payment, note: early.note, date: '2026-08-01' },
+    },
+  };
+  expect(checkBillPayment(linked, early).kind).toBe('MATCHED');
 });
 it('uses bounded batches by exact IDs and never scans transaction history', async () => {
   const targets = Array.from({ length: 101 }, (_, i) => ({

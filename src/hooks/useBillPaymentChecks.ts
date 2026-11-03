@@ -36,8 +36,10 @@ export function useBillPaymentChecks(
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<Record<string, BillPaymentCheck>>({});
   const [error, setError] = useState<string | null>(null);
+  const [checkRevision, setCheckRevision] = useState(0);
   useEffect(() => {
     const listener = AppState.addEventListener('change', state => {
+      const wasForeground = foreground.current;
       foreground.current = state === 'active';
       if (!foreground.current) {
         revision.current += 1;
@@ -45,6 +47,8 @@ export function useBillPaymentChecks(
         setLoading(false);
         setResults({});
         setError(null);
+      } else if (!wasForeground) {
+        setCheckRevision(value => value + 1);
       }
     });
     return () => listener.remove();
@@ -56,6 +60,7 @@ export function useBillPaymentChecks(
       setResults({});
       setLoading(false);
       running.current = false;
+      setCheckRevision(value => value + 1);
       return () => {
         live.current = false;
         running.current = false;
@@ -122,5 +127,10 @@ export function useBillPaymentChecks(
       }
     }
   };
+  useEffect(() => {
+    if (enabled && targets.length) check();
+    // A new target list, screen visit or foreground session needs a fresh read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, signature, token, checkRevision]);
   return { targets, results, error, loading, progress, check, cancel, capture };
 }

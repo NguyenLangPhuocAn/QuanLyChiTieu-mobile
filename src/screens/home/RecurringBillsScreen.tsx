@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -124,6 +125,8 @@ function RecurringBillsContent({
     useState<BillSuggestion | null>(null);
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
+  const [search, setSearch] = useState('');
+  const [expandedBill, setExpandedBill] = useState<string | null>(null);
   const [visible, setVisible] = useState(20);
   const [reminderFilter, setReminderFilter] = useState(() => {
     const date = route.params?.reminderDate;
@@ -202,6 +205,39 @@ function RecurringBillsContent({
         : [],
     [book, today],
   );
+  const nextByBill = useMemo(() => {
+    const result = new Map<string, BillOccurrence>();
+    if (book) {
+      for (const item of billOccurrences(
+        book,
+        '2000-01-01',
+        billDateOffset(today, 730),
+        today,
+      )) {
+        if (
+          !item.bill.archived &&
+          !item.bill.paused &&
+          ['PENDING', 'OVERDUE'].includes(item.status) &&
+          !result.has(item.bill.id)
+        ) result.set(item.bill.id, item);
+      }
+    }
+    return result;
+  }, [book, today]);
+  const matchesSearch = (label: string) =>
+    label
+      .toLocaleLowerCase('vi')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .includes(
+        search
+          .trim()
+          .toLocaleLowerCase('vi')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/đ/g, 'd'),
+      );
   const displayed = occurrences
     .filter(item =>
       tab === 'DONE'
@@ -220,6 +256,7 @@ function RecurringBillsContent({
           )),
     );
   if (tab === 'DONE') displayed.reverse();
+  const searched = displayed.filter(item => matchesSearch(item.bill.label));
   const closePicker = () => {
     pickerRevision.current += 1;
     setPicker(null);
@@ -238,7 +275,7 @@ function RecurringBillsContent({
       const result = await transactionsService.getPage(token, {
         type: 'EXPENSE',
         cash_flow: 'normal',
-        from: billDateOffset(occurrence.dueDate, -31),
+        from: billDateOffset(occurrence.dueDate, -365),
         to: billDateOffset(occurrence.dueDate, 31),
         page,
         limit: 40,
@@ -584,13 +621,6 @@ function RecurringBillsContent({
                         pointerEvents={busy ? 'none' : 'auto'}
                         style={styles.editorFields}
                       >
-                        {sourceSuggestion ? (
-                          <Text style={styles.muted}>
-                            Gợi ý từ {sourceSuggestion.evidence.length} lần chi
-                            đã tải. Hãy kiểm tra tên, chu kỳ và khoảng tiền
-                            trước khi tạo lịch.
-                          </Text>
-                        ) : null}
                         <FormField
                           label="Tên hóa đơn"
                           accessibilityLabel="Tên hóa đơn"
@@ -801,46 +831,50 @@ function RecurringBillsContent({
                 </TouchableOpacity>
               ))}
             </View>
+            <TextInput
+              accessibilityLabel="Tìm hóa đơn"
+              placeholder="Tìm hóa đơn"
+              placeholderTextColor="#9B7458"
+              value={search}
+              onChangeText={setSearch}
+              style={styles.search}
+            />
             {tab !== 'BILLS' ? (
               <>
                 <Text style={styles.muted}>
                   Các kỳ đến hạn đến {dateLabel(billDateOffset(today, 90))}.
                 </Text>
-                {tab === 'DONE' && paymentChecks.targets.length ? (
+                {tab === 'DONE' &&
+                (paymentChecks.loading || paymentChecks.error) ? (
                   <View style={styles.card}>
-                    <Text style={styles.heading}>Đối chiếu thanh toán</Text>
-                    <Text style={styles.muted}>
-                      {paymentChecks.loading
-                        ? `Đang kiểm tra ${paymentChecks.progress}/${paymentChecks.targets.length} liên kết…`
-                        : 'Kiểm tra giao dịch gốc đã sửa hoặc không còn truy cập được. Không tự gỡ liên kết hay ghi tiền.'}
-                    </Text>
-                    <ActionButton
-                      label={
-                        paymentChecks.loading
-                          ? 'Dừng kiểm tra liên kết'
-                          : 'Kiểm tra liên kết'
-                      }
-                      secondary
-                      disabled={busy}
-                      onPress={
-                        paymentChecks.loading
-                          ? paymentChecks.cancel
-                          : paymentChecks.check
-                      }
-                    />
+                    {paymentChecks.loading ? (
+                      <Text style={styles.muted}>
+                        Đang kiểm tra {paymentChecks.progress}/
+                        {paymentChecks.targets.length} giao dịch đã trả…
+                      </Text>
+                    ) : null}
                     {paymentChecks.error ? (
-                      <Text style={styles.error}>{paymentChecks.error}</Text>
+                      <>
+                        <Text style={styles.error}>{paymentChecks.error}</Text>
+                        <ActionButton
+                          label="Thử lại"
+                          secondary
+                          onPress={paymentChecks.check}
+                        />
+                      </>
                     ) : null}
                   </View>
                 ) : null}
-                {!displayed.length ? (
+                {!searched.length ? (
                   <Text style={styles.empty}>
-                    {tab === 'PENDING'
+                    {search.trim()
+                      ? 'Không tìm thấy hóa đơn phù hợp.'
+                      : tab === 'PENDING'
                       ? 'Chưa có hóa đơn chờ thanh toán.'
                       : 'Chưa có kỳ được xử lý.'}
                   </Text>
                 ) : null}
-                {displayed.slice(0, visible).map(item => (
+                {searched.slice(0, visible).map(item => (
                   <View
                     key={`${item.bill.id}:${item.dueDate}`}
                     style={styles.card}
@@ -858,10 +892,9 @@ function RecurringBillsContent({
                       >
                         {
                           {
-                            PENDING:
-                              item.dueDate === today ? 'Hôm nay' : 'Sắp tới',
-                            OVERDUE: 'Quá hạn',
-                            PAID: 'Đã liên kết',
+                            PENDING: 'Chưa trả',
+                            OVERDUE: 'Chưa trả · quá hạn',
+                            PAID: 'Đã trả',
                             SKIPPED: 'Đã bỏ qua',
                           }[item.status]
                         }
@@ -931,7 +964,7 @@ function RecurringBillsContent({
                     )}
                   </View>
                 ))}
-                {displayed.length > visible ? (
+                {searched.length > visible ? (
                   <ActionButton
                     label="Xem thêm kỳ"
                     secondary
@@ -942,13 +975,17 @@ function RecurringBillsContent({
             ) : (
               <>
                 <BillUpcomingSummary book={book} today={today} />
-                {!book.bills.some(bill => !bill.archived) ? (
+                {!book.bills.some(
+                  bill => !bill.archived && matchesSearch(bill.label),
+                ) ? (
                   <Text style={styles.empty}>
-                    Thêm tiền nhà, điện, nước hoặc thuê bao để theo dõi kỳ tới.
+                    {search.trim()
+                      ? 'Không tìm thấy hóa đơn phù hợp.'
+                      : 'Thêm tiền nhà, điện, nước hoặc thuê bao để theo dõi kỳ tới.'}
                   </Text>
                 ) : null}
                 {book.bills
-                  .filter(bill => !bill.archived)
+                  .filter(bill => !bill.archived && matchesSearch(bill.label))
                   .map(bill => (
                     <View key={bill.id} style={styles.card}>
                       <View style={styles.row}>
@@ -964,77 +1001,88 @@ function RecurringBillsContent({
                         {cycleNames[bill.cycle]} · từ{' '}
                         {dateLabel(bill.startDate ?? bill.anchorDate)}
                       </Text>
-                      {bill.note ? (
-                        <Text style={styles.muted}>{bill.note}</Text>
+                      {nextByBill.get(bill.id) ? (
+                        <Text style={styles.muted}>
+                          Chưa trả · kỳ {dateLabel(nextByBill.get(bill.id)!.dueDate)}
+                        </Text>
                       ) : null}
-                      <ActionButton
-                        label={
-                          bill.reminderEnabled === false
-                            ? 'Bật nhắc lịch này'
-                            : 'Tắt nhắc lịch này'
-                        }
-                        secondary
-                        disabled={busy}
-                        onPress={() =>
-                          execute(() =>
-                            recurringBillsService.setReminder(
-                              scope,
-                              bill.id,
-                              bill.reminderEnabled === false,
-                            ),
-                          )
-                        }
-                      />
                       <View style={styles.row}>
-                        <ActionButton
-                          label="Sửa lịch"
-                          secondary
-                          disabled={busy}
-                          onPress={() => editBill(bill)}
-                        />
-                        <ActionButton
-                          label={bill.paused ? 'Tiếp tục lịch' : 'Tạm dừng'}
-                          secondary
-                          disabled={busy}
-                          onPress={() =>
-                            execute(() =>
-                              recurringBillsService.setPaused(
-                                scope,
-                                bill.id,
-                                !bill.paused,
-                              ),
-                            )
-                          }
-                        />
                         <TouchableOpacity
                           accessibilityRole="button"
-                          accessibilityLabel={`Xóa lịch ${bill.label}`}
-                          disabled={busy}
-                          style={styles.smallButton}
+                          accessibilityLabel={`Chi tiết lịch ${bill.label}`}
+                          style={styles.linkButton}
                           onPress={() =>
-                            Alert.alert(
-                              'Xóa lịch hóa đơn?',
-                              `${bill.label}\nNgừng theo dõi lịch. Giao dịch gốc được giữ nguyên; liên kết đã trả vẫn được giữ để chống dùng trùng.`,
-                              [
-                                { text: 'Hủy', style: 'cancel' },
-                                {
-                                  text: 'Xóa lịch',
-                                  style: 'destructive',
-                                  onPress: () =>
-                                    execute(() =>
-                                      recurringBillsService.archive(
-                                        scope,
-                                        bill.id,
-                                      ),
-                                    ),
-                                },
-                              ],
-                            )
+                            setExpandedBill(value => value === bill.id ? null : bill.id)
                           }
                         >
-                          <Text style={styles.error}>Xóa</Text>
+                          <Text style={styles.link}>Chi tiết</Text>
                         </TouchableOpacity>
+                        {nextByBill.get(bill.id) ? (
+                          <TouchableOpacity
+                            accessibilityRole="button"
+                            accessibilityLabel={`Tạo giao dịch từ lịch ${bill.label}`}
+                            style={styles.primarySmallButton}
+                            onPress={() => setPaymentEntry(nextByBill.get(bill.id)!)}
+                          >
+                            <Text style={styles.primarySmallText}>Tạo giao dịch</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
+                      {expandedBill === bill.id ? (
+                        <View style={styles.detailSection}>
+                          {bill.note ? <Text style={styles.muted}>{bill.note}</Text> : null}
+                          {book.periods
+                            .filter(period => period.billId === bill.id)
+                            .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+                            .slice(0, 5)
+                            .map(period => (
+                              <View key={period.dueDate} style={styles.periodRow}>
+                                <Text style={styles.label}>
+                                  Kỳ {dateLabel(period.dueDate)} · {period.status === 'PAID' ? 'Đã trả' : 'Đã bỏ qua'}
+                                </Text>
+                                {period.status === 'PAID' ? (
+                                  <Text style={styles.muted}>
+                                    Giao dịch #{period.payment.id} · {formatCurrency(period.payment.amount, period.payment.currency)} · {dateLabel(period.payment.date)}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            ))}
+                          <Text style={styles.muted}>
+                            Kỳ đã trả được ghi bằng mã giao dịch đã chọn, không phụ thuộc tên hóa đơn hay ghi chú giao dịch.
+                          </Text>
+                          <ActionButton
+                            label={bill.reminderEnabled === false ? 'Bật nhắc lịch này' : 'Tắt nhắc lịch này'}
+                            secondary
+                            disabled={busy}
+                            onPress={() => execute(() => recurringBillsService.setReminder(scope, bill.id, bill.reminderEnabled === false))}
+                          />
+                          <View style={styles.row}>
+                            <ActionButton label="Sửa lịch" secondary disabled={busy} onPress={() => editBill(bill)} />
+                            <ActionButton
+                              label={bill.paused ? 'Tiếp tục lịch' : 'Tạm dừng'}
+                              secondary
+                              disabled={busy}
+                              onPress={() => execute(() => recurringBillsService.setPaused(scope, bill.id, !bill.paused))}
+                            />
+                            <TouchableOpacity
+                              accessibilityRole="button"
+                              accessibilityLabel={`Xóa lịch ${bill.label}`}
+                              disabled={busy}
+                              style={styles.smallButton}
+                              onPress={() => Alert.alert(
+                                'Xóa lịch hóa đơn?',
+                                `${bill.label}\nNgừng theo dõi lịch. Giao dịch gốc được giữ nguyên; liên kết đã trả vẫn được giữ để chống dùng trùng.`,
+                                [
+                                  { text: 'Hủy', style: 'cancel' },
+                                  { text: 'Xóa lịch', style: 'destructive', onPress: () => execute(() => recurringBillsService.archive(scope, bill.id)) },
+                                ],
+                              )}
+                            >
+                              <Text style={styles.error}>Xóa</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
                   ))}
               </>
@@ -1064,7 +1112,7 @@ function RecurringBillsContent({
               </TouchableOpacity>
             </View>
             <Text style={styles.muted}>
-              Khoản chi trong 31 ngày trước/sau kỳ{' '}
+              Khoản chi trong 365 ngày trước và 31 ngày sau kỳ{' '}
               {picker ? dateLabel(picker.occurrence.dueDate) : ''}. Chọn giao
               dịch rồi xác nhận liên kết.
             </Text>
@@ -1224,6 +1272,28 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: '#FFFFFF',
   },
+  search: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#E8D8CA',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+    color: '#4A2B1A',
+    fontSize: 15,
+  },
+  linkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  link: { color: '#A95514', fontSize: 13, fontWeight: '700' },
+  primarySmallButton: {
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#A95514',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  primarySmallText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  detailSection: { gap: 10, borderTopWidth: 1, borderTopColor: '#F1D4B9', paddingTop: 12 },
+  periodRow: { gap: 2, paddingVertical: 5 },
   heading: { fontSize: 16, fontWeight: '700', color: '#4A2B1A' },
   amount: { fontSize: 18, fontWeight: '700', color: '#A95514' },
   label: { fontSize: 13, fontWeight: '600', color: '#593420' },

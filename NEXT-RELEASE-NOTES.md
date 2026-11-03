@@ -1,5 +1,13 @@
 # Ghi chú thay đổi — bản kế tiếp (nháp, chưa phát hành)
 
+## Tìm và trả hóa đơn rõ hơn — 03/11/2026
+
+- Bỏ câu hướng dẫn thừa trong form lịch. Đổi **Đã liên kết** thành **Đã trả**; **Chưa trả** hiện rõ cả ở kỳ tới trong Lịch đã tạo.
+- Tab Đã xử lý tự đối chiếu giao dịch đã liên kết theo mã khi mở, có Thử lại nếu lỗi mạng. Khoản trả trước hạn hơn 31 ngày vẫn được công nhận; ghi chú khác tên hóa đơn không ảnh hưởng. Không tự sửa liên kết hoặc ghi tiền.
+- Thêm tìm kiếm hóa đơn, nút **Chi tiết** trên lịch đã tạo để xem kỳ đã trả, và **Tạo giao dịch** cho kỳ chưa trả kế tiếp kể cả ngoài danh sách 90 ngày. Vẫn xem trước/xác nhận trước khi ghi tiền.
+- Đổi vùng quét giao dịch cũ thành **Gợi ý từ khoản chi cũ**, giải thích các giao dịch quá khứ không tự đánh dấu đã trả. Mỗi gợi ý thu gọn, bấm **Chi tiết** mới thấy chứng cứ và thao tác theo dõi.
+- Android local/QA có ảnh và XML ở `qa/evidence/2026-11-03-bill-discovery/README.md`. Chưa cập nhật APK/web hoặc server production.
+
 ## Lịch hóa đơn gọn hơn — 03/11/2026
 
 - Nhắc hóa đơn chỉ hiện ngày nhắc tới, không còn chọn giờ, giờ `20:00` và ghi chú tiết kiệm pin. Giữ nhắc trước 3 ngày, 1 ngày và đúng ngày; giờ chạy nội bộ Android không còn là một tùy chọn trong màn này.

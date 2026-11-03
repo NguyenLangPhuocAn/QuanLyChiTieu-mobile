@@ -2,7 +2,6 @@ import type { ApiTransaction } from '../types/transaction';
 import { getTransactionDateKey } from './mapTransactions';
 import { getCashFlowType } from './transactionClassification';
 import {
-  billDateOffset,
   isBillDate,
   type BillPayment,
   type BillPeriod,
@@ -70,12 +69,7 @@ export function currentBillPayment(
   } catch {
     return null;
   }
-  if (
-    !isBillDate(date) ||
-    date < billDateOffset(target.period.dueDate, -31) ||
-    date > billDateOffset(target.period.dueDate, 31)
-  )
-    return null;
+  if (!isBillDate(date)) return null;
   return {
     id: transaction.id,
     amount,

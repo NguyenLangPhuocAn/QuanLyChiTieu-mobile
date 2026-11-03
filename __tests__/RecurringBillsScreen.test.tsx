@@ -255,6 +255,7 @@ it('opens an existing schedule in a centered modal with its first tracked date',
   });
   await mount();
   await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Chi tiết lịch Tiền nhà'));
   await act(async () => press('Sửa lịch'));
   const editorModal = renderer!.root
     .findAllByType(require('react-native').Modal)
@@ -271,6 +272,36 @@ it('opens an existing schedule in a centered modal with its first tracked date',
   });
 });
 
+it('finds a saved bill and creates its next transaction even beyond the 90-day overview', async () => {
+  await service.save(scope, {
+    ...bill,
+    label: 'FPT Internet',
+    anchorDate: billDateOffset(today, 180),
+    cycle: 'YEARLY',
+  });
+  await service.save(scope, { ...bill, label: 'Tiền nhà' });
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  await act(async () => field('Tìm hóa đơn', 'fpt'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('FPT Internet');
+  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Chi tiết lịch Tiền nhà' })).toHaveLength(0);
+  await act(async () => press('Chi tiết lịch FPT Internet'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('không phụ thuộc tên hóa đơn');
+  await act(async () => press('Tạo giao dịch từ lịch FPT Internet'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Tạo giao dịch và trả');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('shows the oldest unpaid overdue period in the saved bill instead of skipping ahead', async () => {
+  const overdue = billDateOffset(today, -5);
+  await service.save(scope, { ...bill, anchorDate: overdue });
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  const content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Chưa trả · kỳ');
+  expect(content).toContain(overdue.split('-').reverse().join('/'));
+});
+
 it('moves the first tracked date when the user changes it in the editor', async () => {
   await service.save(scope, {
     ...bill,
@@ -280,6 +311,7 @@ it('moves the first tracked date when the user changes it in the editor', async 
   });
   await mount();
   await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Chi tiết lịch Tiền nhà'));
   await act(async () => press('Sửa lịch'));
   await act(async () => press('Chọn ngày đến hạn đầu tiên'));
   await act(async () =>
@@ -397,6 +429,7 @@ it('allows opting one bill out of reminders without pausing or changing payments
   await service.save(scope, bill);
   await mount();
   await act(async () => press('Lịch đã tạo'));
+  await act(async () => press('Chi tiết lịch Tiền nhà'));
   await act(async () => press('Tắt nhắc lịch này'));
   expect((await service.load(scope)).bills[0]).toMatchObject({
     reminderEnabled: false,

@@ -115,6 +115,7 @@ it('reviews quarterly gaps and equivalent service names before creating one sche
   await mount();
   await act(async () => press('Tìm khoản lặp'));
   expect(text()).toContain('Hằng quý');
+  await act(async () => press('Chi tiết gợi ý Thanh toán FPT Internet'));
   expect(text()).toContain('Chưa thấy giao dịch ở 1 kỳ');
   expect(text()).toContain('Khác cách ghi tên');
   await act(async () => press('Theo dõi Thanh toán FPT Internet'));
@@ -145,7 +146,7 @@ it('only scans on request, reveals evidence and requires explicit schedule confi
     press('Tìm khoản lặp');
   });
   expect(transactionsService.getPage).toHaveBeenCalledTimes(1);
-  await act(async () => press('Xem bằng chứng Internet QA'));
+  await act(async () => press('Chi tiết gợi ý Internet QA'));
   expect(
     renderer.root.findAll(
       node =>
@@ -182,6 +183,7 @@ it('only scans on request, reveals evidence and requires explicit schedule confi
 it('closing preview leaves no schedule and discards an old confirmation callback', async () => {
   await mount();
   await act(async () => press('Tìm khoản lặp'));
+  await act(async () => press('Chi tiết gợi ý Internet QA'));
   await act(async () => press('Theo dõi Internet QA'));
   await act(async () => press('Lưu lịch'));
   const staleConfirm = confirm;
@@ -193,6 +195,7 @@ it('closing preview leaves no schedule and discards an old confirmation callback
 it('remembers ignored suggestions across remount and restores them explicitly', async () => {
   await mount();
   await act(async () => press('Tìm khoản lặp'));
+  await act(async () => press('Chi tiết gợi ý Internet QA'));
   await act(async () => press('Không phải định kỳ Internet QA'));
   await act(async () => renderer.unmount());
   await mount();
@@ -204,11 +207,12 @@ it('remembers ignored suggestions across remount and restores them explicitly', 
   ).toHaveLength(0);
   await act(async () => press('Xem gợi ý đã ẩn'));
   await act(async () => press('Hiện lại Internet QA'));
-  expect(text()).toContain('Theo dõi Internet QA');
+  expect(text()).toContain('Internet QA');
 });
 it('defers seven days and preserves the candidate when persisting the choice fails', async () => {
   await mount();
   await act(async () => press('Tìm khoản lặp'));
+  await act(async () => press('Chi tiết gợi ý Internet QA'));
   jest
     .mocked(AsyncStorage.setItem)
     .mockRejectedValueOnce(new Error('Disk full'));

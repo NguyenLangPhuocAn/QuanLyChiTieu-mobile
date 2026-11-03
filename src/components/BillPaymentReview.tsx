@@ -31,22 +31,15 @@ export default function BillPaymentReview({
     },
   };
   const check = results[paymentTargetKey(target)];
-  const label = !check
-    ? 'Chưa đối chiếu giao dịch gốc trong lần xem này.'
-    : check.kind === 'MATCHED'
-    ? 'Khớp với giao dịch gốc ở lần kiểm tra này.'
-    : check.kind === 'CHANGED'
+  if (!check || check.kind === 'MATCHED') return null;
+  const label = check.kind === 'CHANGED'
     ? 'Cần kiểm tra: giao dịch gốc đã thay đổi.'
     : check.kind === 'UNAVAILABLE'
     ? 'Cần kiểm tra: không còn truy cập được giao dịch gốc. Có thể giao dịch hoặc ví đã bị xóa.'
-    : 'Cần kiểm tra: giao dịch không còn là khoản chi thông thường cùng tiền tệ trong 31 ngày trước/sau kỳ.';
+    : 'Cần kiểm tra: giao dịch liên kết không còn là khoản chi thông thường cùng tiền tệ.';
   return (
     <View style={styles.box}>
-      <Text
-        style={check && check.kind !== 'MATCHED' ? styles.warning : styles.text}
-      >
-        {label}
-      </Text>
+      <Text style={styles.warning}>{label}</Text>
       <Text style={styles.text}>
         Nội dung đã lưu: {item.payment.note || 'Không có ghi chú'}
       </Text>
@@ -67,12 +60,9 @@ export default function BillPaymentReview({
           />
         </>
       ) : null}
-      {check && check.kind !== 'MATCHED' ? (
-        <Text style={styles.text}>
-          Chưa đổi lịch sử hoặc nhắc lại kỳ này. Bạn có thể mở lại kỳ sau khi
-          kiểm tra.
-        </Text>
-      ) : null}
+      <Text style={styles.text}>
+        Kỳ vẫn được đánh dấu đã trả. Bạn có thể mở lại kỳ sau khi kiểm tra.
+      </Text>
     </View>
   );
 }

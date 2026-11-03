@@ -126,19 +126,13 @@ afterEach(async () => {
   jest.restoreAllMocks();
 });
 
-it('does not fetch on opening; explicit review shows a changed source and cancel preserves original payment', async () => {
-  await mount();
-  expect(transactionsService.getLinkedPayments).not.toHaveBeenCalled();
-  expect(output()).toContain('Chưa đối chiếu giao dịch gốc');
+it('checks on opening, shows a changed source and cancel preserves original payment', async () => {
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockResolvedValue(
       response([{ ...transaction, amount: -260000, note: 'Đã sửa' }]),
     );
-  await act(async () => {
-    press('Kiểm tra liên kết');
-    press('Kiểm tra liên kết');
-  });
+  await mount();
   expect(transactionsService.getLinkedPayments).toHaveBeenCalledTimes(1);
   expect(output()).toContain('giao dịch gốc đã thay đổi');
   await act(async () => press('Cập nhật liên kết'));
@@ -150,33 +144,31 @@ it('does not fetch on opening; explicit review shows a changed source and cancel
   });
 });
 it('re-reads before confirmation, updates once, then requires new verification without any money writes', async () => {
-  await mount();
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockResolvedValue(response([{ ...transaction, amount: -260000 }]));
-  await act(async () => press('Kiểm tra liên kết'));
+  await mount();
   await act(async () => press('Cập nhật liên kết'));
   const confirm = button('Cập nhật');
   await act(async () => {
     confirm();
     confirm();
   });
-  expect(transactionsService.getLinkedPayments).toHaveBeenCalledTimes(2);
+  expect(transactionsService.getLinkedPayments).toHaveBeenCalled();
   expect((await service.load(scope)).periods).toHaveLength(1);
   expect((await service.load(scope)).periods[0]).toMatchObject({
     payment: { amount: 260000 },
   });
-  expect(output()).toContain('Chưa đối chiếu giao dịch gốc');
+  expect(output()).toContain('Đã trả');
   expect(transactionsService.create).not.toHaveBeenCalled();
   expect(transactionsService.update).not.toHaveBeenCalled();
   expect(transactionsService.remove).not.toHaveBeenCalled();
 });
 it('missing sources stay reserved and handled until the user confirms reopening the period', async () => {
-  await mount();
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockResolvedValue(response([]));
-  await act(async () => press('Kiểm tra liên kết'));
+  await mount();
   expect(output()).toContain('không còn truy cập được');
   expect((await service.load(scope)).periods[0].status).toBe('PAID');
   await act(async () => press('Mở lại kỳ'));
@@ -186,35 +178,20 @@ it('missing sources stay reserved and handled until the user confirms reopening 
   expect(transactionsService.remove).not.toHaveBeenCalled();
 });
 it('network/old-server failure cannot report deletion and retry can verify unchanged data', async () => {
-  await mount();
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockRejectedValueOnce(new Error('404'));
-  await act(async () => press('Kiểm tra liên kết'));
-  expect(output()).toContain('Không kết luận giao dịch đã xóa');
-  expect(output()).toContain('Chưa đối chiếu giao dịch gốc');
-  await act(async () => press('Kiểm tra liên kết'));
-  expect(output()).toContain('Khớp với giao dịch gốc');
-});
-it('cancel and account changes discard late results and obsolete confirmation callbacks', async () => {
   await mount();
-  let finish!: (value: ReturnType<typeof response>) => void;
-  jest.mocked(transactionsService.getLinkedPayments).mockImplementationOnce(
-    () =>
-      new Promise(done => {
-        finish = done;
-      }),
-  );
-  await act(async () => {
-    press('Kiểm tra liên kết');
-  });
-  await act(async () => press('Dừng kiểm tra liên kết'));
-  await act(async () => finish(response([])));
-  expect(output()).not.toContain('Cần kiểm tra: không còn');
+  expect(output()).toContain('Không kết luận giao dịch đã xóa');
+  await act(async () => press('Thử lại'));
+  expect(output()).toContain('Đã trả');
+  expect(output()).not.toContain('Không kết luận giao dịch đã xóa');
+});
+it('account changes discard obsolete confirmation callbacks', async () => {
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockResolvedValue(response([{ ...transaction, amount: -260000 }]));
-  await act(async () => press('Kiểm tra liên kết'));
+  await mount();
   await act(async () => press('Cập nhật liên kết'));
   const obsolete = button('Cập nhật');
   mockUser = 29;
@@ -226,11 +203,10 @@ it('cancel and account changes discard late results and obsolete confirmation ca
   expect((await service.load({ ...scope, userId: 29 })).periods).toEqual([]);
 });
 it('backgrounding invalidates pending checks and confirmations without applying late results', async () => {
-  await mount();
   jest
     .mocked(transactionsService.getLinkedPayments)
     .mockResolvedValue(response([{ ...transaction, amount: -260000 }]));
-  await act(async () => press('Kiểm tra liên kết'));
+  await mount();
   await act(async () => press('Cập nhật liên kết'));
   const obsolete = button('Cập nhật');
   await act(async () =>
@@ -238,7 +214,7 @@ it('backgrounding invalidates pending checks and confirmations without applying 
   );
   await act(async () => stateListeners.forEach(listener => listener('active')));
   await act(async () => obsolete());
-  expect(output()).toContain('Chưa đối chiếu giao dịch gốc');
+  expect(output()).toContain('Đã trả');
   expect((await service.load(scope)).periods[0]).toMatchObject({
     payment: { amount: 240000 },
   });

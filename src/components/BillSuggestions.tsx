@@ -180,7 +180,7 @@ export default function BillSuggestions({
   return (
     <View style={styles.section}>
       <View style={styles.row}>
-        <Text style={styles.title}>Kiểm tra khoản định kỳ</Text>
+        <Text style={styles.title}>Gợi ý từ khoản chi cũ</Text>
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={loading ? 'Dừng tìm khoản lặp' : 'Tìm khoản lặp'}
@@ -196,14 +196,14 @@ export default function BillSuggestions({
           }}
         >
           <Text style={styles.link}>
-            {loading ? 'Dừng' : history ? 'Kiểm tra lại' : 'Kiểm tra'}
+            {loading ? 'Dừng' : history ? 'Tìm lại' : 'Tìm gợi ý'}
           </Text>
         </TouchableOpacity>
       </View>
       <Text style={styles.detail}>
         {loading
           ? 'Đang kiểm tra các khoản chi trong 3 năm gần đây…'
-          : 'Gợi ý từ lịch sử, chỉ tạo lịch sau khi bạn xác nhận.'}
+          : 'Dựa trên giao dịch đã ghi. Gợi ý lịch mới không đánh dấu kỳ nào đã trả.'}
       </Text>
       {error ? (
         <Text accessibilityRole="alert" style={styles.error}>
@@ -256,11 +256,6 @@ export default function BillSuggestions({
                     {candidate.evidence.length} lần chi · Dự kiến{' '}
                     {dateLabel(candidate.nextDate)}
                   </Text>
-                  {billSuggestionNotes(candidate).map(note => (
-                    <Text key={note} style={styles.detail}>
-                      {note}
-                    </Text>
-                  ))}
                   <Text style={styles.amount}>
                     {formatCurrency(
                       candidate.input.minAmount,
@@ -275,7 +270,7 @@ export default function BillSuggestions({
                   </Text>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={`Xem bằng chứng ${candidate.input.label}`}
+                    accessibilityLabel={`Chi tiết gợi ý ${candidate.input.label}`}
                     style={styles.linkButton}
                     onPress={() =>
                       setExpanded(value => ({
@@ -285,13 +280,14 @@ export default function BillSuggestions({
                     }
                   >
                     <Text style={styles.link}>
-                      {expanded[candidate.key]
-                        ? 'Thu gọn bằng chứng'
-                        : `Xem ${candidate.evidence.length} lần chi`}
+                      {expanded[candidate.key] ? 'Thu gọn' : 'Chi tiết'}
                     </Text>
                   </TouchableOpacity>
                   {expanded[candidate.key] ? (
                     <View style={styles.evidence}>
+                      {billSuggestionNotes(candidate).map(note => (
+                        <Text key={note} style={styles.detail}>{note}</Text>
+                      ))}
                       {candidate.evidence
                         .slice(-expanded[candidate.key])
                         .reverse()
@@ -333,34 +329,34 @@ export default function BillSuggestions({
                           }
                         />
                       ) : null}
+                      <ActionButton
+                        label="Theo dõi"
+                        accessibilityLabel={`Theo dõi ${candidate.input.label}`}
+                        disabled={saving}
+                        onPress={() => onFollow(candidate)}
+                      />
+                      <View style={styles.row}>
+                        <View style={styles.grow}>
+                          <ActionButton
+                            label="Không định kỳ"
+                            accessibilityLabel={`Không phải định kỳ ${candidate.input.label}`}
+                            secondary
+                            disabled={saving}
+                            onPress={() => decide(candidate, 'IGNORED')}
+                          />
+                        </View>
+                        <View style={styles.grow}>
+                          <ActionButton
+                            label="Để sau 7 ngày"
+                            accessibilityLabel={`Để sau ${candidate.input.label}`}
+                            secondary
+                            disabled={saving}
+                            onPress={() => decide(candidate, 'LATER')}
+                          />
+                        </View>
+                      </View>
                     </View>
                   ) : null}
-                  <ActionButton
-                    label="Theo dõi"
-                    accessibilityLabel={`Theo dõi ${candidate.input.label}`}
-                    disabled={saving}
-                    onPress={() => onFollow(candidate)}
-                  />
-                  <View style={styles.row}>
-                    <View style={styles.grow}>
-                      <ActionButton
-                        label="Không định kỳ"
-                        accessibilityLabel={`Không phải định kỳ ${candidate.input.label}`}
-                        secondary
-                        disabled={saving}
-                        onPress={() => decide(candidate, 'IGNORED')}
-                      />
-                    </View>
-                    <View style={styles.grow}>
-                      <ActionButton
-                        label="Để sau 7 ngày"
-                        accessibilityLabel={`Để sau ${candidate.input.label}`}
-                        secondary
-                        disabled={saving}
-                        onPress={() => decide(candidate, 'LATER')}
-                      />
-                    </View>
-                  </View>
                 </View>
               ))}
               {visible.length > count ? (
