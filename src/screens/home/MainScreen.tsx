@@ -2095,27 +2095,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   </View>
                 ) : null}
               </View>
-              <Text style={styles.modalDescription}>
-                {billPayment
-                  ? `Từ lịch ${billPayment.bill.label} · kỳ ${formatShortDate(
-                      billPayment.dueDate,
-                    )}. Kiểm tra số tiền, ví và danh mục trước khi lưu.`
-                  : activeBankNotificationEventId
-                  ? activeBankNotificationReviewReason
-                    ? `${activeBankNotificationReviewReason} Nhập hoặc sửa số tiền, xác nhận loại thu/chi, chọn ví và danh mục rồi mới lưu.`
-                    : `Từ ${
-                        activeBankNotificationSource ?? 'thông báo ngân hàng'
-                      }${
+              {!billPayment ? (
+                <Text style={styles.modalDescription}>
+                  {activeBankNotificationEventId
+                    ? activeBankNotificationReviewReason
+                      ? `${activeBankNotificationReviewReason} Nhập hoặc sửa số tiền, xác nhận loại thu/chi, chọn ví và danh mục rồi mới lưu.`
+                      : `Từ ${
+                          activeBankNotificationSource ?? 'thông báo ngân hàng'
+                        }${
+                          chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
+                        }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
+                    : repeatDraft
+                    ? 'Nhập lại cho hôm nay. Kiểm tra ví, số tiền và ngày trước khi xác nhận lưu.'
+                    : isChatDraft
+                    ? `Bản nháp${
                         chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
-                      }. Chọn ví, kiểm tra danh mục rồi xác nhận lưu.`
-                  : repeatDraft
-                  ? 'Nhập lại cho hôm nay. Kiểm tra ví, số tiền và ngày trước khi xác nhận lưu.'
-                  : isChatDraft
-                  ? `Bản nháp${
-                      chatDraftCurrency ? ` (${chatDraftCurrency})` : ''
-                    }. Kiểm tra thông tin rồi bấm Lưu.`
-                  : 'Ghi lại khoản tiền vừa phát sinh.'}
-              </Text>
+                      }. Kiểm tra thông tin rồi bấm Lưu.`
+                    : 'Ghi lại khoản tiền vừa phát sinh.'}
+                </Text>
+              ) : null}
               {!billPayment ? (
                 <Text style={styles.voiceEntryHint}>
                   {latestBank.shakeAvailable === false

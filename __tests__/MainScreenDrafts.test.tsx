@@ -655,6 +655,10 @@ it('opens a scheduled bill in the ordinary expense form and writes only after re
   );
   expect(draftVisible()).toBe(true);
   expect(amount()).toBe('300.000');
+  expect(JSON.stringify(tree.toJSON())).not.toContain('Từ lịch Internet QA');
+  expect(JSON.stringify(tree.toJSON())).not.toContain(
+    'Kiểm tra số tiền, ví và danh mục trước khi lưu.',
+  );
   expect(
     tree.root
       .findAllByType(Text)

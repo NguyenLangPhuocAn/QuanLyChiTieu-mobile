@@ -81,6 +81,10 @@ const press = (label: string) =>
     .findAllByProps({ accessibilityLabel: label })
     .find(node => typeof node.props.onPress === 'function')!
     .props.onPress();
+const hasAction = (label: string) =>
+  renderer!.root
+    .findAllByProps({ accessibilityLabel: label })
+    .some(node => typeof node.props.onPress === 'function');
 const field = (label: string, value: string) =>
   renderer!.root
     .findAllByProps({ accessibilityLabel: label })
@@ -106,7 +110,7 @@ beforeEach(async () => {
       {
         id: 77,
         wallet_id: 1,
-        amount: 3100000,
+        amount: 3000000,
         currency: 'VND',
         type: 'EXPENSE',
         transaction_date: today,
@@ -161,8 +165,24 @@ it('preserves editor input on storage failure so it can be retried', async () =>
 });
 it('only links after preview and explicit confirmation; differing actual amounts are disclosed', async () => {
   await service.save(scope, bill);
+  jest.mocked(transactionsService.getPage).mockResolvedValue({
+    data: [
+      {
+        id: 77,
+        wallet_id: 1,
+        amount: 3100000,
+        currency: 'VND',
+        type: 'EXPENSE',
+        transaction_date: today,
+        note: 'Trả tiền nhà',
+      },
+    ],
+    meta: { page: 1, limit: 40, total: 1, totalPages: 1 },
+  });
   await mount();
   await act(async () => press('Chọn giao dịch đã trả'));
+  expect(hasAction('Liên kết giao dịch 77')).toBe(false);
+  await act(async () => press('Xem giao dịch khác'));
   await act(async () => press('Liên kết giao dịch 77'));
   expect((await service.load(scope)).periods).toEqual([]);
   expect(jest.mocked(Alert.alert).mock.calls.at(-1)![1]).toContain(
@@ -174,6 +194,66 @@ it('only links after preview and explicit confirmation; differing actual amounts
   ]);
   expect(transactionsService.create).not.toHaveBeenCalled();
   expect(transactionsService.update).not.toHaveBeenCalled();
+});
+it('starts with recent matching expenses and loads other real transactions only on request', async () => {
+  await service.save(scope, bill);
+  jest.mocked(transactionsService.getPage).mockResolvedValue({
+    data: [
+      {
+        id: 71,
+        wallet_id: 1,
+        amount: 3000000,
+        currency: 'VND',
+        type: 'EXPENSE',
+        transaction_date: today,
+        note: 'Tiền nhà',
+      },
+      {
+        id: 72,
+        wallet_id: 1,
+        amount: 45000,
+        currency: 'VND',
+        type: 'EXPENSE',
+        transaction_date: today,
+        note: 'Nhạc',
+      },
+      {
+        id: 73,
+        wallet_id: 1,
+        amount: 3000000,
+        currency: 'VND',
+        type: 'EXPENSE',
+        transaction_date: billDateOffset(today, -45),
+        note: 'Tiền nhà cũ',
+      },
+    ],
+    meta: { page: 1, limit: 40, total: 3, totalPages: 1 },
+  });
+  await mount();
+  await act(async () => press('Chọn giao dịch đã trả'));
+  expect(transactionsService.getPage).toHaveBeenCalledWith(
+    'token',
+    expect.objectContaining({
+      from: billDateOffset(today, -30),
+      to: today,
+      min_amount: 3000000,
+      max_amount: 3000000,
+    }),
+  );
+  expect(hasAction('Liên kết giao dịch 71')).toBe(true);
+  expect(hasAction('Liên kết giao dịch 72')).toBe(false);
+  expect(hasAction('Liên kết giao dịch 73')).toBe(false);
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain(
+    'Khoản chi trong 365 ngày',
+  );
+  await act(async () => press('Xem giao dịch khác'));
+  expect(transactionsService.getPage).toHaveBeenLastCalledWith(
+    'token',
+    expect.objectContaining({ to: today, page: 1 }),
+  );
+  expect(hasAction('Liên kết giao dịch 72')).toBe(true);
+  expect(hasAction('Liên kết giao dịch 73')).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
 });
 it('offers creating and paying in the bill, without the backup button on this screen', async () => {
   await service.save(scope, bill);

@@ -102,6 +102,7 @@ type Editor = {
 };
 type Picker = {
   occurrence: BillOccurrence;
+  scope: 'RECENT' | 'ALL';
   rows: ApiTransaction[];
   page: number;
   totalPages: number;
@@ -289,36 +290,61 @@ function RecurringBillsContent({
   };
   const openPayment = (item: BillOccurrence) =>
     navigation.push('Main', { billPayment: item });
-  const fetchPayments = async (occurrence: BillOccurrence, page = 1) => {
+  const fetchPayments = async (
+    occurrence: BillOccurrence,
+    page = 1,
+    pickerScope: Picker['scope'] = 'RECENT',
+  ) => {
     const revision = ++pickerRevision.current;
     setPicker(previous => ({
       occurrence,
-      rows: page === 1 ? [] : previous?.rows ?? [],
+      scope: pickerScope,
+      rows: page === 1 || previous?.scope !== pickerScope ? [] : previous.rows,
       page,
-      totalPages: previous?.totalPages ?? 1,
+      totalPages: page === 1 ? 1 : previous?.totalPages ?? 1,
       loading: true,
       error: null,
     }));
     try {
+      const from = billDateOffset(today, -30);
       const result = await transactionsService.getPage(token, {
         type: 'EXPENSE',
         cash_flow: 'normal',
-        from: billDateOffset(occurrence.dueDate, -365),
-        to: billDateOffset(occurrence.dueDate, 31),
+        ...(pickerScope === 'RECENT'
+          ? {
+              from,
+              min_amount: occurrence.bill.minAmount,
+              max_amount: occurrence.bill.maxAmount,
+            }
+          : {}),
+        to: today,
         page,
         limit: 40,
       });
       if (!active.current || revision !== pickerRevision.current) return;
       setPicker(previous => ({
         occurrence,
+        scope: pickerScope,
         rows: [
           ...(page === 1 ? [] : previous?.rows ?? []),
-          ...result.data.filter(
-            item =>
+          ...result.data.filter(item => {
+            const date = getTransactionDateKey(item.transaction_date);
+            const amount = Math.abs(Number(item.amount));
+            return (
               item.currency === occurrence.bill.currency &&
               item.type === 'EXPENSE' &&
-              getCashFlowType(item.category) === 'normal',
-          ),
+              getCashFlowType(item.category) === 'normal' &&
+              date <= today &&
+              (pickerScope === 'ALL' ||
+                (date >= from &&
+                  amount >= occurrence.bill.minAmount &&
+                  amount <= occurrence.bill.maxAmount)) &&
+              !book?.periods.some(
+                period =>
+                  period.status === 'PAID' && period.payment.id === item.id,
+              )
+            );
+          }),
         ].filter(
           (item, index, rows) =>
             rows.findIndex(row => row.id === item.id) === index,
@@ -334,7 +360,7 @@ function RecurringBillsContent({
           previous
             ? {
                 ...previous,
-                page: page - 1,
+                page,
                 loading: false,
                 error: 'Chưa tải được giao dịch. Lịch hóa đơn được giữ nguyên.',
               }
@@ -1108,11 +1134,6 @@ function RecurringBillsContent({
                 <X size={22} color="#593420" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.muted}>
-              Khoản chi trong 365 ngày trước và 31 ngày sau kỳ{' '}
-              {picker ? dateLabel(picker.occurrence.dueDate) : ''}. Chọn giao
-              dịch rồi xác nhận liên kết.
-            </Text>
             <ScrollView contentContainerStyle={styles.pickerRows}>
               {picker?.rows.map(transaction => (
                 <TouchableOpacity
@@ -1143,8 +1164,20 @@ function RecurringBillsContent({
               !picker.error &&
               !picker.rows.length ? (
                 <Text style={styles.empty}>
-                  Chưa có khoản chi phù hợp trong khoảng ngày này.
+                  {picker.scope === 'RECENT'
+                    ? 'Chưa có giao dịch chi phù hợp gần đây.'
+                    : 'Chưa có giao dịch chi để chọn.'}
                 </Text>
+              ) : null}
+              {picker &&
+              !picker.loading &&
+              !picker.error &&
+              picker.scope === 'RECENT' ? (
+                <ActionButton
+                  label="Xem giao dịch khác"
+                  secondary
+                  onPress={() => fetchPayments(picker.occurrence, 1, 'ALL')}
+                />
               ) : null}
               {picker?.error ? (
                 <>
@@ -1153,7 +1186,11 @@ function RecurringBillsContent({
                     label="Thử tải giao dịch"
                     secondary
                     onPress={() =>
-                      fetchPayments(picker.occurrence, picker.page + 1)
+                      fetchPayments(
+                        picker.occurrence,
+                        picker.page,
+                        picker.scope,
+                      )
                     }
                   />
                 </>
@@ -1165,7 +1202,11 @@ function RecurringBillsContent({
                   label="Tải thêm giao dịch"
                   secondary
                   onPress={() =>
-                    fetchPayments(picker.occurrence, picker.page + 1)
+                    fetchPayments(
+                      picker.occurrence,
+                      picker.page + 1,
+                      picker.scope,
+                    )
                   }
                 />
               ) : null}
