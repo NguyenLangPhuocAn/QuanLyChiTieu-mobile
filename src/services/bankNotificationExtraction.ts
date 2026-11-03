@@ -1,5 +1,6 @@
 import { apiRequest } from './api';
 import {
+  bankNotificationDescription,
   directionInEvidence,
   prepareBankNotificationText,
 } from '../utils/bankNotificationText';
@@ -17,11 +18,7 @@ export function parseNotificationText(
   ].join('-');
   try {
     const prepared = prepareBankNotificationText(text);
-    const note = prepared.text
-      .replace(/\[ĐÃ [^\]]+\]/gu, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 180);
+    const note = bankNotificationDescription(prepared.text);
     const unique = new Set(
       prepared.money.map(value => `${value.currency}:${value.amount}`),
     );
@@ -66,11 +63,7 @@ export function manualBankNotification(
   const date = new Date(postedAt);
   let note = '';
   try {
-    note = prepareBankNotificationText(text)
-      .text.replace(/\[ĐÃ [^\]]+\]/gu, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 180);
+    note = bankNotificationDescription(prepareBankNotificationText(text).text);
   } catch {}
   return {
     status: 'REVIEW',
@@ -168,18 +161,7 @@ export const bankNotificationExtraction = {
       matches.every(m => m.direction !== null && m.direction !== result.type)
     )
       return review;
-    let note: string;
-    try {
-      note = prepareBankNotificationText(
-        `Nội dung: ${result.note || prepared.text}`,
-      )
-        .text.replace(/\[ĐÃ [^\]]+\]/gu, '')
-        .replace(/^Nội dung:\s*/u, '')
-        .trim()
-        .slice(0, 180);
-    } catch {
-      return review;
-    }
+    const note = bankNotificationDescription(prepared.text);
     return {
       ...review,
       status: 'READY',

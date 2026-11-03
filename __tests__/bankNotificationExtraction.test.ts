@@ -2,7 +2,10 @@ import {
   parseNotificationText,
   bankNotificationExtraction,
 } from '../src/services/bankNotificationExtraction';
-import { prepareBankNotificationText } from '../src/utils/bankNotificationText';
+import {
+  bankNotificationDescription,
+  prepareBankNotificationText,
+} from '../src/utils/bankNotificationText';
 import { apiRequest } from '../src/services/api';
 jest.mock('../src/services/api', () => ({ apiRequest: jest.fn() }));
 const at = new Date('2026-10-23T10:00:00+07:00').getTime();
@@ -63,6 +66,63 @@ it('masks accounts and references before any optional network call', () => {
   expect(result.text).not.toMatch(/87654321|14,533,072|ABC123456789/);
   expect(result.money[0].amount).toBe(752790);
   expect(api).not.toHaveBeenCalled();
+});
+
+const vcbNotice =
+  'Thông báo VCB\nSố dư TK VCB 1234567890 +5,000 VND lúc 03-11-2026 13:48:16. Số dư 131,687 VND. Ref TRAN MINH AN CHUYEN KHOAN-031126-13:48:16 PCxk087163#SP#020097041611031348162026';
+
+it('retains the signed VCB income and uses only Ref for the note', () => {
+  const prepared = prepareBankNotificationText(vcbNotice);
+  expect(prepared.money).toMatchObject([
+    { amount: 5000, currency: 'VND', direction: 'INCOME' },
+  ]);
+  expect(prepared.text).not.toMatch(/131,687|1234567890|13:48:16|PCxk087163/);
+  expect(bankNotificationDescription(prepared.text)).toBe(
+    'TRAN MINH AN CHUYEN KHOAN',
+  );
+  expect(parseNotificationText(vcbNotice, at)).toMatchObject({
+    status: 'READY',
+    type: 'INCOME',
+    amount: '5000',
+    note: 'TRAN MINH AN CHUYEN KHOAN',
+  });
+});
+
+it('keeps a signed VCB expense but rejects an unsigned balance', () => {
+  const expense = parseNotificationText(
+    'Số dư TK VCB 1234567890 -7,000 VND. Số dư 124,687 VND. Nội dung: THANH TOAN CA PHE',
+    at,
+  );
+  expect(expense).toMatchObject({
+    status: 'READY',
+    type: 'EXPENSE',
+    amount: '7000',
+    note: 'THANH TOAN CA PHE',
+  });
+  expect(
+    parseNotificationText('Số dư TK VCB 1234567890 131,687 VND', at),
+  ).toMatchObject({ status: 'REVIEW' });
+});
+
+it('keeps the VCB note clean even if AI suggests the balance and timestamp', async () => {
+  api
+    .mockResolvedValueOnce({ bank_notification_ai: true })
+    .mockResolvedValueOnce({
+      status: 'READY',
+      type: 'INCOME',
+      amount: 5000,
+      currency: 'VND',
+      note: 'Số dư 131,687 VND lúc 13:48:16',
+      confidence: 0.99,
+      requires_confirmation: true,
+    });
+  expect(await bankNotificationExtraction.analyze('token', vcbNotice, at)).toMatchObject({
+    status: 'READY',
+    type: 'INCOME',
+    amount: '5000',
+    note: 'TRAN MINH AN CHUYEN KHOAN',
+  });
+  expect(api.mock.calls[1][1].body.text).not.toMatch(/131,687|13:48:16/);
 });
 
 it('does not send text when the server flag is off', async () => {
@@ -131,7 +191,7 @@ it('validates an AI-selected principal among multiple monetary values without a 
       'Ghi nợ -100.000 VND. Phí -5.000 VND',
       at,
     ),
-  ).toMatchObject({ status: 'READY', amount: '100000', note: 'CF' });
+  ).toMatchObject({ status: 'READY', amount: '100000', note: '' });
 });
 it('accepts an unfamiliar direction label when the validated API assigns its meaning', async () => {
   api
