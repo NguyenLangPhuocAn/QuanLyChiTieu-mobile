@@ -17,6 +17,8 @@ import { bankNotificationExtraction } from '../src/services/bankNotificationExtr
 import { ApiError, getApiBaseUrl } from '../src/services/api';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 import type { RepeatTransactionRequest } from '../src/utils/repeatTransaction';
+import { recurringBillsService } from '../src/services/recurringBills';
+import { billOccurrences } from '../src/utils/recurringBills';
 
 jest.mock('../src/services/bankNotificationExtraction', () => ({
   ...jest.requireActual('../src/services/bankNotificationExtraction'),
@@ -39,6 +41,7 @@ jest.mock('../src/services/bankNotificationExtraction', () => ({
 
 let mockUser: { id: number; currency_default: string } | null = null;
 const mockSetParams = jest.fn();
+const mockGoBack = jest.fn();
 let mockShake: () => void;
 let mockSpeechEvents: Record<string, (event?: any) => void> = {};
 jest.mock('rn-speech-recognition', () => ({
@@ -57,7 +60,11 @@ jest.mock('rn-speech-recognition', () => ({
 }));
 
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: jest.fn(), setParams: mockSetParams }),
+  useNavigation: () => ({
+    navigate: jest.fn(),
+    setParams: mockSetParams,
+    goBack: mockGoBack,
+  }),
   useFocusEffect: () => undefined,
   useIsFocused: () => true,
 }));
@@ -617,6 +624,73 @@ it('submits once when Save is pressed twice before the response', async () => {
     finish({ id: 10 });
     await pending;
   });
+});
+
+it('opens a scheduled bill in the ordinary expense form and writes only after review', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  const scope = { userId: 7, server: getApiBaseUrl() };
+  const date = '2026-11-03';
+  await recurringBillsService.save(scope, {
+    label: 'Internet QA',
+    anchorDate: date,
+    cycle: 'MONTHLY',
+    kind: 'FIXED',
+    minAmount: 300000,
+    maxAmount: 300000,
+    currency: 'VND',
+    categoryId: 4,
+    note: '',
+  });
+  const occurrence = billOccurrences(
+    await recurringBillsService.load(scope),
+    date,
+    date,
+    date,
+  )[0];
+  await act(async () =>
+    tree.update(
+      <MainScreen route={{ params: { billPayment: occurrence } } as any} />,
+    ),
+  );
+  expect(draftVisible()).toBe(true);
+  expect(amount()).toBe('300.000');
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Ăn uống'),
+  ).toBe(true);
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Tiền mặt'),
+  ).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  await act(async () => button('Kiểm tra và trả').props.onPress());
+  expect(transactionsService.create).not.toHaveBeenCalled();
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![0]).toBe(
+    'Kiểm tra giao dịch chi',
+  );
+  (transactionsService.create as jest.Mock).mockResolvedValue({
+    id: 120,
+    wallet_id: 1,
+    category_id: 4,
+    amount: 300000,
+    currency: 'VND',
+    type: 'EXPENSE',
+    transaction_date: date,
+    note: 'Internet QA',
+  });
+  const confirm = jest
+    .mocked(Alert.alert)
+    .mock.calls.at(-1)![2]!
+    .find(item => item.text === 'Tạo và trả')!.onPress!;
+  await act(async () => confirm());
+  expect(transactionsService.create).toHaveBeenCalledTimes(1);
+  expect((await recurringBillsService.load(scope)).periods).toMatchObject([
+    { status: 'PAID', payment: { id: 120 } },
+  ]);
+  expect(mockGoBack).toHaveBeenCalled();
 });
 
 it('saves a bank notification with its source key and no conflicting client key', async () => {

@@ -20,6 +20,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://checks.invalid',
+  apiRequest: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../src/services/transactions', () => ({
   transactionsService: {
@@ -57,7 +58,12 @@ const response = (data: ApiTransaction[] = [transaction]) => ({
 let renderer: TestRenderer.ReactTestRenderer | undefined;
 let stateListeners: Array<(state: AppStateStatus) => void>;
 const props = {
-  navigation: { goBack: jest.fn(), setParams: jest.fn() },
+  navigation: {
+    goBack: jest.fn(),
+    setParams: jest.fn(),
+    navigate: jest.fn(),
+    push: jest.fn(),
+  },
   route: {},
 } as unknown as React.ComponentProps<typeof RecurringBillsScreen>;
 const screen = () => <RecurringBillsScreen {...props} />;

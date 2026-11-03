@@ -12,6 +12,7 @@ export type BillInput = {
   minAmount: number;
   maxAmount: number;
   currency: string;
+  categoryId?: number;
   note: string;
   reminderEnabled?: boolean;
 };
@@ -104,6 +105,11 @@ export const validateBillInput = (input: BillInput): BillInput => {
     throw new Error('Số tiền VND cần là số nguyên.');
   if (typeof input.note !== 'string' || input.note.length > 500)
     throw new Error('Ghi chú tối đa 500 ký tự.');
+  if (
+    input.categoryId !== undefined &&
+    (!Number.isSafeInteger(input.categoryId) || input.categoryId <= 0)
+  )
+    throw new Error('Danh mục chi chưa hợp lệ.');
   return {
     ...input,
     label: input.label.trim(),

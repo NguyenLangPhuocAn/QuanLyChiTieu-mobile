@@ -120,6 +120,10 @@ import { useWidgetPanelOpen } from '../../services/widgetPanelState';
 import { financeRefresh } from '../../services/financeRefresh';
 import { getApiBaseUrl } from '../../services/api';
 import { repeatTransactionDraft } from '../../utils/repeatTransaction';
+import { payRecurringBill } from '../../services/payRecurringBill';
+import type { BillOccurrence } from '../../utils/recurringBills';
+import type { ApiTransaction } from '../../types/transaction';
+import type { Category } from '../../types/category';
 
 type TabKey = 'overview' | 'history' | 'chatbot' | 'account';
 type TransactionEntryType = 'EXPENSE' | 'INCOME' | 'LOAN_DEBT';
@@ -205,6 +209,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     requestId: string;
     label: string;
   } | null>(null);
+  const [billPayment, setBillPayment] = useState<BillOccurrence | null>(null);
+  const billCreated = useRef<ApiTransaction | null>(null);
+  const billSavedPayload = useRef<CreateTransactionPayload | null>(null);
+  const billSavedCategory = useRef<Category | undefined>(undefined);
+  const billReviewEpoch = useRef(0);
+  const billLive = useRef(false);
+  const latestBillSave = useRef<(reviewed: string) => void>(() => undefined);
   const repeatReviewEpoch = useRef(0);
   const lastRepeatEvent = useRef('');
   const latestRepeatSave = useRef<(reviewed: string) => void>(() => undefined);
@@ -213,6 +224,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   useEffect(() => {
     const invalidateReview = () => {
       repeatReviewEpoch.current++;
+      billReviewEpoch.current++;
     };
     const sub = AppState.addEventListener('change', state => {
       if (state !== 'active') invalidateReview();
@@ -223,6 +235,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     };
   }, [user?.id, server]);
   const isScreenFocused = useIsFocused();
+  billLive.current = isScreenFocused && Boolean(billPayment);
   const widgetPanelOpen = useWidgetPanelOpen();
   const { run: runSaveTransaction, busy: savingTransaction } =
     useSingleFlight();
@@ -533,7 +546,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   ]);
 
   useEffect(() => {
-    if (!isModalVisible || transactionEntryType === 'LOAN_DEBT' || repeatDraft)
+    if (
+      !isModalVisible ||
+      transactionEntryType === 'LOAN_DEBT' ||
+      repeatDraft ||
+      billPayment
+    )
       return;
     const rule = findMatchingSmartRule(transactionNote, smartRules);
     if (!rule) return;
@@ -556,6 +574,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     transactionEntryType,
     transactionNote,
     repeatDraft,
+    billPayment,
   ]);
 
   useFocusEffect(
@@ -750,6 +769,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   const resetTransactionForm = () => {
     repeatReviewEpoch.current++;
+    billReviewEpoch.current++;
+    setBillPayment(null);
+    billCreated.current = null;
+    billSavedPayload.current = null;
+    billSavedCategory.current = undefined;
     setRepeatDraft(null);
     hasWidgetCategory.current = false;
     setWidgetAction(null);
@@ -1295,6 +1319,66 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.params?.repeatTransaction, isScreenFocused, user?.id, server]);
 
+  useEffect(() => {
+    const occurrence = route?.params?.billPayment;
+    if (
+      !occurrence ||
+      !user?.id ||
+      !isScreenFocused ||
+      !dashboardDataVisible.current
+    )
+      return;
+    navigation.setParams({ billPayment: undefined });
+    if (isModalVisible) {
+      Alert.alert(
+        'Đang có giao dịch chưa lưu',
+        'Hãy lưu hoặc đóng form hiện tại trước khi trả hóa đơn.',
+      );
+      return;
+    }
+    resetTransactionForm();
+    setBillPayment(occurrence);
+    setIsChatDraft(true);
+    setChatDraftCurrency(occurrence.bill.currency);
+    setTransactionEntryType('EXPENSE');
+    setSelectedTransactionCategory(
+      normalTransactionCategories.find(
+        item =>
+          item.id === occurrence.bill.categoryId && item.type === 'EXPENSE',
+      ) ?? null,
+    );
+    setSelectedWalletId(
+      spendableWallets.find(item => item.currency === occurrence.bill.currency)
+        ?.id ?? null,
+    );
+    setTransactionAmount(
+      occurrence.bill.kind === 'FIXED' ? String(occurrence.bill.minAmount) : '',
+    );
+    setTransactionNote(occurrence.bill.label);
+    setIsModalVisible(true);
+    // The route request is consumed once; dashboard data can refresh without reopening the form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    route?.params?.billPayment,
+    isScreenFocused,
+    user?.id,
+    wallets,
+    categories,
+  ]);
+
+  useEffect(() => {
+    if (
+      billPayment &&
+      !isModalVisible &&
+      isScreenFocused &&
+      !shouldReopenTransactionForm.current
+    ) {
+      billReviewEpoch.current++;
+      setBillPayment(null);
+      navigation.goBack();
+    }
+  }, [billPayment, isModalVisible, isScreenFocused, navigation]);
+
   const showBudgetAlertIfNeeded = (
     wallet: Wallet,
     amount: number,
@@ -1351,6 +1435,22 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     );
   };
 
+  const billFormSnapshot = JSON.stringify({
+    billId: billPayment?.bill.id,
+    dueDate: billPayment?.dueDate,
+    walletId: selectedWalletId,
+    categoryId: selectedTransactionCategory?.id,
+    amount: transactionAmount,
+    date: toDateKey(transactionDate),
+    note: transactionNote,
+    tags: transactionTags,
+    receiptItems,
+    receiptFile: receiptFile?.uri,
+    type: transactionEntryType,
+  });
+  const billFormSnapshotRef = useRef(billFormSnapshot);
+  billFormSnapshotRef.current = billFormSnapshot;
+
   const saveTransaction = (reviewed?: string) =>
     runSaveTransaction(async () => {
       if (!token || isOcrLoading || isVoiceEntryVisible) return;
@@ -1406,12 +1506,181 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
       if (
         transactionEntryType !== 'LOAN_DEBT' &&
-        !selectedTransactionCategory
+        !selectedTransactionCategory &&
+        !billPayment
       ) {
         Alert.alert(
           'Chưa có danh mục',
           'Vui lòng chọn danh mục thu hoặc chi cho giao dịch.',
         );
+        return;
+      }
+      if (billPayment) {
+        if (
+          transactionEntryType !== 'EXPENSE' ||
+          (selectedTransactionCategory &&
+            selectedTransactionCategory.type !== 'EXPENSE')
+        ) {
+          Alert.alert(
+            'Loại giao dịch chưa hợp lệ',
+            'Hóa đơn định kỳ chỉ dùng giao dịch Chi.',
+          );
+          return;
+        }
+        if (isOfflineSession) {
+          Alert.alert(
+            'Cần kết nối',
+            'Kết nối mạng để tạo giao dịch và đánh dấu kỳ hóa đơn đã trả.',
+          );
+          return;
+        }
+        const saved = billCreated.current;
+        const payload: CreateTransactionPayload =
+          saved && billSavedPayload.current
+            ? billSavedPayload.current
+            : {
+                wallet_id: selectedWallet.id,
+                category_id: selectedTransactionCategory?.id,
+                amount: normalizedAmount,
+                type: 'EXPENSE',
+                note: transactionNote.trim() || billPayment.bill.label,
+                receipt_items: normalizedReceiptItems.length
+                  ? normalizedReceiptItems
+                  : null,
+                transaction_date: toDateKey(transactionDate),
+                tags: parseTagsInput(transactionTags),
+              };
+        if (!reviewed) {
+          const snapshot = billFormSnapshotRef.current;
+          const epoch = billReviewEpoch.current;
+          const previewWallet = saved
+            ? wallets.find(item => item.id === payload.wallet_id)
+            : selectedWallet;
+          const previewCategory = saved
+            ? categories.find(item => item.id === payload.category_id)
+            : selectedTransactionCategory;
+          Alert.alert(
+            saved ? 'Liên kết giao dịch đã tạo?' : 'Kiểm tra giao dịch chi',
+            `${billPayment.bill.label} · kỳ ${formatShortDate(
+              billPayment.dueDate,
+            )}\nChi ${formatCurrency(
+              Number(payload.amount),
+              billPayment.bill.currency,
+            )} từ ${previewWallet?.name ?? 'Ví đã chọn'} · ${
+              previewCategory?.name ?? 'Chưa phân loại'
+            }\nNgày ${formatShortDate(payload.transaction_date!)}\n${
+              payload.note ?? ''
+            }${
+              Number(payload.amount) < billPayment.bill.minAmount ||
+              Number(payload.amount) > billPayment.bill.maxAmount
+                ? '\nSố tiền khác mức dự kiến của lịch.'
+                : ''
+            }\n${
+              saved
+                ? `Giao dịch #${saved.id} đã tạo; chỉ liên kết lại kỳ này. Các thay đổi mới trên form sẽ không được dùng.`
+                : 'Xác nhận sẽ tạo giao dịch chi và đánh dấu kỳ đã trả.'
+            }`,
+            [
+              { text: 'Sửa lại', style: 'cancel' },
+              {
+                text: saved ? 'Liên kết lại' : 'Tạo và trả',
+                onPress: () => {
+                  if (
+                    !billLive.current ||
+                    billReviewEpoch.current !== epoch ||
+                    billFormSnapshotRef.current !== snapshot ||
+                    user?.id !== repeatScope.current.userId ||
+                    server !== repeatScope.current.server
+                  )
+                    return;
+                  latestBillSave.current(snapshot);
+                },
+              },
+            ],
+          );
+          return;
+        }
+        if (reviewed !== billFormSnapshotRef.current) {
+          Alert.alert(
+            'Thông tin đã thay đổi',
+            'Hãy kiểm tra lại trước khi lưu giao dịch.',
+          );
+          return;
+        }
+        const epoch = billReviewEpoch.current;
+        const scope = { userId: user!.id, server };
+        billSavedPayload.current = payload;
+        billSavedCategory.current = saved
+          ? billSavedCategory.current
+          : selectedTransactionCategory ?? undefined;
+        try {
+          const transaction = await payRecurringBill({
+            scope,
+            token,
+            occurrence: billPayment,
+            payload,
+            category: billSavedCategory.current,
+            created: billCreated.current,
+            onCreated: value => {
+              billCreated.current = value;
+            },
+            isCurrent: () =>
+              billLive.current &&
+              billReviewEpoch.current === epoch &&
+              repeatScope.current.userId === scope.userId &&
+              repeatScope.current.server === scope.server,
+          });
+          if (!billLive.current || billReviewEpoch.current !== epoch) return;
+          let receiptUploadFailed = false;
+          if (receiptFile) {
+            try {
+              const upload = buildReceiptUploadFile(
+                receiptFile,
+                transaction.id,
+              );
+              if (upload)
+                await transactionsService.uploadReceipt(
+                  token,
+                  transaction.id,
+                  upload,
+                );
+            } catch {
+              receiptUploadFailed = true;
+            }
+          }
+          await fetchDashboardData().catch(() => undefined);
+          try {
+            showBudgetAlertIfNeeded(
+              selectedWallet,
+              Number(payload.amount),
+              'expense',
+            );
+          } catch {
+            /* The saved payment remains valid. */
+          }
+          setIsModalVisible(false);
+          resetTransactionForm();
+          navigation.goBack();
+          Alert.alert(
+            'Đã trả hóa đơn',
+            `Đã tạo giao dịch chi #${
+              transaction.id
+            } và đánh dấu kỳ ${formatShortDate(billPayment.dueDate)} đã trả.${
+              receiptUploadFailed
+                ? ' Ảnh hóa đơn chưa tải lên được; hãy thêm lại trong lịch sử.'
+                : ''
+            }`,
+          );
+        } catch (reason) {
+          Alert.alert(
+            'Chưa hoàn tất',
+            `${reason instanceof Error ? reason.message : 'Vui lòng thử lại.'}${
+              billCreated.current
+                ? ' Giao dịch đã tạo; bấm Lưu để liên kết lại, không tạo thêm.'
+                : ' Hãy thử lại với cùng thông tin.'
+            }`,
+          );
+        }
         return;
       }
       if (transactionEntryType === 'LOAN_DEBT') {
@@ -1625,6 +1894,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     });
   latestRepeatSave.current = reviewed =>
     saveTransaction(reviewed).catch(() => undefined);
+  latestBillSave.current = reviewed =>
+    saveTransaction(reviewed).catch(() => undefined);
   const handleSaveTransaction = () => saveTransaction();
 
   const renderContent = () => {
@@ -1771,53 +2042,65 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   <ArrowLeft size={18} color="#7A4A28" />
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>Thêm giao dịch</Text>
-                <View style={styles.transactionQuickActions}>
-                  <TouchableOpacity
-                    style={styles.transactionQuickAction}
-                    accessibilityRole="button"
-                    accessibilityLabel="Đọc thông báo giao dịch"
-                    disabled={
-                      savingTransaction ||
-                      isReadingBankNotification ||
-                      transactionVoice.isBusy
-                    }
-                    onPress={() =>
-                      handleReadBankNotificationFromForm().catch(
-                        () => undefined,
-                      )
-                    }
-                  >
-                    {isReadingBankNotification ? (
-                      <ActivityIndicator size="small" color={Colors.primary} />
-                    ) : (
-                      <Bell size={18} color={Colors.primary} />
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.transactionQuickAction}
-                    accessibilityRole="button"
-                    accessibilityLabel="Nhập giao dịch bằng giọng nói"
-                    disabled={
-                      savingTransaction ||
-                      isReadingBankNotification ||
-                      isOcrLoading
-                    }
-                    onPress={() => {
-                      setIsVoiceEntryVisible(true);
-                      transactionVoice.toggle('').catch(() => undefined);
-                    }}
-                  >
-                    {transactionVoice.status === 'starting' ||
-                    transactionVoice.status === 'stopping' ? (
-                      <ActivityIndicator size="small" color={Colors.primary} />
-                    ) : (
-                      <Mic size={18} color={Colors.primary} />
-                    )}
-                  </TouchableOpacity>
-                </View>
+                {!billPayment ? (
+                  <View style={styles.transactionQuickActions}>
+                    <TouchableOpacity
+                      style={styles.transactionQuickAction}
+                      accessibilityRole="button"
+                      accessibilityLabel="Đọc thông báo giao dịch"
+                      disabled={
+                        savingTransaction ||
+                        isReadingBankNotification ||
+                        transactionVoice.isBusy
+                      }
+                      onPress={() =>
+                        handleReadBankNotificationFromForm().catch(
+                          () => undefined,
+                        )
+                      }
+                    >
+                      {isReadingBankNotification ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={Colors.primary}
+                        />
+                      ) : (
+                        <Bell size={18} color={Colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.transactionQuickAction}
+                      accessibilityRole="button"
+                      accessibilityLabel="Nhập giao dịch bằng giọng nói"
+                      disabled={
+                        savingTransaction ||
+                        isReadingBankNotification ||
+                        isOcrLoading
+                      }
+                      onPress={() => {
+                        setIsVoiceEntryVisible(true);
+                        transactionVoice.toggle('').catch(() => undefined);
+                      }}
+                    >
+                      {transactionVoice.status === 'starting' ||
+                      transactionVoice.status === 'stopping' ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={Colors.primary}
+                        />
+                      ) : (
+                        <Mic size={18} color={Colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
               <Text style={styles.modalDescription}>
-                {activeBankNotificationEventId
+                {billPayment
+                  ? `Từ lịch ${billPayment.bill.label} · kỳ ${formatShortDate(
+                      billPayment.dueDate,
+                    )}. Kiểm tra số tiền, ví và danh mục trước khi lưu.`
+                  : activeBankNotificationEventId
                   ? activeBankNotificationReviewReason
                     ? `${activeBankNotificationReviewReason} Nhập hoặc sửa số tiền, xác nhận loại thu/chi, chọn ví và danh mục rồi mới lưu.`
                     : `Từ ${
@@ -1833,11 +2116,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                     }. Kiểm tra thông tin rồi bấm Lưu.`
                   : 'Ghi lại khoản tiền vừa phát sinh.'}
               </Text>
-              <Text style={styles.voiceEntryHint}>
-                {latestBank.shakeAvailable === false
-                  ? 'Bấm chuông để AI đọc thông báo ngân hàng mới nhất.'
-                  : 'Lắc điện thoại hoặc bấm chuông để AI đọc thông báo ngân hàng mới nhất.'}
-              </Text>
+              {!billPayment ? (
+                <Text style={styles.voiceEntryHint}>
+                  {latestBank.shakeAvailable === false
+                    ? 'Bấm chuông để AI đọc thông báo ngân hàng mới nhất.'
+                    : 'Lắc điện thoại hoặc bấm chuông để AI đọc thông báo ngân hàng mới nhất.'}
+                </Text>
+              ) : null}
               {isVoiceEntryVisible ? (
                 <View style={styles.voiceEntryCard}>
                   <Text
@@ -1937,7 +2222,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 </View>
               ) : null}
               <View style={styles.typeSegment}>
-                {(activeBankNotificationEventId || repeatDraft
+                {(billPayment
+                  ? (['EXPENSE'] as const)
+                  : activeBankNotificationEventId || repeatDraft
                   ? (['EXPENSE', 'INCOME'] as const)
                   : (['EXPENSE', 'INCOME', 'LOAN_DEBT'] as const)
                 ).map(type => {
@@ -2612,7 +2899,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.primaryButtonText}>
-                    {transactionEntryType === 'LOAN_DEBT'
+                    {billPayment
+                      ? billCreated.current
+                        ? 'Liên kết lại kỳ'
+                        : 'Kiểm tra và trả'
+                      : transactionEntryType === 'LOAN_DEBT'
                       ? 'Lưu khoản vay/nợ'
                       : 'Lưu giao dịch'}
                   </Text>

@@ -121,6 +121,17 @@ it('does not write money for a skipped or changed bill period', async () => {
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
+it('rejects a changed bill category before creating a transaction', async () => {
+  const item = await occurrence();
+  await recurringBillsService.save(
+    scope,
+    { ...bill, categoryId: 7 },
+    item.bill.id,
+  );
+  await expect(pay(item)).rejects.toThrow('đã thay đổi');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
 it('uses the same transaction after a local link failure instead of creating another', async () => {
   const item = await occurrence();
   const link = jest.spyOn(recurringBillsService, 'linkPayment');

@@ -44,6 +44,7 @@ import MoneyCalendarScreen from '../screens/home/MoneyCalendarScreen';
 import FinancialInboxScreen from '../screens/home/FinancialInboxScreen';
 import PersonalBackupScreen from '../screens/home/PersonalBackupScreen';
 import RecurringBillsScreen from '../screens/home/RecurringBillsScreen';
+import RecurringBillDetailScreen from '../screens/home/RecurringBillDetailScreen';
 import type { Wallet } from '../types/wallet';
 import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
@@ -82,6 +83,7 @@ export type RootStackParamList = {
         widgetEvent?: string;
         widgetAction?: 'FORM' | 'VOICE' | 'CAMERA';
         widgetCategoryId?: number;
+        billPayment?: import('../utils/recurringBills').BillOccurrence;
       }
     | undefined;
   Wallets:
@@ -124,7 +126,8 @@ export type RootStackParamList = {
   DataManagement: { wallets?: Wallet[]; financialDraftId?: string } | undefined;
   FinancialInbox: undefined;
   PersonalBackup: undefined;
-  RecurringBills: { reminderDate?: string } | undefined;
+  RecurringBills: { reminderDate?: string; editBillId?: string } | undefined;
+  RecurringBillDetail: { billId: string };
   FinancialCenter: { wallets?: Wallet[] } | undefined;
   MoneyCalendar: undefined;
   LoanDebts: undefined;
@@ -285,6 +288,10 @@ const AppNavigator = () => {
           <Stack.Screen
             name="RecurringBills"
             component={RecurringBillsScreen}
+          />
+          <Stack.Screen
+            name="RecurringBillDetail"
+            component={RecurringBillDetailScreen}
           />
           <Stack.Screen
             name="CurrencyPicker"

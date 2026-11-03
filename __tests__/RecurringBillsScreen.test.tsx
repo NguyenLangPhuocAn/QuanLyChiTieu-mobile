@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import RecurringBillsScreen from '../src/screens/home/RecurringBillsScreen';
 import { recurringBillsService as service } from '../src/services/recurringBills';
 import { transactionsService } from '../src/services/transactions';
+import { apiRequest } from '../src/services/api';
 import { getTransactionDateKey } from '../src/utils/mapTransactions';
 import type { BillInput } from '../src/utils/recurringBills';
 import { billDateOffset } from '../src/utils/recurringBills';
@@ -14,7 +15,9 @@ jest.setTimeout(20000);
 let mockToken = 'token';
 let mockUserId = 99;
 let mockCurrency = 'VND';
-let mockRouteParams: { reminderDate?: string } | undefined;
+let mockRouteParams: { reminderDate?: string; editBillId?: string } | undefined;
+const mockNavigate = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
@@ -58,7 +61,12 @@ let renderer: TestRenderer.ReactTestRenderer | undefined;
 const screen = () => (
   <RecurringBillsScreen
     {...({
-      navigation: { goBack: jest.fn(), setParams: jest.fn() },
+      navigation: {
+        goBack: jest.fn(),
+        setParams: jest.fn(),
+        navigate: mockNavigate,
+        push: mockPush,
+      },
       route: { params: mockRouteParams },
     } as unknown as React.ComponentProps<typeof RecurringBillsScreen>)}
   />
@@ -173,8 +181,13 @@ it('offers creating and paying in the bill, without the backup button on this sc
   expect(JSON.stringify(renderer!.toJSON())).not.toContain(
     'Sao lưu và khôi phục lịch',
   );
-  await act(async () => press(`Tạo giao dịch và trả Tiền nhà kỳ ${today}`));
-  expect(JSON.stringify(renderer!.toJSON())).toContain('Tạo giao dịch và trả');
+  await act(async () => press(`Tạo giao dịch từ Tiền nhà kỳ ${today}`));
+  expect(mockPush).toHaveBeenCalledWith(
+    'Main',
+    expect.objectContaining({
+      billPayment: expect.objectContaining({ dueDate: today }),
+    }),
+  );
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 it('a dismissed picker invalidates an outstanding confirmation', async () => {
@@ -246,7 +259,33 @@ it('accepts a decimal comma for a variable bill in a foreign currency', async ()
   ).toHaveLength(0);
 });
 
-it('opens an existing schedule in a centered modal with its first tracked date', async () => {
+it('requires an expense category when available and stores the selected category on the schedule', async () => {
+  jest.mocked(apiRequest).mockResolvedValueOnce([
+    { id: 7, name: 'Hóa đơn', type: 'EXPENSE', cash_flow_group: 'NORMAL' },
+    { id: 8, name: 'Lương', type: 'INCOME', cash_flow_group: 'NORMAL' },
+  ]);
+  await mount();
+  await act(async () => press('Thêm lịch hóa đơn'));
+  await act(async () => {
+    field('Tên hóa đơn', 'Internet');
+    field('Số tiền hóa đơn', '300000');
+    press('Lưu lịch');
+  });
+  expect((await service.load(scope)).bills).toHaveLength(0);
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![1]).toContain(
+    'Chọn danh mục chi',
+  );
+  await act(async () => press('Danh mục lịch Hóa đơn'));
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0].categoryId).toBe(7);
+  expect(
+    renderer!.root.findAllByProps({
+      accessibilityLabel: 'Danh mục lịch Lương',
+    }),
+  ).toHaveLength(0);
+});
+
+it('opens an existing schedule on its own page instead of expanding the card', async () => {
   await service.save(scope, {
     ...bill,
     anchorDate: '2026-01-31',
@@ -256,20 +295,10 @@ it('opens an existing schedule in a centered modal with its first tracked date',
   await mount();
   await act(async () => press('Lịch đã tạo'));
   await act(async () => press('Chi tiết lịch Tiền nhà'));
-  await act(async () => press('Sửa lịch'));
-  const editorModal = renderer!.root
-    .findAllByType(require('react-native').Modal)
-    .find(node => node.props.animationType === 'fade');
-  expect(editorModal?.props.visible).toBe(true);
-  const content = JSON.stringify(renderer!.toJSON());
-  expect(content).toContain('31/01/2027');
-  expect(content).not.toContain('Ngày gốc của chu kỳ');
-  expect(content).not.toContain('31/01/2026');
-  await act(async () => press('Lưu lịch'));
-  expect((await service.load(scope)).bills[0]).toMatchObject({
-    anchorDate: '2026-01-31',
-    startDate: '2027-01-31',
+  expect(mockNavigate).toHaveBeenCalledWith('RecurringBillDetail', {
+    billId: (await service.load(scope)).bills[0].id,
   });
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Quản lý lịch');
 });
 
 it('finds a saved bill and creates its next transaction even beyond the 90-day overview', async () => {
@@ -284,11 +313,26 @@ it('finds a saved bill and creates its next transaction even beyond the 90-day o
   await act(async () => press('Lịch đã tạo'));
   await act(async () => field('Tìm hóa đơn', 'fpt'));
   expect(JSON.stringify(renderer!.toJSON())).toContain('FPT Internet');
-  expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Chi tiết lịch Tiền nhà' })).toHaveLength(0);
+  expect(
+    renderer!.root.findAllByProps({
+      accessibilityLabel: 'Chi tiết lịch Tiền nhà',
+    }),
+  ).toHaveLength(0);
   await act(async () => press('Chi tiết lịch FPT Internet'));
-  expect(JSON.stringify(renderer!.toJSON())).toContain('không phụ thuộc tên hóa đơn');
+  expect(mockNavigate).toHaveBeenCalledWith('RecurringBillDetail', {
+    billId: (await service.load(scope)).bills.find(
+      item => item.label === 'FPT Internet',
+    )!.id,
+  });
   await act(async () => press('Tạo giao dịch từ lịch FPT Internet'));
-  expect(JSON.stringify(renderer!.toJSON())).toContain('Tạo giao dịch và trả');
+  expect(mockPush).toHaveBeenCalledWith(
+    'Main',
+    expect.objectContaining({
+      billPayment: expect.objectContaining({
+        bill: expect.objectContaining({ label: 'FPT Internet' }),
+      }),
+    }),
+  );
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
@@ -311,8 +355,8 @@ it('moves the first tracked date when the user changes it in the editor', async 
   });
   await mount();
   await act(async () => press('Lịch đã tạo'));
-  await act(async () => press('Chi tiết lịch Tiền nhà'));
-  await act(async () => press('Sửa lịch'));
+  mockRouteParams = { editBillId: (await service.load(scope)).bills[0].id };
+  await act(async () => renderer!.update(screen()));
   await act(async () => press('Chọn ngày đến hạn đầu tiên'));
   await act(async () =>
     renderer!.root
@@ -425,14 +469,15 @@ it('shows a retryable network error without claiming that no payments exist', as
   ).toBeGreaterThan(0);
 });
 
-it('allows opting one bill out of reminders without pausing or changing payments', async () => {
+it('navigates to schedule detail without changing reminders or payments', async () => {
   await service.save(scope, bill);
   await mount();
   await act(async () => press('Lịch đã tạo'));
   await act(async () => press('Chi tiết lịch Tiền nhà'));
-  await act(async () => press('Tắt nhắc lịch này'));
+  expect(mockNavigate).toHaveBeenCalledWith('RecurringBillDetail', {
+    billId: (await service.load(scope)).bills[0].id,
+  });
   expect((await service.load(scope)).bills[0]).toMatchObject({
-    reminderEnabled: false,
     paused: false,
   });
   expect((await service.load(scope)).periods).toEqual([]);

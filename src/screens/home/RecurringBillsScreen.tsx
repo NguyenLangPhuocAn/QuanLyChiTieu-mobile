@@ -23,17 +23,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
-import BillSuggestions from '../../components/BillSuggestions';
 import BillUpcomingSummary from '../../components/BillUpcomingSummary';
-import BillPaymentEntry from '../../components/BillPaymentEntry';
 import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
 import type { BillPaymentTarget } from '../../utils/billPaymentChecks';
-import {
-  billSuggestionNotes,
-  type BillSuggestion,
-} from '../../utils/billSuggestions';
+import { categoriesService } from '../../services/categories';
+import type { Category } from '../../types/category';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -51,7 +47,10 @@ import {
   normalizeMoneyInputForCurrency,
   parsePositiveMoneyInput,
 } from '../../utils/moneyInput';
-import { getCashFlowType } from '../../utils/transactionClassification';
+import {
+  filterNormalCashFlowCategories,
+  getCashFlowType,
+} from '../../utils/transactionClassification';
 import {
   billDateOffset,
   billOccurrences,
@@ -98,6 +97,7 @@ type Editor = {
   min: string;
   max: string;
   currency: string;
+  categoryId?: number;
   note: string;
 };
 type Picker = {
@@ -119,14 +119,40 @@ function RecurringBillsContent({
   const [book, setBook] = useState<BillBook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const editorRef = useRef(editor);
-  editorRef.current = editor;
-  const [sourceSuggestion, setSourceSuggestion] =
-    useState<BillSuggestion | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState(false);
+  const expenseCategories = useMemo(
+    () =>
+      filterNormalCashFlowCategories(categories).filter(
+        item => item.type === 'EXPENSE',
+      ),
+    [categories],
+  );
+  useEffect(() => {
+    let live = true;
+    setCategoryLoading(true);
+    categoriesService
+      .getAll(token)
+      .then(rows => {
+        if (live) {
+          setCategories(rows);
+          setCategoryError(false);
+        }
+      })
+      .catch(() => {
+        if (live) setCategoryError(true);
+      })
+      .finally(() => {
+        if (live) setCategoryLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [token]);
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [search, setSearch] = useState('');
-  const [expandedBill, setExpandedBill] = useState<string | null>(null);
   const [visible, setVisible] = useState(20);
   const [reminderFilter, setReminderFilter] = useState(() => {
     const date = route.params?.reminderDate;
@@ -141,7 +167,6 @@ function RecurringBillsContent({
     }
   }, [route.params?.reminderDate]);
   const [picker, setPicker] = useState<Picker | null>(null);
-  const [paymentEntry, setPaymentEntry] = useState<BillOccurrence | null>(null);
   const [today, setToday] = useState(() =>
     getTransactionDateKey(new Date().toISOString()),
   );
@@ -219,7 +244,8 @@ function RecurringBillsContent({
           !item.bill.paused &&
           ['PENDING', 'OVERDUE'].includes(item.status) &&
           !result.has(item.bill.id)
-        ) result.set(item.bill.id, item);
+        )
+          result.set(item.bill.id, item);
       }
     }
     return result;
@@ -261,6 +287,8 @@ function RecurringBillsContent({
     pickerRevision.current += 1;
     setPicker(null);
   };
+  const openPayment = (item: BillOccurrence) =>
+    navigation.push('Main', { billPayment: item });
   const fetchPayments = async (occurrence: BillOccurrence, page = 1) => {
     const revision = ++pickerRevision.current;
     setPicker(previous => ({
@@ -418,7 +446,6 @@ function RecurringBillsContent({
     );
   };
   const editBill = (bill?: RecurringBill) => {
-    setSourceSuggestion(null);
     setShowDate(false);
     setEditor(
       bill
@@ -438,6 +465,13 @@ function RecurringBillsContent({
   const saveEditor = () => {
     if (!editor) return;
     try {
+      if (categoryLoading || categoryError)
+        throw new Error('Chưa tải được danh mục chi. Hãy thử lại.');
+      if (
+        expenseCategories.length &&
+        !expenseCategories.some(item => item.id === editor.categoryId)
+      )
+        throw new Error('Chọn danh mục chi cho lịch hóa đơn.');
       const input = validateBillInput({
         label: editor.label,
         cycle: editor.cycle,
@@ -452,45 +486,17 @@ function RecurringBillsContent({
           ),
         ),
         currency: editor.currency,
+        categoryId: editor.categoryId,
         note: editor.note,
       });
-      const persist = () =>
-        execute(
-          () =>
-            recurringBillsService.save(
-              scope,
-              input,
-              editor.id,
-              sourceSuggestion?.key,
-            ),
-          () => {
-            setEditor(null);
-            setSourceSuggestion(null);
-            setShowDate(false);
-            setTab('BILLS');
-          },
-        );
-      if (sourceSuggestion)
-        Alert.alert(
-          'Tạo lịch theo dõi?',
-          `${input.label}\n${amountLabel(input)}\n${
-            cycleNames[input.cycle]
-          } · Theo dõi từ ${dateLabel(
-            input.startDate ?? input.anchorDate,
-          )}\n${billSuggestionNotes(sourceSuggestion).join('\n')}${
-            billSuggestionNotes(sourceSuggestion).length ? '\n' : ''
-          }Chỉ tạo lịch dự kiến, không tạo giao dịch hoặc đánh dấu các khoản cũ đã trả. Áp dụng cài đặt nhắc hóa đơn hiện tại.`,
-          [
-            { text: 'Hủy', style: 'cancel' },
-            {
-              text: 'Tạo lịch',
-              onPress: () => {
-                if (editorRef.current === editor) persist();
-              },
-            },
-          ],
-        );
-      else persist();
+      execute(
+        () => recurringBillsService.save(scope, input, editor.id),
+        () => {
+          setEditor(null);
+          setShowDate(false);
+          setTab('BILLS');
+        },
+      );
     } catch (reason) {
       Alert.alert(
         'Kiểm tra lịch hóa đơn',
@@ -522,9 +528,17 @@ function RecurringBillsContent({
   const closeEditor = () => {
     if (busy) return;
     setEditor(null);
-    setSourceSuggestion(null);
     setShowDate(false);
   };
+  useEffect(() => {
+    const billId = route.params?.editBillId;
+    if (!billId || !book) return;
+    navigation.setParams({ editBillId: undefined });
+    const bill = book.bills.find(item => item.id === billId && !item.archived);
+    if (bill) editBill(bill);
+    // Consumes a navigation request once after the local book has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.editBillId, book]);
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -756,6 +770,56 @@ function RecurringBillsContent({
                             </View>
                           ) : null}
                         </View>
+                        <Text style={styles.label}>Danh mục chi</Text>
+                        {categoryLoading ? (
+                          <ActivityIndicator color="#FF8C00" />
+                        ) : null}
+                        {categoryError ? (
+                          <Text style={styles.error}>
+                            Chưa tải được danh mục chi. Mở lại màn này để thử
+                            lại.
+                          </Text>
+                        ) : null}
+                        {!categoryLoading &&
+                        !categoryError &&
+                        expenseCategories.length ? (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.categoryRow}
+                          >
+                            {expenseCategories.map(category => (
+                              <TouchableOpacity
+                                key={category.id}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Danh mục lịch ${category.name}`}
+                                accessibilityState={{
+                                  selected: editor.categoryId === category.id,
+                                }}
+                                style={[
+                                  styles.categoryChip,
+                                  editor.categoryId === category.id &&
+                                    styles.selected,
+                                ]}
+                                onPress={() =>
+                                  change({ categoryId: category.id })
+                                }
+                              >
+                                <Text style={styles.label}>
+                                  {category.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        ) : null}
+                        {!categoryLoading &&
+                        !categoryError &&
+                        !expenseCategories.length ? (
+                          <Text style={styles.muted}>
+                            Chưa có danh mục chi; có thể lưu lịch chưa phân
+                            loại.
+                          </Text>
+                        ) : null}
                         <FormField
                           label="Ghi chú"
                           accessibilityLabel="Ghi chú hóa đơn"
@@ -776,25 +840,6 @@ function RecurringBillsContent({
                   </View>
                 </SafeAreaView>
               </Modal>
-            ) : null}
-            {!reminderFilter ? (
-              <BillSuggestions
-                scope={scope}
-                token={token}
-                today={today}
-                book={book}
-                hidden={Boolean(editor)}
-                onBookChange={load}
-                onFollow={candidate => {
-                  setSourceSuggestion(candidate);
-                  setShowDate(false);
-                  setEditor({
-                    ...candidate.input,
-                    min: String(candidate.input.minAmount),
-                    max: String(candidate.input.maxAmount),
-                  });
-                }}
-              />
             ) : null}
             <View style={styles.row}>
               {(['PENDING', 'DONE', 'BILLS'] as const).map(value => (
@@ -929,10 +974,10 @@ function RecurringBillsContent({
                     {['PENDING', 'OVERDUE'].includes(item.status) ? (
                       <View style={styles.paymentActions}>
                         <ActionButton
-                          label="Tạo giao dịch và trả"
-                          accessibilityLabel={`Tạo giao dịch và trả ${item.bill.label} kỳ ${item.dueDate}`}
+                          label="Tạo giao dịch"
+                          accessibilityLabel={`Tạo giao dịch từ ${item.bill.label} kỳ ${item.dueDate}`}
                           disabled={busy}
-                          onPress={() => setPaymentEntry(item)}
+                          onPress={() => openPayment(item)}
                         />
                         <View style={styles.row}>
                           <View style={styles.grow}>
@@ -1003,7 +1048,8 @@ function RecurringBillsContent({
                       </Text>
                       {nextByBill.get(bill.id) ? (
                         <Text style={styles.muted}>
-                          Chưa trả · kỳ {dateLabel(nextByBill.get(bill.id)!.dueDate)}
+                          Chưa trả · kỳ{' '}
+                          {dateLabel(nextByBill.get(bill.id)!.dueDate)}
                         </Text>
                       ) : null}
                       <View style={styles.row}>
@@ -1012,7 +1058,9 @@ function RecurringBillsContent({
                           accessibilityLabel={`Chi tiết lịch ${bill.label}`}
                           style={styles.linkButton}
                           onPress={() =>
-                            setExpandedBill(value => value === bill.id ? null : bill.id)
+                            navigation.navigate('RecurringBillDetail', {
+                              billId: bill.id,
+                            })
                           }
                         >
                           <Text style={styles.link}>Chi tiết</Text>
@@ -1022,67 +1070,16 @@ function RecurringBillsContent({
                             accessibilityRole="button"
                             accessibilityLabel={`Tạo giao dịch từ lịch ${bill.label}`}
                             style={styles.primarySmallButton}
-                            onPress={() => setPaymentEntry(nextByBill.get(bill.id)!)}
+                            onPress={() =>
+                              openPayment(nextByBill.get(bill.id)!)
+                            }
                           >
-                            <Text style={styles.primarySmallText}>Tạo giao dịch</Text>
+                            <Text style={styles.primarySmallText}>
+                              Tạo giao dịch
+                            </Text>
                           </TouchableOpacity>
                         ) : null}
                       </View>
-                      {expandedBill === bill.id ? (
-                        <View style={styles.detailSection}>
-                          {bill.note ? <Text style={styles.muted}>{bill.note}</Text> : null}
-                          {book.periods
-                            .filter(period => period.billId === bill.id)
-                            .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
-                            .slice(0, 5)
-                            .map(period => (
-                              <View key={period.dueDate} style={styles.periodRow}>
-                                <Text style={styles.label}>
-                                  Kỳ {dateLabel(period.dueDate)} · {period.status === 'PAID' ? 'Đã trả' : 'Đã bỏ qua'}
-                                </Text>
-                                {period.status === 'PAID' ? (
-                                  <Text style={styles.muted}>
-                                    Giao dịch #{period.payment.id} · {formatCurrency(period.payment.amount, period.payment.currency)} · {dateLabel(period.payment.date)}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            ))}
-                          <Text style={styles.muted}>
-                            Kỳ đã trả được ghi bằng mã giao dịch đã chọn, không phụ thuộc tên hóa đơn hay ghi chú giao dịch.
-                          </Text>
-                          <ActionButton
-                            label={bill.reminderEnabled === false ? 'Bật nhắc lịch này' : 'Tắt nhắc lịch này'}
-                            secondary
-                            disabled={busy}
-                            onPress={() => execute(() => recurringBillsService.setReminder(scope, bill.id, bill.reminderEnabled === false))}
-                          />
-                          <View style={styles.row}>
-                            <ActionButton label="Sửa lịch" secondary disabled={busy} onPress={() => editBill(bill)} />
-                            <ActionButton
-                              label={bill.paused ? 'Tiếp tục lịch' : 'Tạm dừng'}
-                              secondary
-                              disabled={busy}
-                              onPress={() => execute(() => recurringBillsService.setPaused(scope, bill.id, !bill.paused))}
-                            />
-                            <TouchableOpacity
-                              accessibilityRole="button"
-                              accessibilityLabel={`Xóa lịch ${bill.label}`}
-                              disabled={busy}
-                              style={styles.smallButton}
-                              onPress={() => Alert.alert(
-                                'Xóa lịch hóa đơn?',
-                                `${bill.label}\nNgừng theo dõi lịch. Giao dịch gốc được giữ nguyên; liên kết đã trả vẫn được giữ để chống dùng trùng.`,
-                                [
-                                  { text: 'Hủy', style: 'cancel' },
-                                  { text: 'Xóa lịch', style: 'destructive', onPress: () => execute(() => recurringBillsService.archive(scope, bill.id)) },
-                                ],
-                              )}
-                            >
-                              <Text style={styles.error}>Xóa</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ) : null}
                     </View>
                   ))}
               </>
@@ -1176,18 +1173,6 @@ function RecurringBillsContent({
           </View>
         </SafeAreaView>
       </Modal>
-      {paymentEntry ? (
-        <BillPaymentEntry
-          occurrence={paymentEntry}
-          scope={scope}
-          token={token}
-          onClose={() => setPaymentEntry(null)}
-          onLinked={async () => {
-            setPaymentEntry(null);
-            await load();
-          }}
-        />
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -1254,6 +1239,16 @@ const styles = StyleSheet.create({
   },
   editorContent: { padding: 20, paddingBottom: 12 },
   editorFields: { gap: 12 },
+  categoryRow: { gap: 8, paddingVertical: 4 },
+  categoryChip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8D8CA',
+    backgroundColor: '#FFFFFF',
+  },
   editorFooter: {
     padding: 16,
     paddingTop: 10,
@@ -1292,8 +1287,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primarySmallText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  detailSection: { gap: 10, borderTopWidth: 1, borderTopColor: '#F1D4B9', paddingTop: 12 },
-  periodRow: { gap: 2, paddingVertical: 5 },
   heading: { fontSize: 16, fontWeight: '700', color: '#4A2B1A' },
   amount: { fontSize: 18, fontWeight: '700', color: '#A95514' },
   label: { fontSize: 13, fontWeight: '600', color: '#593420' },

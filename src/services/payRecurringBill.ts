@@ -60,7 +60,8 @@ export async function payRecurringBill({
     bill.maxAmount !== occurrence.bill.maxAmount ||
     bill.cycle !== occurrence.bill.cycle ||
     bill.anchorDate !== occurrence.bill.anchorDate ||
-    bill.startDate !== occurrence.bill.startDate
+    bill.startDate !== occurrence.bill.startDate ||
+    bill.categoryId !== occurrence.bill.categoryId
   )
     throw new Error('Lịch đã thay đổi. Hãy mở lại kỳ hóa đơn.');
   if (
