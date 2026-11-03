@@ -8,7 +8,11 @@ import {
 import { recurringBillsService as service } from '../src/services/recurringBills';
 import { billReminderPayload } from '../src/native/billReminder';
 import type { ApiTransaction } from '../src/types/transaction';
-import type { BillBook, RecurringBill } from '../src/utils/recurringBills';
+import {
+  billOccurrences,
+  type BillBook,
+  type RecurringBill,
+} from '../src/utils/recurringBills';
 
 const today = '2026-10-28';
 const bill: RecurringBill = {
@@ -397,6 +401,23 @@ it('sums actual upcoming calendar periods by currency, skips handled/paused/arch
       { currency: 'VND', min: 100000, max: 100000, periods: 1, bills: 1 },
     ],
   });
+});
+it('does not count an unpaid January quarterly bill in a November 30-day forecast', () => {
+  const now = '2026-11-03';
+  const quarterly: RecurringBill = {
+    ...bill,
+    cycle: 'QUARTERLY',
+    anchorDate: '2026-10-31',
+    startDate: '2027-01-31',
+  };
+  const data: BillBook = { version: 1, bills: [quarterly], periods: [] };
+  expect(upcomingBillSummary(data, now)).toEqual({
+    end: '2026-12-02',
+    totals: [],
+  });
+  expect(billOccurrences(data, now, '2027-02-01', now)).toMatchObject([
+    { dueDate: '2027-01-31', status: 'PENDING' },
+  ]);
 });
 it('keeps fractional sums exact and reports overflow rather than rounding an unsafe total', () => {
   const weekly = {

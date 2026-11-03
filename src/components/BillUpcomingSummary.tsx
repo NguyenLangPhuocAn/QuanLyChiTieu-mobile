@@ -40,7 +40,9 @@ export default function BillUpcomingSummary({
           </View>
         ))
       ) : (
-        <Text style={styles.text}>Chưa có kỳ chưa xử lý trong khoảng này.</Text>
+        <Text style={styles.text}>
+          Không có kỳ chưa trả đến hạn trong 30 ngày này.
+        </Text>
       )}
     </View>
   );

@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft } from 'lucide-react-native';
 import { ActionButton } from '../../components/FormControls';
+import BillPaidTransactionLink from '../../components/BillPaidTransactionLink';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
@@ -187,7 +188,7 @@ export default function RecurringBillDetailScreen({
               </View>
             ) : null}
             <View style={styles.card}>
-              <Text style={styles.heading}>Các kỳ đã xử lý</Text>
+              <Text style={styles.heading}>Lịch sử kỳ</Text>
               {!periods.length ? (
                 <Text style={styles.muted}>Chưa có kỳ đã trả hoặc bỏ qua.</Text>
               ) : null}
@@ -198,14 +199,14 @@ export default function RecurringBillDetailScreen({
                     {period.status === 'PAID' ? 'Đã trả' : 'Đã bỏ qua'}
                   </Text>
                   {period.status === 'PAID' ? (
-                    <Text style={styles.muted}>
-                      Giao dịch #{period.payment.id} ·{' '}
-                      {formatCurrency(
-                        period.payment.amount,
-                        period.payment.currency,
-                      )}{' '}
-                      · {dateLabel(period.payment.date)}
-                    </Text>
+                    <BillPaidTransactionLink
+                      payment={period.payment}
+                      onOpen={transaction =>
+                        navigation.navigate('TransactionDetail', {
+                          transaction,
+                        })
+                      }
+                    />
                   ) : null}
                 </View>
               ))}

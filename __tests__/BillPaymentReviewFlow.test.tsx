@@ -82,7 +82,7 @@ const mount = async () => {
   await act(async () => {
     renderer = TestRenderer.create(screen());
   });
-  await act(async () => press('Đã xử lý'));
+  await act(async () => press('Đã trả'));
 };
 beforeEach(async () => {
   stateListeners = [];

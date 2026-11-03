@@ -9,7 +9,7 @@ import { transactionsService } from '../src/services/transactions';
 import { apiRequest } from '../src/services/api';
 import { getTransactionDateKey } from '../src/utils/mapTransactions';
 import type { BillInput } from '../src/utils/recurringBills';
-import { billDateOffset } from '../src/utils/recurringBills';
+import { billDateOffset, billDueDate } from '../src/utils/recurringBills';
 
 jest.setTimeout(20000);
 let mockToken = 'token';
@@ -32,6 +32,8 @@ jest.mock('../src/services/api', () => ({
 jest.mock('../src/services/transactions', () => ({
   transactionsService: {
     getPage: jest.fn(),
+    getLinkedPayments: jest.fn(),
+    getAll: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -118,6 +120,11 @@ beforeEach(async () => {
       },
     ],
     meta: { page: 1, limit: 40, total: 1, totalPages: 1 },
+  });
+  jest.mocked(transactionsService.getLinkedPayments).mockResolvedValue({
+    requestedIds: [],
+    missingIds: [],
+    data: [],
   });
 });
 afterEach(async () => {
@@ -253,6 +260,37 @@ it('starts with recent matching expenses and loads other real transactions only 
   );
   expect(hasAction('Liên kết giao dịch 72')).toBe(true);
   expect(hasAction('Liên kết giao dịch 73')).toBe(true);
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+it('uses Đã trả for paid periods, hides skipped periods there, and removes transaction IDs from the row', async () => {
+  await service.save(scope, bill);
+  await service.save(scope, { ...bill, label: 'Điện' });
+  const stored = await service.load(scope);
+  await service.linkPayment(scope, stored.bills[0].id, today, {
+    id: 77,
+    wallet_id: 1,
+    amount: 3000000,
+    currency: 'VND',
+    type: 'EXPENSE',
+    transaction_date: today,
+    note: 'Trả tiền nhà',
+  });
+  await service.skip(scope, stored.bills[1].id, billDueDate(stored.bills[1], 0));
+  await mount();
+  await act(async () => press('Đã trả'));
+  const content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Đã trả · ');
+  expect(content).toContain('3.000.000');
+  expect(content).not.toContain('Giao dịch #77');
+  expect(content).not.toContain('Điện');
+  expect(
+    renderer!.root.findAllByProps({ accessibilityRole: 'button' }).some(
+      node =>
+        String(node.props.accessibilityLabel).startsWith(
+          'Xem giao dịch đã trả 3.000.000',
+        ),
+    ),
+  ).toBe(true);
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 it('offers creating and paying in the bill, without the backup button on this screen', async () => {

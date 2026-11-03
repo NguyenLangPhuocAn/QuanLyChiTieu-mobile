@@ -24,6 +24,7 @@ import { ArrowLeft, X } from 'lucide-react-native';
 import { ActionButton, FormField } from '../../components/FormControls';
 import BillReminderSettings from '../../components/BillReminderSettings';
 import BillUpcomingSummary from '../../components/BillUpcomingSummary';
+import BillPaidTransactionLink from '../../components/BillPaidTransactionLink';
 import BillPaymentReview from '../../components/BillPaymentReview';
 import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
@@ -268,7 +269,7 @@ function RecurringBillsContent({
   const displayed = occurrences
     .filter(item =>
       tab === 'DONE'
-        ? ['PAID', 'SKIPPED'].includes(item.status)
+        ? item.status === 'PAID'
         : ['PENDING', 'OVERDUE'].includes(item.status),
     )
     .filter(
@@ -611,7 +612,7 @@ function RecurringBillsContent({
               <View style={styles.card}>
                 <Text style={styles.muted}>
                   Các khoản từ lời nhắc ngày {dateLabel(reminderFilter)}. Kỳ đã
-                  xử lý được giữ trong Đã xử lý.
+                  trả được giữ trong Đã trả.
                 </Text>
                 <ActionButton
                   label="Xem tất cả kỳ"
@@ -875,7 +876,7 @@ function RecurringBillsContent({
                   accessibilityLabel={
                     {
                       PENDING: 'Chưa trả',
-                      DONE: 'Đã xử lý',
+                      DONE: 'Đã trả',
                       BILLS: 'Lịch đã tạo',
                     }[value]
                   }
@@ -894,7 +895,7 @@ function RecurringBillsContent({
                     {
                       {
                         PENDING: 'Chưa trả',
-                        DONE: 'Đã xử lý',
+                        DONE: 'Đã trả',
                         BILLS: 'Lịch đã tạo',
                       }[value]
                     }
@@ -942,7 +943,7 @@ function RecurringBillsContent({
                       ? 'Không tìm thấy hóa đơn phù hợp.'
                       : tab === 'PENDING'
                       ? 'Chưa có hóa đơn chờ thanh toán.'
-                      : 'Chưa có kỳ được xử lý.'}
+                      : 'Chưa có kỳ đã trả.'}
                   </Text>
                 ) : null}
                 {searched.slice(0, visible).map(item => (
@@ -982,14 +983,14 @@ function RecurringBillsContent({
                       </Text>
                     ) : null}
                     {item.payment ? (
-                      <Text style={styles.muted}>
-                        Giao dịch #{item.payment.id}:{' '}
-                        {formatCurrency(
-                          item.payment.amount,
-                          item.payment.currency,
-                        )}{' '}
-                        · {dateLabel(item.payment.date)}
-                      </Text>
+                      <BillPaidTransactionLink
+                        payment={item.payment}
+                        onOpen={transaction =>
+                          navigation.navigate('TransactionDetail', {
+                            transaction,
+                          })
+                        }
+                      />
                     ) : null}
                     <BillPaymentReview
                       item={item}
