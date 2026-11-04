@@ -10,8 +10,8 @@ Thiết bị: Android emulator API 33, ứng dụng `com.mobile.dev` build từ 
 
 ## ACB và giới hạn
 
-- Backend dùng mẫu ACB ONE đã ẩn danh từ ảnh người dùng: `(VND) + 752,790` trước câu số dư. Kiểm thử bộ lọc xác nhận chỉ giữ khoản Thu 752.790 đ, loại số tài khoản, số dư, thời gian và mã giao dịch. Kiểm thử Gemini mock xác nhận bằng chứng được viết lại thành `+752,790 VND` vẫn đi qua bước kiểm tra nếu chỉ có một khoản tiền có dấu và khớp chiều/số tiền. Đây không phải kết quả Gemini thật hoặc thông báo ACB thật trên điện thoại.
-- Tài khoản QA này không có danh mục nên chưa thể chụp danh sách chọn danh mục có dữ liệu trên emulator. Bộ chọn có danh mục đã được kiểm bằng Jest. Quyền truy cập thông báo Android của ACB và Gemini trên điện thoại thật cần kiểm sau khi gộp bản cập nhật backend/app.
+- Backend dùng mẫu ACB ONE đã ẩn danh từ ảnh người dùng: `(VND) + 752,790` trước câu số dư. Kiểm thử bộ lọc xác nhận chỉ giữ khoản Thu 752.790 đ, loại số tài khoản, số dư, thời gian và mã giao dịch. Gemini thật trên backend local ban đầu trả `evidence: "+ 752,790"`; bước kiểm tra cũ từ chối. Sau sửa, hai lượt Gemini thật (mẫu có và không có dấu tiếng Việt) đều trả `READY/INCOME/752790/VND`, chỉ là bản nháp, không ghi tiền. Test có Gemini mock xác nhận cả trường hợp đảo vị trí VND và chặn bằng chứng có thêm chữ số.
+- Tài khoản QA này không có danh mục nên chưa thể chụp danh sách chọn danh mục có dữ liệu trên emulator. Bộ chọn có danh mục đã được kiểm bằng Jest. Đây chưa phải thử thông báo ACB thật trên điện thoại; quyền Android và luồng qua server production cần kiểm sau khi gộp bản cập nhật backend/app.
 
 ## SHA-256 ảnh gốc
 
