@@ -17,7 +17,7 @@ export const buildWidgetSnapshot = (
       t =>
         t.currency === currency &&
         t.transaction_date.slice(0, 10) === today &&
-        t.category?.cash_flow_group === 'NORMAL',
+        (!t.category || t.category.cash_flow_group === 'NORMAL'),
     ) ?? [];
   const amount = (type: string) =>
     rows

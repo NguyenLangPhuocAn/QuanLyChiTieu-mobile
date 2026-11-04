@@ -170,7 +170,7 @@ export default function RecurringBillDetailScreen({
                 {dateLabel(bill.startDate ?? bill.anchorDate)}
               </Text>
               <Text style={styles.muted}>
-                Danh mục chi:{' '}
+                  Danh mục:{' '}
                 {categories.find(item => item.id === bill.categoryId)?.name ??
                   'Chưa phân loại'}
               </Text>

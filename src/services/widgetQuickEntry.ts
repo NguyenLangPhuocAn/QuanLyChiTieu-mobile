@@ -65,7 +65,8 @@ export function widgetEntryPayload(
   );
   const amount = parsePositiveMoneyInput(form.amount);
   if (!wallet) throw Error('Chọn ví cho giao dịch.');
-  if (!category) throw Error('Chọn danh mục phù hợp với Thu/Chi.');
+  if (form.categoryId !== null && !category)
+    throw Error('Danh mục đã thay đổi. Hãy chọn lại danh mục phù hợp.');
   if (!amount) throw Error('Nhập số tiền lớn hơn 0.');
   if (form.currency && wallet.currency !== form.currency)
     throw Error(`Nội dung dùng ${form.currency}. Chọn ví cùng loại tiền.`);
@@ -83,7 +84,7 @@ export function widgetEntryPayload(
     throw Error('Kiểm tra tên và thành tiền các món.');
   return {
     wallet_id: wallet.id,
-    category_id: category.id,
+    ...(category ? { category_id: category.id } : {}),
     type: form.type,
     amount,
     note: form.note.trim() || undefined,

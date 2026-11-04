@@ -797,7 +797,7 @@ function RecurringBillsContent({
                             </View>
                           ) : null}
                         </View>
-                        <Text style={styles.label}>Danh mục chi</Text>
+                        <Text style={styles.label}>Danh mục</Text>
                         {categoryLoading ? (
                           <ActivityIndicator color="#FF8C00" />
                         ) : null}
@@ -843,8 +843,7 @@ function RecurringBillsContent({
                         !categoryError &&
                         !expenseCategories.length ? (
                           <Text style={styles.muted}>
-                            Chưa có danh mục chi; có thể lưu lịch chưa phân
-                            loại.
+                            Chưa có danh mục; lịch sẽ để chưa phân loại.
                           </Text>
                         ) : null}
                         <FormField

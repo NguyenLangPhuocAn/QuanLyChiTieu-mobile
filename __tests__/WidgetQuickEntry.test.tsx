@@ -268,6 +268,18 @@ it('requires wallet and preview before saving, locks repeated confirms, then clo
   });
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
 });
+it('opens and previews a transaction when this QA account has no categories', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValue({ ...data, categories: [] });
+  await mount(entryUrl.replace('&category=9', ''));
+  expect(control('Số tiền widget')).toBeDefined();
+  await fill('Số tiền widget', '25000');
+  await press('Ví QA · VND');
+  await press('Kiểm tra');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  expect(control('Xác nhận lưu')).toBeDefined();
+  await press('Sửa lại');
+  expect(control('Số tiền widget').props.value).toBe('25.000');
+});
 it('cancel never writes and a stale widget link cannot show financial fields', async () => {
   await mount();
   await press('Hủy');

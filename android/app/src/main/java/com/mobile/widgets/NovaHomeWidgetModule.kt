@@ -19,6 +19,7 @@ import com.mobile.MainActivity
 class NovaHomeWidgetModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
   private var registered = false
+  private var renderedForProcess = false
   private val callback = object : ConnectivityManager.NetworkCallback() {
     override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
       if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) && context.hasActiveReactInstance())
@@ -39,9 +40,14 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
   }
   @ReactMethod fun activate(scope: String?, promise: Promise) {
     val p = NovaWidgetProvider.prefs(context)
-    if (scope != p.getString("scope", null)) {
+    val changed = scope != p.getString("scope", null)
+    if (changed) {
       p.edit().clear().putString("scope", scope).commit()
+    }
+    // Package replacement can retain prefs but discard launcher RemoteViews.
+    if (changed || !renderedForProcess) {
       NovaWidgetProvider.render(context)
+      renderedForProcess = true
     }
     promise.resolve(null)
   }

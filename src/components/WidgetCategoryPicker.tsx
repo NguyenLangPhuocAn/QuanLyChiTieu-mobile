@@ -67,7 +67,9 @@ export default function WidgetCategoryPicker({
           {category.id === selectedId && <Check size={20} color="#C16B16" />}
         </TouchableOpacity>
       ))}
-      {!visible.length && <Text style={s.meta}>Không tìm thấy danh mục.</Text>}
+      {!visible.length && <Text style={s.meta}>
+        {eligible.length ? 'Không tìm thấy danh mục.' : 'Tài khoản này chưa có danh mục. Bạn vẫn có thể nhập giao dịch chưa phân loại.'}
+      </Text>}
     </View>
   );
 }

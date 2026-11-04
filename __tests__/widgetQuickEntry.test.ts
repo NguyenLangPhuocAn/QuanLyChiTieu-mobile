@@ -71,6 +71,20 @@ it('requires explicit wallet, correct category, real date and matching OCR curre
   });
   expect(payload()).not.toHaveProperty('receipt_image');
 });
+it('previews a normal transaction without a category when the account has none', () => {
+  const uncategorized = widgetEntryPayload(
+    { ...cache, categories: [] },
+    { ...form, categoryId: null },
+    'uncategorized-request',
+  );
+  expect(uncategorized).toMatchObject({
+    type: 'EXPENSE',
+    wallet_id: 1,
+    amount: '25000',
+    client_request_id: 'uncategorized-request',
+  });
+  expect(uncategorized).not.toHaveProperty('category_id');
+});
 it('refreshes confirmed data once without replaying a committed payment after cache failure', async () => {
   jest.mocked(transactionsService.create).mockResolvedValue({
     id: 20,

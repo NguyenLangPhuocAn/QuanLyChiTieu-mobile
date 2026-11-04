@@ -115,7 +115,7 @@ open class NovaWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.widget_toggle, PendingIntent.getBroadcast(context, id, toggle, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         val type = p.getString("type_$id", "EXPENSE") ?: "EXPENSE"
         val category = if (scope == null) null else categories(context, type).find { it.id == p.getLong("category_${id}_$type", -1) }
-        views.setTextViewText(R.id.widget_category, if (type == "LOAN_DEBT") "Vay hoặc cho vay · chọn khi nhập" else (category?.name ?: "Chọn danh mục") + "  ▾")
+        views.setTextViewText(R.id.widget_category, if (type == "LOAN_DEBT") "Vay hoặc cho vay · chọn khi nhập" else (category?.name ?: if (categories(context, type).isEmpty()) "Chưa phân loại" else "Chọn danh mục") + "  ▾")
         views.setContentDescription(R.id.widget_category, if (type == "LOAN_DEBT") "Nhập khoản vay nợ" else if (type == "INCOME") "Chọn danh mục thu" else "Chọn danh mục chi")
         for ((viewId, choiceType) in listOf(R.id.widget_expense_button to "EXPENSE", R.id.widget_income_button to "INCOME", R.id.widget_loan_button to "LOAN_DEBT")) {
           val selected = type == choiceType

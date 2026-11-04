@@ -53,6 +53,17 @@ it('opens only a valid current-account/backend widget link and never includes mo
   ).toBeNull();
   expect(widgetLink(scope, url.replace('INCOME', 'TRANSFER'))).toBeNull();
 });
+it('includes confirmed uncategorized income but not non-cash-flow rows', () => {
+  const day = new Date(2026, 10, 4);
+  const snapshot = {
+    updatedAt: day.toISOString(),
+    transactions: [
+      { amount: 12000, currency: 'VND', type: 'INCOME', transaction_date: '2026-11-04', category: null },
+      { amount: 5000, currency: 'VND', type: 'INCOME', transaction_date: '2026-11-04', category: { cash_flow_group: 'TRANSFER' } },
+    ],
+  } as DashboardCache;
+  expect(buildWidgetSnapshot(snapshot, 'VND', 0, day).income).toBe('12.000 VND');
+});
 
 it('offers only normal income/expense categories and carries a validated category and input action', () => {
   const data = {

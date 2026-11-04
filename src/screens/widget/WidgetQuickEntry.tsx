@@ -59,6 +59,7 @@ import {
 import type { LoanDebtType } from '../../types/loanDebt';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
 import { formatCurrency } from '../../utils/format';
+import { filterNormalCashFlowCategories } from '../../utils/transactionClassification';
 
 type Props = { entryUrl: string };
 type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
@@ -177,8 +178,8 @@ function Panel({ entryUrl }: Props) {
       )
         throw Error('Lối tắt đã thay đổi. Đóng rồi bấm lại widget.');
       const cached = await dashboardCache.read(user.id);
-      if (!cached?.wallets.length || !cached.categories.length)
-        throw Error('Mở app có mạng một lần để tải ví và danh mục.');
+      if (!cached?.wallets.length)
+        throw Error('Mở app có mạng một lần để tải ví.');
       if (!active) return;
       const params = new URLSearchParams(link.slice(link.indexOf('?') + 1));
       const nextType =
@@ -404,7 +405,8 @@ function Panel({ entryUrl }: Props) {
   const wallet = data?.wallets.find(w => w.id === walletId);
   const moneyCurrency =
     currency || wallet?.currency || user?.currency_default || 'VND';
-  const category = data?.categories.find(
+  const availableCategories = filterNormalCashFlowCategories(data?.categories ?? []);
+  const category = availableCategories.find(
     c => c.id === categoryId && c.type === type,
   );
   const voicePreview = parseVoiceTransactionDraft(transcript);
@@ -714,7 +716,7 @@ function Panel({ entryUrl }: Props) {
                   ? `${loanReview.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'} ${
                       loanReview.person_name
                     }`
-                  : category?.name}
+                  : category?.name ?? 'Chưa phân loại'}
               </Text>
               <Text style={s.muted}>{review.transaction_date}</Text>
               <Text style={s.review}>{review.note || 'Không có ghi chú'}</Text>
@@ -875,7 +877,7 @@ function Panel({ entryUrl }: Props) {
                     </View>
                     <View style={s.categoryCopy}>
                       <Text style={s.categoryName}>
-                        {category?.name || 'Chọn danh mục'}
+                        {category?.name || (availableCategories.some(c => c.type === type) ? 'Chọn danh mục' : 'Chưa phân loại')}
                       </Text>
                       <Text style={s.muted}>
                         {type === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
