@@ -124,6 +124,7 @@ function RecurringBillsContent({
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(true);
   const [categoryError, setCategoryError] = useState(false);
+  const [categoryRetry, setCategoryRetry] = useState(0);
   const expenseCategories = useMemo(
     () =>
       filterNormalCashFlowCategories(categories).filter(
@@ -151,7 +152,7 @@ function RecurringBillsContent({
     return () => {
       live = false;
     };
-  }, [token]);
+  }, [token, categoryRetry]);
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [search, setSearch] = useState('');
@@ -492,13 +493,13 @@ function RecurringBillsContent({
   const saveEditor = () => {
     if (!editor) return;
     try {
-      if (categoryLoading || categoryError)
-        throw new Error('Chưa tải được danh mục chi. Hãy thử lại.');
       if (
-        expenseCategories.length &&
+        editor.categoryId &&
+        (categoryLoading || categoryError ||
         !expenseCategories.some(item => item.id === editor.categoryId)
+        )
       )
-        throw new Error('Chọn danh mục chi cho lịch hóa đơn.');
+        throw new Error('Danh mục đã chọn chưa tải được. Hãy thử lại.');
       const input = validateBillInput({
         label: editor.label,
         cycle: editor.cycle,
@@ -802,19 +803,40 @@ function RecurringBillsContent({
                           <ActivityIndicator color="#FF8C00" />
                         ) : null}
                         {categoryError ? (
-                          <Text style={styles.error}>
-                            Chưa tải được danh mục chi. Mở lại màn này để thử
-                            lại.
-                          </Text>
+                          <View style={styles.row}>
+                            <Text style={styles.muted}>
+                              {editor.categoryId
+                                ? 'Danh mục đã chọn chưa tải được. Hãy thử lại.'
+                                : 'Chưa tải được danh mục. Có thể lưu lịch chưa phân loại.'}
+                            </Text>
+                            <TouchableOpacity
+                              accessibilityRole="button"
+                              accessibilityLabel="Tải lại danh mục lịch"
+                              onPress={() => setCategoryRetry(value => value + 1)}
+                            >
+                              <Text style={styles.retryText}>Thử lại</Text>
+                            </TouchableOpacity>
+                          </View>
                         ) : null}
                         {!categoryLoading &&
-                        !categoryError &&
-                        expenseCategories.length ? (
+                        !categoryError ? (
                           <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
                             contentContainerStyle={styles.categoryRow}
                           >
+                            <TouchableOpacity
+                              accessibilityRole="button"
+                              accessibilityLabel="Danh mục lịch Chưa phân loại"
+                              accessibilityState={{ selected: !editor.categoryId }}
+                              style={[
+                                styles.categoryChip,
+                                !editor.categoryId && styles.selected,
+                              ]}
+                              onPress={() => change({ categoryId: undefined })}
+                            >
+                              <Text style={styles.label}>Chưa phân loại</Text>
+                            </TouchableOpacity>
                             {expenseCategories.map(category => (
                               <TouchableOpacity
                                 key={category.id}
@@ -1281,6 +1303,7 @@ const styles = StyleSheet.create({
   editorContent: { padding: 20, paddingBottom: 12 },
   editorFields: { gap: 12 },
   categoryRow: { gap: 8, paddingVertical: 4 },
+  retryText: { color: '#B65C11', fontSize: 13, fontWeight: '700' },
   categoryChip: {
     minHeight: 44,
     justifyContent: 'center',

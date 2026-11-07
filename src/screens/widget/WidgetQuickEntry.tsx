@@ -751,6 +751,10 @@ function Panel({ entryUrl }: Props) {
                   setCategory(selected.id);
                   setPicker(null);
                 }}
+                onClear={() => {
+                  setCategory(null);
+                  setPicker(null);
+                }}
               />
               {button('Quay lại', () => setPicker(null))}
             </>
@@ -867,7 +871,7 @@ function Panel({ entryUrl }: Props) {
                   <Text style={s.label}>Danh mục</Text>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={category?.name || 'Chọn danh mục'}
+                    accessibilityLabel={category?.name || (availableCategories.some(c => c.type === type) ? 'Chọn danh mục' : 'Chưa phân loại')}
                     disabled={ocrBusy}
                     style={s.categoryCard}
                     onPress={() => setPicker('category')}

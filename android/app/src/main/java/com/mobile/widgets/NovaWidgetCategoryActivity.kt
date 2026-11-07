@@ -27,9 +27,11 @@ class NovaWidgetCategoryActivity : Activity() {
     val builder = AlertDialog.Builder(this)
       .setTitle(if (type == "INCOME") "Danh mục thu" else "Danh mục chi")
       .setNegativeButton("Hủy") { _, _ -> finish() }
-      .setNeutralButton("Nhập chưa phân loại") { _, _ ->
+      .setNeutralButton(if (categories.isEmpty()) "Thêm giao dịch" else "Chưa phân loại") { _, _ ->
         if (scope == prefs.getString("scope", null)) {
-          startActivity(NovaWidgetProvider.entryIntent(this, widgetId, type, "FORM", null))
+          prefs.edit().remove("category_${widgetId}_$type").commit()
+          NovaWidgetProvider.render(this)
+          if (categories.isEmpty()) startActivity(NovaWidgetProvider.entryIntent(this, widgetId, type, "FORM", null))
         }
         finish()
       }

@@ -377,7 +377,7 @@ it('accepts a decimal comma for a variable bill in a foreign currency', async ()
   ).toHaveLength(0);
 });
 
-it('requires an expense category when available and stores the selected category on the schedule', async () => {
+it('lets the user keep a bill unclassified or choose an expense category', async () => {
   jest.mocked(apiRequest).mockResolvedValueOnce([
     { id: 7, name: 'Hóa đơn', type: 'EXPENSE', cash_flow_group: 'NORMAL' },
     { id: 8, name: 'Lương', type: 'INCOME', cash_flow_group: 'NORMAL' },
@@ -387,12 +387,12 @@ it('requires an expense category when available and stores the selected category
   await act(async () => {
     field('Tên hóa đơn', 'Internet');
     field('Số tiền hóa đơn', '300000');
-    press('Lưu lịch');
   });
-  expect((await service.load(scope)).bills).toHaveLength(0);
-  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![1]).toContain(
-    'Chọn danh mục chi',
-  );
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0].categoryId).toBeUndefined();
+  await act(async () => press('Lịch đã tạo'));
+  mockRouteParams = { editBillId: (await service.load(scope)).bills[0].id };
+  await act(async () => renderer!.update(screen()));
   await act(async () => press('Danh mục lịch Hóa đơn'));
   await act(async () => press('Lưu lịch'));
   expect((await service.load(scope)).bills[0].categoryId).toBe(7);
@@ -401,6 +401,20 @@ it('requires an expense category when available and stores the selected category
       accessibilityLabel: 'Danh mục lịch Lương',
     }),
   ).toHaveLength(0);
+});
+it('saves an unclassified bill when category loading fails and offers retry', async () => {
+  jest.mocked(apiRequest).mockRejectedValueOnce(Error('Mạng yếu'));
+  await mount();
+  await act(async () => press('Thêm lịch hóa đơn'));
+  expect(hasAction('Tải lại danh mục lịch')).toBe(true);
+  await act(async () => {
+    field('Tên hóa đơn', 'Internet QA');
+    field('Số tiền hóa đơn', '15000');
+  });
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0].label).toBe('Internet QA');
+  expect((await service.load(scope)).bills[0].categoryId).toBeUndefined();
+  expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
 it('opens an existing schedule on its own page instead of expanding the card', async () => {

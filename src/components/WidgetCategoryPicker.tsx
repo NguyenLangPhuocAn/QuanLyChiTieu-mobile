@@ -16,11 +16,13 @@ export default function WidgetCategoryPicker({
   type,
   selectedId,
   onSelect,
+  onClear,
 }: {
   categories: Category[];
   type: 'INCOME' | 'EXPENSE';
   selectedId: number | null;
   onSelect: (category: Category) => void;
+  onClear?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const eligible = filterNormalCashFlowCategories(categories).filter(
@@ -46,6 +48,15 @@ export default function WidgetCategoryPicker({
         onChangeText={setQuery}
         style={s.search}
       />
+      {onClear && <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel="Để chưa phân loại"
+        accessibilityState={{ selected: selectedId === null }}
+        style={[s.clear, selectedId === null && s.selected]}
+        onPress={onClear}
+      >
+        <Text style={s.clearText}>Chưa phân loại</Text>
+      </TouchableOpacity>}
       {visible.map(category => (
         <TouchableOpacity
           key={category.id}
@@ -101,6 +112,16 @@ const s = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#EBC4A4',
   },
+  clear: {
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#EBC4A4',
+    backgroundColor: '#FFFDFB',
+  },
+  clearText: { color: '#6F4A32', fontSize: 14, fontWeight: '700' },
   selected: { backgroundColor: '#FFF4EA', borderColor: '#F28C28' },
   icon: {
     width: 42,

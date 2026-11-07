@@ -75,3 +75,21 @@ it('shows only income categories for Thu', async () => {
   });
   expect(buttons().map(n => n.props.accessibilityLabel)).toEqual(['Lương']);
 });
+it('can clear a selected category without changing a transaction', async () => {
+  const onClear = jest.fn();
+  await act(async () => {
+    r = TestRenderer.create(
+      <WidgetCategoryPicker
+        categories={choices}
+        type="EXPENSE"
+        selectedId={1}
+        onSelect={jest.fn()}
+        onClear={onClear}
+      />,
+    );
+  });
+  const clear = buttons().find(n => n.props.accessibilityLabel === 'Để chưa phân loại');
+  expect(clear).toBeDefined();
+  await act(async () => clear!.props.onPress());
+  expect(onClear).toHaveBeenCalledTimes(1);
+});

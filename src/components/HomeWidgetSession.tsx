@@ -51,7 +51,10 @@ export default function HomeWidgetSession() {
     };
     refresh();
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') refresh();
+      if (state === 'active') {
+        attemptedCategoryRefresh = false;
+        refresh();
+      }
     });
     const a = financeRefresh.subscribe(refresh),
       b = offlineTransactionQueue.subscribe(refresh);
