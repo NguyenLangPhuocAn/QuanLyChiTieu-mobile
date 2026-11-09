@@ -15,7 +15,7 @@ import {
   ApiError,
   configureAuthSession,
   invalidateAuthSession,
-  getApiBaseUrl,
+  getApiStorageBaseUrl,
 } from '../services/api';
 import { authService } from '../services/auth';
 import type { AuthUser, ProfileUpdatePayload } from '../types/auth';
@@ -146,7 +146,7 @@ const AuthController = ({
         refreshToken: refreshTokenRef.current,
         accessTokenExpiresAt: accessTokenExpiresAtRef.current,
         user: userRef.current,
-        server: getApiBaseUrl(),
+        server: getApiStorageBaseUrl(),
       } satisfies StoredAuthSession),
     );
   };
@@ -201,7 +201,7 @@ const AuthController = ({
 
         const stored = JSON.parse(rawSession) as StoredAuthSession;
 
-        if (stored.server && stored.server !== getApiBaseUrl()) {
+        if (stored.server && stored.server !== getApiStorageBaseUrl()) {
           clearSession();
           return;
         }
@@ -226,7 +226,7 @@ const AuthController = ({
         // A previously verified profile opens local data while the API revalidates.
         // A first login still needs the server; cached data grants no API authority.
         if (
-          stored.server === getApiBaseUrl() &&
+          stored.server === getApiStorageBaseUrl() &&
           stored.user &&
           Number.isSafeInteger(stored.user.id) &&
           stored.user.id > 0 &&
@@ -290,7 +290,7 @@ const AuthController = ({
         refreshToken: refreshTokenRef.current,
         accessTokenExpiresAt: accessTokenExpiresAtRef.current,
         user: profile,
-        server: getApiBaseUrl(),
+        server: getApiStorageBaseUrl(),
       } satisfies StoredAuthSession),
     );
 

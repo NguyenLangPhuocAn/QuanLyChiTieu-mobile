@@ -23,7 +23,7 @@ import WidgetCategoryPicker from '../../components/WidgetCategoryPicker';
 import CategoryIcon from '../../components/CategoryIcon';
 import OfflineSessionSync from '../../components/OfflineSessionSync';
 import { homeWidget } from '../../native/homeWidget';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import {
   dashboardCache,
   type DashboardCache,
@@ -72,7 +72,7 @@ function Panel({ entryUrl }: Props) {
     isCurrencySetupRequired,
     isOfflineSession,
   } = useAuth();
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const sessionAvailable = Boolean(token);
   const [data, setData] = useState<DashboardCache | null>(null);
   const [ready, setReady] = useState(false);

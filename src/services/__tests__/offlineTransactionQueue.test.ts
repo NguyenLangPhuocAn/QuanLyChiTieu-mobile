@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiError, configureAuthSession, getApiBaseUrl } from '../api';
+import { ApiError, configureAuthSession, getApiStorageBaseUrl } from '../api';
 import { offlineTransactionQueue } from '../offlineTransactionQueue';
 import { transactionsService } from '../transactions';
 
@@ -319,7 +319,7 @@ describe('offlineTransactionQueue', () => {
     expect(createTransaction).not.toHaveBeenCalled();
     await offlineTransactionQueue.retry(7, legacy.id);
     expect((await offlineTransactionQueue.list(7))[0].server).toBe(
-      getApiBaseUrl(),
+      getApiStorageBaseUrl(),
     );
     createTransaction.mockResolvedValue({ id: 1 });
     await offlineTransactionQueue.sync('token', 7);

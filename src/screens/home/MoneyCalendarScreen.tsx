@@ -21,7 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import {
   dashboardCache,
   type DashboardCache,
@@ -57,7 +57,7 @@ type Data = {
 };
 export default function MoneyCalendarScreen({ navigation }: Props) {
   const { user } = useAuth();
-  const server = getApiBaseUrl(),
+  const server = getApiStorageBaseUrl(),
     currency = user?.currency_default || 'VND';
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');

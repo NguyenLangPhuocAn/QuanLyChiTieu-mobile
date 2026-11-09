@@ -1,4 +1,4 @@
-import { ApiError, captureApiSession, getApiBaseUrl } from './api';
+import { ApiError, captureApiSession, getApiStorageBaseUrl } from './api';
 import type { DashboardCache } from './dashboardCache';
 import { loanDebtsService } from './loanDebts';
 import type { CreateLoanDebtPayload, LoanDebtType } from '../types/loanDebt';
@@ -67,8 +67,8 @@ export async function saveWidgetLoanEntry(
       'Vay/Nợ cần kết nối mạng để lưu. Nội dung đang nhập được giữ trên form.',
     );
   const session = captureApiSession(),
-    server = getApiBaseUrl();
-  const valid = () => current() && session() && server === getApiBaseUrl();
+    server = getApiStorageBaseUrl();
+  const valid = () => current() && session() && server === getApiStorageBaseUrl();
   if (!valid()) throw Error('Phiên làm việc đã thay đổi.');
   try {
     await loanDebtsService.createQuickEntry(token, payload);
@@ -88,7 +88,7 @@ export async function saveWidgetLoanEntry(
     refreshWidgetEntryCache(
       token,
       userId,
-      () => session() && server === getApiBaseUrl(),
+      () => session() && server === getApiStorageBaseUrl(),
     ).catch(() => undefined);
   }
   return 'SAVED' as const;

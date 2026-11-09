@@ -2,12 +2,12 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { homeWidget } from '../native/homeWidget';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 import { planningLocalStore } from '../services/planningLocalStore';
 import { planningSync } from '../services/planningSync';
 export default function PlanningSyncSession() {
   const { user, token, isRestoringSession } = useAuth();
-  const server = getApiBaseUrl(),
+  const server = getApiStorageBaseUrl(),
     latest = useRef({ userId: user?.id, token, server });
   latest.current = { userId: user?.id, token, server };
   useEffect(() => {

@@ -34,7 +34,7 @@ import type { Category } from '../../types/category';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import {
   recurringBillsService,
   type BillScope,
@@ -1360,7 +1360,7 @@ function RecurringBillsContent({
 
 export default function RecurringBillsScreen(props: Props) {
   const { user, token } = useAuth();
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const scope = useMemo(
     () => ({ userId: user?.id ?? 0, server }),
     [user?.id, server],

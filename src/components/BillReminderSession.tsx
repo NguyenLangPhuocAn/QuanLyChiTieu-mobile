@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 import { billReminderSession } from '../services/billReminderSession';
 
 export default function BillReminderSession() {
   const { user, isRestoringSession, sessionRestoreError } = useAuth();
   const userId = user?.id;
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   useEffect(() => {
     // Restoring a session/offline restore error is NOT a sign-out.
     if (isRestoringSession || (!userId && sessionRestoreError)) return;
@@ -16,7 +16,7 @@ export default function BillReminderSession() {
     const listener = AppState.addEventListener('change', state => {
       if (state === 'active' && scope)
         billReminderSession
-          .set({ ...scope, server: getApiBaseUrl() })
+          .set({ ...scope, server: getApiStorageBaseUrl() })
           .catch(() => undefined);
     });
     return () => listener.remove();

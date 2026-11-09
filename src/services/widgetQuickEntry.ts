@@ -1,4 +1,4 @@
-import { ApiError, captureApiSession, getApiBaseUrl } from './api';
+import { ApiError, captureApiSession, getApiStorageBaseUrl } from './api';
 import { dashboardCache, type DashboardCache } from './dashboardCache';
 import {
   transactionsService,
@@ -102,8 +102,8 @@ export async function saveWidgetEntry(
   current: () => boolean,
 ) {
   const session = captureApiSession();
-  const server = getApiBaseUrl();
-  const valid = () => current() && session() && server === getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
+  const valid = () => current() && session() && server === getApiStorageBaseUrl();
   if (!valid()) throw Error('Phiên làm việc đã thay đổi.');
   let created;
   try {
@@ -139,9 +139,9 @@ export async function saveWidgetEntry(
   // scoped to the captured auth session, even after the widget panel closes.
   const refreshWallets = async () => {
     const wallets = await walletsService.getAll(token);
-    if (!session() || server !== getApiBaseUrl()) return;
+    if (!session() || server !== getApiStorageBaseUrl()) return;
     const latest = await dashboardCache.read(userId);
-    if (session() && server === getApiBaseUrl() && latest)
+    if (session() && server === getApiStorageBaseUrl() && latest)
       await dashboardCache.save(userId, { ...latest, wallets });
   };
   refreshWallets().catch(() => undefined);

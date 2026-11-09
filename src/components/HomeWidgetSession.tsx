@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 import { homeWidget } from '../native/homeWidget';
 import { dashboardCache } from '../services/dashboardCache';
 import { categoriesService } from '../services/categories';
@@ -12,7 +12,7 @@ export default function HomeWidgetSession() {
   const { user, token, isRestoringSession, sessionRestoreError } = useAuth();
   const userId = user?.id;
   const currency = user?.currency_default ?? 'VND';
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   useEffect(() => {
     if (isRestoringSession || (!userId && sessionRestoreError)) return;
     let active = true,

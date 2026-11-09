@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiBaseUrl } from './api';
+import { getApiStorageBaseUrl } from './api';
 import type { Budget } from '../types/budget';
 import type { Category } from '../types/category';
 import type { SavingsGoal } from '../types/savings';
@@ -31,7 +31,7 @@ export const dashboardCache = {
   async save(userId: number, data: Omit<DashboardCache, 'updatedAt'>) {
     const value = {
       ...data,
-      server: getApiBaseUrl(),
+      server: getApiStorageBaseUrl(),
       updatedAt: new Date().toISOString(),
     };
     await AsyncStorage.setItem(key(userId), JSON.stringify(value));
@@ -45,7 +45,7 @@ export const dashboardCache = {
 
     try {
       const data = JSON.parse(raw) as DashboardCache;
-      return data.server === getApiBaseUrl() &&
+      return data.server === getApiStorageBaseUrl() &&
         [
           data.wallets,
           data.transactions,

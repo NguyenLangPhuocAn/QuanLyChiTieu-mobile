@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ApiError, getApiBaseUrl, captureApiSession } from './api';
+import { ApiError, getApiStorageBaseUrl, captureApiSession } from './api';
 import {
   transactionsService,
   type CreateTransactionPayload,
@@ -110,12 +110,12 @@ const runSync = async (
   userId: number,
   isCurrent: () => boolean,
 ): Promise<OfflineQueueSyncResult> => {
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const drafts = parseDrafts(await AsyncStorage.getItem(storageKey(userId)));
   let synced = 0;
 
   for (const draft of drafts) {
-    if (!isCurrent() || getApiBaseUrl() !== server) break;
+    if (!isCurrent() || getApiStorageBaseUrl() !== server) break;
     if (draft.server !== server) continue;
     if (draft.status === 'NEEDS_REVIEW') continue;
     draft.status = 'SYNCING';
@@ -169,7 +169,7 @@ export const offlineTransactionQueue = {
   },
   async list(userId: number) {
     return parseDrafts(await AsyncStorage.getItem(storageKey(userId)))
-      .filter(d => !d.server || d.server === getApiBaseUrl())
+      .filter(d => !d.server || d.server === getApiStorageBaseUrl())
       .map(d =>
         d.server
           ? d
@@ -186,7 +186,7 @@ export const offlineTransactionQueue = {
     userId: number,
     payload: CreateTransactionPayload & { client_request_id?: string },
   ) {
-    const server = getApiBaseUrl();
+    const server = getApiStorageBaseUrl();
     return withUserLock(userId, async () => {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
@@ -244,7 +244,7 @@ export const offlineTransactionQueue = {
         userId,
         drafts.filter(
           item =>
-            item.id !== id || (item.server && item.server !== getApiBaseUrl()),
+            item.id !== id || (item.server && item.server !== getApiStorageBaseUrl()),
         ),
       );
     });
@@ -261,11 +261,11 @@ export const offlineTransactionQueue = {
       );
       const draft = drafts.find(
         item =>
-          item.id === id && (!item.server || item.server === getApiBaseUrl()),
+          item.id === id && (!item.server || item.server === getApiStorageBaseUrl()),
       );
       if (!draft) return null;
-      if (draft.server && draft.server !== getApiBaseUrl()) return null;
-      draft.server = getApiBaseUrl();
+      if (draft.server && draft.server !== getApiStorageBaseUrl()) return null;
+      draft.server = getApiStorageBaseUrl();
       const clientRequestId = draft.payload.client_request_id;
       const updatedPayload = {
         ...draft.payload,
@@ -297,11 +297,11 @@ export const offlineTransactionQueue = {
       );
       const draft = drafts.find(
         item =>
-          item.id === id && (!item.server || item.server === getApiBaseUrl()),
+          item.id === id && (!item.server || item.server === getApiStorageBaseUrl()),
       );
       if (!draft) return null;
-      if (draft.server && draft.server !== getApiBaseUrl()) return null;
-      draft.server = getApiBaseUrl();
+      if (draft.server && draft.server !== getApiStorageBaseUrl()) return null;
+      draft.server = getApiStorageBaseUrl();
       draft.status = 'PENDING';
       draft.lastError = undefined;
       draft.updatedAt = new Date().toISOString();

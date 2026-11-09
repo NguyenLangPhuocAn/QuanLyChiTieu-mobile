@@ -4,14 +4,14 @@ import { useAuth } from '../context/AuthContext';
 import { homeWidget } from '../native/homeWidget';
 import { offlineTransactionQueue } from '../services/offlineTransactionQueue';
 import { financeRefresh } from '../services/financeRefresh';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 
 // Foreground only: no polling or claim that JS runs after Android force-stop.
 export default function OfflineSessionSync({
   onSynced,
 }: { onSynced?: () => Promise<void> } = {}) {
   const { user, token, isRestoringSession, retryRestoreSession } = useAuth();
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const latest = useRef({
     userId: user?.id,
     token,
@@ -33,7 +33,7 @@ export default function OfflineSessionSync({
         const current = () =>
           active &&
           latest.current.userId === userId &&
-          getApiBaseUrl() === server;
+          getApiStorageBaseUrl() === server;
         if (!current() || !latest.current.token) return;
         await offlineTransactionQueue.sync(
           latest.current.token,

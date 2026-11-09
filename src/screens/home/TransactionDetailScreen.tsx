@@ -25,7 +25,7 @@ import { resolveReceiptUrl } from '../../utils/mediaUrls';
 import { formatCurrency, formatDisplayDate } from '../../utils/format';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import { createClientRequestId } from '../../services/offlineTransactionQueue';
 import { canRepeatTransaction } from '../../utils/repeatTransaction';
 
@@ -116,7 +116,7 @@ const TransactionDetailScreen = ({ navigation, route }: Props) => {
                       transaction,
                       includeItems,
                       userId: user.id,
-                      server: getApiBaseUrl(),
+                      server: getApiStorageBaseUrl(),
                       requestId: createClientRequestId(),
                     },
                   });

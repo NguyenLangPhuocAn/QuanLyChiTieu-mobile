@@ -47,6 +47,8 @@ export const captureApiSession = () => {
 
 /** Media loaded after an API response must use the server that answered it. */
 export const getApiBaseUrl = () => connectedBaseUrl ?? API_BASE_URLS[0];
+/** Local data and auth belong to the configured server, not a fallback address. */
+export const getApiStorageBaseUrl = () => API_BASE_URLS[0];
 
 export const invalidateAuthSession = () => {
   sessionRevision += 1;

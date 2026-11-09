@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getApiBaseUrl } from './api';
+import { getApiStorageBaseUrl } from './api';
 
 export type PlanningScope = { userId: number; server: string };
 export type PlanningLocalState = {
@@ -114,4 +114,4 @@ export const planningLocalStore = {
   },
 };
 export const currentPlanningServer = (scope: PlanningScope) =>
-  scope.server.replace(/\/$/, '') === getApiBaseUrl().replace(/\/$/, '');
+  scope.server.replace(/\/$/, '') === getApiStorageBaseUrl().replace(/\/$/, '');

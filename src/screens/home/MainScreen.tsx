@@ -118,7 +118,7 @@ import type { BankNotificationItem } from '../../types/bankNotification';
 import { useLatestBankNotification } from '../../hooks/useLatestBankNotification';
 import { useWidgetPanelOpen } from '../../services/widgetPanelState';
 import { financeRefresh } from '../../services/financeRefresh';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import { repeatTransactionDraft } from '../../utils/repeatTransaction';
 import { payRecurringBill } from '../../services/payRecurringBill';
 import type { BillOccurrence } from '../../utils/recurringBills';
@@ -204,7 +204,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user, isOfflineSession } = useAuth();
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const [repeatDraft, setRepeatDraft] = useState<{
     requestId: string;
     label: string;

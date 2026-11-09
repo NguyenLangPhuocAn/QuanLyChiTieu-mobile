@@ -50,7 +50,7 @@ import type { TransactionItem } from '../data/mockTransactions';
 import { useAuth } from '../context/AuthContext';
 import { Colors } from '../constants/Colors';
 import { createBillReminderLinking } from '../services/billReminderLinking';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 
 // Xuất kiểu route dùng chung để các màn hình truyền tham số điều hướng an toàn.
 export type RootStackParamList = {
@@ -171,7 +171,7 @@ const AppNavigator = () => {
     signOut,
   } = useAuth();
   const mustChangePassword = Boolean(user?.must_change_password);
-  const server = getApiBaseUrl();
+  const server = getApiStorageBaseUrl();
   const linking = useMemo(
     () =>
       isAuthenticated &&

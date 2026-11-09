@@ -48,7 +48,7 @@ import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 import { homeWidget } from '../../native/homeWidget';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import PlanningSyncControls from '../../components/PlanningSyncControls';
 import BillBookBackup from '../../components/BillBookBackup';
 
@@ -546,10 +546,10 @@ const DataManagementScreen = () => {
         {user?.id ? (
           <>
             <PlanningSyncControls
-              scope={{ userId: user.id, server: getApiBaseUrl() }}
+              scope={{ userId: user.id, server: getApiStorageBaseUrl() }}
             />
             <BillBookBackup
-              scope={{ userId: user.id, server: getApiBaseUrl() }}
+              scope={{ userId: user.id, server: getApiStorageBaseUrl() }}
             />
           </>
         ) : null}

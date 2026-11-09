@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { useSingleFlight } from '../hooks/useSingleFlight';
-import { getApiBaseUrl } from '../services/api';
+import { getApiStorageBaseUrl } from '../services/api';
 import type { FinancialPlanOverview } from '../types/financialPlan';
 import {
   buildPlanSchedule,
@@ -39,7 +39,7 @@ export default function PlanWorkbench({
   const [loaded, setLoaded] = useState(false);
   const [storageError, setStorageError] = useState(false);
   const key = user?.id
-    ? `financial-plan:v1:${getApiBaseUrl()}:${user.id}:${plan.currency}`
+    ? `financial-plan:v1:${getApiStorageBaseUrl()}:${user.id}:${plan.currency}`
     : null;
   useEffect(() => {
     let active = true;

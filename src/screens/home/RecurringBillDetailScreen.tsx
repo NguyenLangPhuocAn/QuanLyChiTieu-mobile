@@ -17,7 +17,7 @@ import BillPaidTransactionLink from '../../components/BillPaidTransactionLink';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import { categoriesService } from '../../services/categories';
 import { recurringBillsService } from '../../services/recurringBills';
 import type { Category } from '../../types/category';
@@ -45,7 +45,7 @@ export default function RecurringBillDetailScreen({
 }: Props) {
   const { user, token } = useAuth();
   const scope = useMemo(
-    () => ({ userId: user?.id ?? 0, server: getApiBaseUrl() }),
+    () => ({ userId: user?.id ?? 0, server: getApiStorageBaseUrl() }),
     [user?.id],
   );
   const [book, setBook] = useState<BillBook | null>(null);

@@ -25,7 +25,7 @@ import {
   personalBackupService,
   type BackupPreview,
 } from '../../services/personalBackup';
-import { getApiBaseUrl } from '../../services/api';
+import { getApiStorageBaseUrl } from '../../services/api';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 
@@ -33,7 +33,7 @@ const PersonalBackupScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { token, user } = useAuth();
-  const identity = String(user?.id) + '|' + getApiBaseUrl();
+  const identity = String(user?.id) + '|' + getApiStorageBaseUrl();
   const session = useRef({ token, identity });
   session.current = { token, identity };
   const alive = useRef(false),
