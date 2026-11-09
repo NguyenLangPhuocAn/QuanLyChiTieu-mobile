@@ -275,7 +275,11 @@ it('uses Đã trả for paid periods, hides skipped periods there, and removes t
     transaction_date: today,
     note: 'Trả tiền nhà',
   });
-  await service.skip(scope, stored.bills[1].id, billDueDate(stored.bills[1], 0));
+  await service.skip(
+    scope,
+    stored.bills[1].id,
+    billDueDate(stored.bills[1], 0),
+  );
   await mount();
   await act(async () => press('Đã trả'));
   const content = JSON.stringify(renderer!.toJSON());
@@ -284,12 +288,13 @@ it('uses Đã trả for paid periods, hides skipped periods there, and removes t
   expect(content).not.toContain('Giao dịch #77');
   expect(content).not.toContain('Điện');
   expect(
-    renderer!.root.findAllByProps({ accessibilityRole: 'button' }).some(
-      node =>
+    renderer!.root
+      .findAllByProps({ accessibilityRole: 'button' })
+      .some(node =>
         String(node.props.accessibilityLabel).startsWith(
           'Xem giao dịch đã trả 3.000.000',
         ),
-    ),
+      ),
   ).toBe(true);
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
@@ -476,6 +481,118 @@ it('shows the oldest unpaid overdue period in the saved bill instead of skipping
   const content = JSON.stringify(renderer!.toJSON());
   expect(content).toContain('Chưa trả · kỳ');
   expect(content).toContain(overdue.split('-').reverse().join('/'));
+});
+
+it('filters upcoming periods by 7, 30, 90 days and a year without hiding overdue bills', async () => {
+  await service.save(scope, {
+    ...bill,
+    label: 'Quá hạn',
+    anchorDate: billDateOffset(today, -5),
+    cycle: 'YEARLY',
+  });
+  for (const [label, days] of [
+    ['Tuần tới', 5],
+    ['Tháng tới', 20],
+    ['Quý tới', 70],
+    ['Năm tới', 180],
+  ] as const)
+    await service.save(scope, {
+      ...bill,
+      label,
+      anchorDate: billDateOffset(today, days),
+      cycle: 'YEARLY',
+    });
+  await mount();
+  await act(async () => press('Lọc 7 ngày tới'));
+  let content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Quá hạn');
+  expect(content).toContain('Tuần tới');
+  expect(content).not.toContain('Tháng tới');
+  await act(async () => press('Lọc 30 ngày tới'));
+  content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Tháng tới');
+  expect(content).not.toContain('Quý tới');
+  await act(async () => press('Lọc 90 ngày tới'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Quý tới');
+  await act(async () => press('Lọc 365 ngày tới'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Năm tới');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('changes the upcoming summary range while keeping every saved schedule visible', async () => {
+  await service.save(scope, {
+    ...bill,
+    label: 'Hóa đơn xa',
+    anchorDate: billDateOffset(today, 180),
+    cycle: 'YEARLY',
+  });
+  await mount();
+  await act(async () => press('Lịch đã tạo'));
+  let content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('Hóa đơn xa');
+  expect(content).toContain('Dự kiến');
+  expect(content).toContain('30 ngày');
+  expect(content).toContain('Không có kỳ chưa trả đến hạn trong mốc này.');
+  await act(async () => press('Lọc dự kiến 365 ngày tới'));
+  content = JSON.stringify(renderer!.toJSON());
+  expect(content).toContain('1 năm');
+  expect(content).toContain(' kỳ của ');
+  await act(async () => field('Tìm hóa đơn', 'không khớp'));
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain(' kỳ của ');
+});
+
+it('filters paid periods by the actual payment date', async () => {
+  await service.save(scope, {
+    ...bill,
+    anchorDate: billDateOffset(today, -60),
+  });
+  await service.save(scope, {
+    ...bill,
+    label: 'Điện cũ',
+    anchorDate: billDateOffset(today, -60),
+  });
+  const stored = await service.load(scope);
+  await service.linkPayment(
+    scope,
+    stored.bills[0].id,
+    stored.bills[0].anchorDate,
+    {
+      id: 77,
+      wallet_id: 1,
+      amount: 3000000,
+      currency: 'VND',
+      type: 'EXPENSE',
+      transaction_date: billDateOffset(today, -5),
+      note: 'Thanh toán gần đây',
+    },
+  );
+  await service.linkPayment(
+    scope,
+    stored.bills[1].id,
+    stored.bills[1].anchorDate,
+    {
+      id: 78,
+      wallet_id: 1,
+      amount: 3000000,
+      currency: 'VND',
+      type: 'EXPENSE',
+      transaction_date: billDateOffset(today, -50),
+      note: 'Thanh toán cũ',
+    },
+  );
+  await mount();
+  await act(async () => press('Đã trả'));
+  await act(async () => press('Lọc 7 ngày qua'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Tiền nhà');
+  await act(async () => press('Lọc 30 ngày qua'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Tiền nhà');
+  expect(JSON.stringify(renderer!.toJSON())).not.toContain('Điện cũ');
+  await act(async () => press('Lọc 90 ngày qua'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Điện cũ');
+  await act(async () => press('Lọc tất cả kỳ đã trả'));
+  expect(JSON.stringify(renderer!.toJSON())).toContain('Điện cũ');
+  await act(async () => press('Chưa trả'));
+  expect(hasAction('Lọc 90 ngày tới')).toBe(true);
 });
 
 it('moves the first tracked date when the user changes it in the editor', async () => {

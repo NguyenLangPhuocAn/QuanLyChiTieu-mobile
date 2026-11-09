@@ -80,7 +80,7 @@ export default function BillReminderSettings({
         <View style={styles.grow}>
           <Text style={styles.title}>Nhắc hóa đơn</Text>
           <Text style={styles.detail}>
-            Trước 3 ngày, 1 ngày và đúng hạn. Các khoản cùng ngày được gộp lại.
+            Trước hạn 3 ngày, 1 ngày và đúng ngày.
           </Text>
         </View>
         <Switch

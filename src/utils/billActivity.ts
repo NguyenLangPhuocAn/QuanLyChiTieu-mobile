@@ -412,8 +412,10 @@ export function analyzeBillActivity(
   };
 }
 
-export function upcomingBillSummary(book: BillBook, today: string) {
-  const end = billDateOffset(today, 29);
+export function upcomingBillSummary(book: BillBook, today: string, days = 30) {
+  if (!Number.isSafeInteger(days) || days < 1 || days > 365)
+    throw new Error('Mốc thời gian hóa đơn chưa hợp lệ.');
+  const end = billDateOffset(today, days - 1);
   const totals = new Map<
     string,
     {

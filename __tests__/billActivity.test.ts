@@ -415,6 +415,12 @@ it('does not count an unpaid January quarterly bill in a November 30-day forecas
     end: '2026-12-02',
     totals: [],
   });
+  expect(upcomingBillSummary(data, now, 90).totals).toMatchObject([
+    { currency: 'VND', periods: 1, bills: 1 },
+  ]);
+  expect(() => upcomingBillSummary(data, now, 366)).toThrow(
+    'Mốc thời gian hóa đơn chưa hợp lệ.',
+  );
   expect(billOccurrences(data, now, '2027-02-01', now)).toMatchObject([
     { dueDate: '2027-01-31', status: 'PENDING' },
   ]);

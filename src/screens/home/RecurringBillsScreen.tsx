@@ -156,6 +156,7 @@ function RecurringBillsContent({
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [search, setSearch] = useState('');
+  const [rangeDays, setRangeDays] = useState<7 | 30 | 90 | 365 | 'ALL'>(90);
   const [visible, setVisible] = useState(20);
   const [reminderFilter, setReminderFilter] = useState(() => {
     const date = route.params?.reminderDate;
@@ -229,7 +230,7 @@ function RecurringBillsContent({
   const occurrences = useMemo(
     () =>
       book
-        ? billOccurrences(book, '2000-01-01', billDateOffset(today, 90), today)
+        ? billOccurrences(book, '2000-01-01', billDateOffset(today, 364), today)
         : [],
     [book, today],
   );
@@ -283,7 +284,23 @@ function RecurringBillsContent({
           [0, 1, 3].some(
             lead => item.dueDate === billDateOffset(reminderFilter, lead),
           )),
-    );
+    )
+    .filter(item => {
+      if (reminderFilter && tab === 'PENDING') return true;
+      if (tab === 'PENDING')
+        return (
+          item.status === 'OVERDUE' ||
+          (item.dueDate >= today &&
+            item.dueDate <= billDateOffset(today, Number(rangeDays) - 1))
+        );
+      if (rangeDays === 'ALL') return true;
+      const paidDate = item.payment?.date;
+      return (
+        !!paidDate &&
+        paidDate >= billDateOffset(today, 1 - rangeDays) &&
+        paidDate <= today
+      );
+    });
   if (tab === 'DONE') displayed.reverse();
   const searched = displayed.filter(item => matchesSearch(item.bill.label));
   const closePicker = () => {
@@ -495,9 +512,9 @@ function RecurringBillsContent({
     try {
       if (
         editor.categoryId &&
-        (categoryLoading || categoryError ||
-        !expenseCategories.some(item => item.id === editor.categoryId)
-        )
+        (categoryLoading ||
+          categoryError ||
+          !expenseCategories.some(item => item.id === editor.categoryId))
       )
         throw new Error('Danh mục đã chọn chưa tải được. Hãy thử lại.');
       const input = validateBillInput({
@@ -581,7 +598,6 @@ function RecurringBillsContent({
         </TouchableOpacity>
         <View style={styles.grow}>
           <Text style={styles.title}>Hóa đơn định kỳ</Text>
-          <Text style={styles.muted}>Lịch chi tiêu của bạn</Text>
         </View>
       </View>
       <ScrollView
@@ -812,14 +828,15 @@ function RecurringBillsContent({
                             <TouchableOpacity
                               accessibilityRole="button"
                               accessibilityLabel="Tải lại danh mục lịch"
-                              onPress={() => setCategoryRetry(value => value + 1)}
+                              onPress={() =>
+                                setCategoryRetry(value => value + 1)
+                              }
                             >
                               <Text style={styles.retryText}>Thử lại</Text>
                             </TouchableOpacity>
                           </View>
                         ) : null}
-                        {!categoryLoading &&
-                        !categoryError ? (
+                        {!categoryLoading && !categoryError ? (
                           <ScrollView
                             horizontal
                             showsHorizontalScrollIndicator={false}
@@ -828,7 +845,9 @@ function RecurringBillsContent({
                             <TouchableOpacity
                               accessibilityRole="button"
                               accessibilityLabel="Danh mục lịch Chưa phân loại"
-                              accessibilityState={{ selected: !editor.categoryId }}
+                              accessibilityState={{
+                                selected: !editor.categoryId,
+                              }}
                               style={[
                                 styles.categoryChip,
                                 !editor.categoryId && styles.selected,
@@ -906,6 +925,8 @@ function RecurringBillsContent({
                   onPress={() => {
                     setTab(value);
                     setVisible(20);
+                    if (value !== tab)
+                      setRangeDays(value === 'BILLS' ? 30 : 90);
                     if (reminderFilter && value !== 'PENDING') {
                       setReminderFilter(null);
                       navigation.setParams({ reminderDate: undefined });
@@ -929,14 +950,76 @@ function RecurringBillsContent({
               placeholder="Tìm hóa đơn"
               placeholderTextColor="#9B7458"
               value={search}
-              onChangeText={setSearch}
+              onChangeText={value => {
+                setSearch(value);
+                setVisible(20);
+              }}
               style={styles.search}
             />
             {tab !== 'BILLS' ? (
               <>
-                <Text style={styles.muted}>
-                  Các kỳ đến hạn đến {dateLabel(billDateOffset(today, 90))}.
-                </Text>
+                {!reminderFilter ? (
+                  <View style={styles.rangeSection}>
+                    <Text style={styles.rangeTitle}>
+                      {tab === 'PENDING' ? 'Kỳ đến hạn' : 'Ngày đã trả'}
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.rangeRow}
+                    >
+                      {(
+                        [
+                          7,
+                          30,
+                          90,
+                          365,
+                          ...(tab === 'DONE' ? ['ALL' as const] : []),
+                        ] as const
+                      ).map(days => (
+                        <TouchableOpacity
+                          key={days}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            days === 'ALL'
+                              ? 'Lọc tất cả kỳ đã trả'
+                              : `Lọc ${days} ngày ${
+                                  tab === 'PENDING' ? 'tới' : 'qua'
+                                }`
+                          }
+                          accessibilityState={{ selected: rangeDays === days }}
+                          style={[
+                            styles.rangeChip,
+                            rangeDays === days && styles.selected,
+                          ]}
+                          onPress={() => {
+                            setRangeDays(days);
+                            setVisible(20);
+                          }}
+                        >
+                          <Text style={styles.label}>
+                            {days === 'ALL'
+                              ? 'Tất cả'
+                              : days === 365
+                              ? '1 năm'
+                              : `${days} ngày`}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    <Text style={styles.muted}>
+                      {tab === 'PENDING'
+                        ? `Đến ${dateLabel(
+                            billDateOffset(today, Number(rangeDays) - 1),
+                          )} · gồm cả kỳ quá hạn`
+                        : rangeDays === 'ALL'
+                        ? 'Mọi kỳ đã trả'
+                        : `Từ ${dateLabel(
+                            billDateOffset(today, 1 - rangeDays),
+                          )} đến hôm nay`}
+                    </Text>
+                  </View>
+                ) : null}
                 {tab === 'DONE' &&
                 (paymentChecks.loading || paymentChecks.error) ? (
                   <View style={styles.card}>
@@ -963,8 +1046,10 @@ function RecurringBillsContent({
                     {search.trim()
                       ? 'Không tìm thấy hóa đơn phù hợp.'
                       : tab === 'PENDING'
-                      ? 'Chưa có hóa đơn chờ thanh toán.'
-                      : 'Chưa có kỳ đã trả.'}
+                      ? reminderFilter
+                        ? 'Không có kỳ cần nhắc ngày này.'
+                        : 'Chưa có kỳ chưa trả trong mốc đã chọn.'
+                      : 'Chưa có kỳ đã trả trong mốc đã chọn.'}
                   </Text>
                 ) : null}
                 {searched.slice(0, visible).map(item => (
@@ -1067,7 +1152,40 @@ function RecurringBillsContent({
               </>
             ) : (
               <>
-                <BillUpcomingSummary book={book} today={today} />
+                <View style={styles.rangeSection}>
+                  <Text style={styles.rangeTitle}>Dự kiến đến hạn</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.rangeRow}
+                  >
+                    {([7, 30, 90, 365] as const).map(days => (
+                      <TouchableOpacity
+                        key={days}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Lọc dự kiến ${days} ngày tới`}
+                        accessibilityState={{ selected: rangeDays === days }}
+                        style={[
+                          styles.rangeChip,
+                          rangeDays === days && styles.selected,
+                        ]}
+                        onPress={() => setRangeDays(days)}
+                      >
+                        <Text style={styles.label}>
+                          {days === 365 ? '1 năm' : `${days} ngày`}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+                <BillUpcomingSummary
+                  book={{
+                    ...book,
+                    bills: book.bills.filter(bill => matchesSearch(bill.label)),
+                  }}
+                  today={today}
+                  days={rangeDays === 'ALL' ? 30 : rangeDays}
+                />
                 {!book.bills.some(
                   bill => !bill.archived && matchesSearch(bill.label),
                 ) ? (
@@ -1340,6 +1458,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     color: '#4A2B1A',
     fontSize: 15,
+  },
+  rangeSection: { gap: 8 },
+  rangeTitle: { fontSize: 13, fontWeight: '700', color: '#593420' },
+  rangeRow: { gap: 8, paddingRight: 20 },
+  rangeChip: {
+    minHeight: 40,
+    minWidth: 78,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E8D8CA',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
   },
   linkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   link: { color: '#A95514', fontSize: 13, fontWeight: '700' },

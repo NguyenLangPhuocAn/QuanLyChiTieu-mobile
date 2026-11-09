@@ -7,18 +7,22 @@ import { formatCurrency } from '../utils/format';
 export default function BillUpcomingSummary({
   book,
   today,
+  days = 30,
 }: {
   book: BillBook;
   today: string;
+  days?: number;
 }) {
   const summary = useMemo(
-    () => upcomingBillSummary(book, today),
-    [book, today],
+    () => upcomingBillSummary(book, today, days),
+    [book, today, days],
   );
   const dateLabel = (value: string) => value.split('-').reverse().join('/');
   return (
     <View style={styles.box}>
-      <Text style={styles.title}>Dự kiến 30 ngày tới</Text>
+      <Text style={styles.title}>
+        Dự kiến {days === 365 ? '1 năm' : `${days} ngày`} tới
+      </Text>
       <Text style={styles.text}>
         {dateLabel(today)} – {dateLabel(summary.end)}
       </Text>
@@ -41,7 +45,7 @@ export default function BillUpcomingSummary({
         ))
       ) : (
         <Text style={styles.text}>
-          Không có kỳ chưa trả đến hạn trong 30 ngày này.
+          Không có kỳ chưa trả đến hạn trong mốc này.
         </Text>
       )}
     </View>
