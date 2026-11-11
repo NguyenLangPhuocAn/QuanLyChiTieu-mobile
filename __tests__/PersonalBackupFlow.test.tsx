@@ -23,6 +23,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'http://qa.invalid',
+  getApiStorageBaseUrl: () => 'http://qa.invalid',
 }));
 jest.mock('../src/services/personalBackup', () => ({
   ...jest.requireActual('../src/services/personalBackup'),

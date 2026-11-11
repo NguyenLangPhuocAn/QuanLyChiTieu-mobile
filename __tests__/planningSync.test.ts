@@ -11,6 +11,7 @@ import { moneyCalendarPlans } from '../src/services/moneyCalendarPlans';
 jest.mock('../src/services/api', () => ({
   apiRequest: jest.fn(),
   getApiBaseUrl: () => 'http://qa',
+  getApiStorageBaseUrl: () => 'http://qa',
 }));
 const scope = { userId: 8, server: 'http://qa' };
 const plan = {

@@ -7,6 +7,7 @@ import RecurringBillsScreen from '../src/screens/home/RecurringBillsScreen';
 import { recurringBillsService as service } from '../src/services/recurringBills';
 import { transactionsService } from '../src/services/transactions';
 import { apiRequest } from '../src/services/api';
+import { dashboardCache } from '../src/services/dashboardCache';
 import { getTransactionDateKey } from '../src/utils/mapTransactions';
 import type { BillInput } from '../src/utils/recurringBills';
 import { billDateOffset, billDueDate } from '../src/utils/recurringBills';
@@ -27,6 +28,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://test.invalid',
+  getApiStorageBaseUrl: () => 'https://test.invalid',
   apiRequest: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../src/services/transactions', () => ({
@@ -102,6 +104,9 @@ beforeEach(async () => {
   mockCurrency = 'VND';
   mockRouteParams = undefined;
   await AsyncStorage.removeItem(key);
+  await AsyncStorage.removeItem(
+    `quan_ly_chi_tieu_local_data_${mockUserId}`,
+  );
   await AsyncStorage.removeItem(
     key.replace('recurring-bills:v1:', 'planning-local:v1:'),
   );
@@ -420,6 +425,33 @@ it('saves an unclassified bill when category loading fails and offers retry', as
   expect((await service.load(scope)).bills[0].label).toBe('Internet QA');
   expect((await service.load(scope)).bills[0].categoryId).toBeUndefined();
   expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('offers cached expense categories in the bill editor while the API is offline', async () => {
+  await dashboardCache.save(mockUserId, {
+    wallets: [],
+    transactions: [],
+    categories: [
+      { id: 7, name: 'Hóa đơn', type: 'EXPENSE', cash_flow_group: 'NORMAL' },
+      { id: 8, name: 'Lương', type: 'INCOME', cash_flow_group: 'NORMAL' },
+    ],
+    tags: [],
+    budgets: [],
+    savingsGoals: [],
+  });
+  jest.mocked(apiRequest).mockRejectedValueOnce(Error('Offline'));
+  await mount();
+  await act(async () => press('Thêm lịch hóa đơn'));
+  expect(hasAction('Danh mục lịch Hóa đơn')).toBe(true);
+  expect(hasAction('Tải lại danh mục lịch')).toBe(false);
+  expect(hasAction('Danh mục lịch Lương')).toBe(false);
+  await act(async () => {
+    press('Danh mục lịch Hóa đơn');
+    field('Tên hóa đơn', 'Internet offline');
+    field('Số tiền hóa đơn', '300000');
+  });
+  await act(async () => press('Lưu lịch'));
+  expect((await service.load(scope)).bills[0].categoryId).toBe(7);
 });
 
 it('opens an existing schedule on its own page instead of expanding the card', async () => {

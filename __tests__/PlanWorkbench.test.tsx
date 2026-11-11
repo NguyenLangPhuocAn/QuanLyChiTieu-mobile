@@ -9,6 +9,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://test.invalid',
+  getApiStorageBaseUrl: () => 'https://test.invalid',
 }));
 const plan = {
   currency: 'VND',

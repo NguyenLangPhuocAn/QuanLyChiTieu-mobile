@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { moneyCalendarPlans as service } from '../src/services/moneyCalendarPlans';
 let mockServer = 'http://qa';
-jest.mock('../src/services/api', () => ({ getApiBaseUrl: () => mockServer }));
+jest.mock('../src/services/api', () => ({
+  getApiBaseUrl: () => mockServer,
+  getApiStorageBaseUrl: () => mockServer,
+}));
 const scope = { userId: 1, server: 'http://qa' };
 const plan = {
   id: 'salary',

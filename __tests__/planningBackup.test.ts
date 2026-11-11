@@ -7,7 +7,10 @@ import {
 import { moneyCalendarPlans } from '../src/services/moneyCalendarPlans';
 import { recurringBillsService } from '../src/services/recurringBills';
 const { Buffer } = require('buffer');
-jest.mock('../src/services/api', () => ({ getApiBaseUrl: () => 'http://qa' }));
+jest.mock('../src/services/api', () => ({
+  getApiBaseUrl: () => 'http://qa',
+  getApiStorageBaseUrl: () => 'http://qa',
+}));
 const scope = { userId: 8, server: 'http://qa' };
 const plan = {
   id: 'salary',

@@ -102,3 +102,15 @@ it('refreshes the widget cache after confirmed sync before notifying views', asy
   await act(async () => online());
   expect(refreshed).toHaveBeenCalledTimes(2);
 });
+
+it('continues a partially synced batch after the first successful draft', async () => {
+  jest
+    .mocked(queue.sync)
+    .mockResolvedValueOnce({ synced: 1, pending: 1, needsReview: 0 })
+    .mockResolvedValueOnce({ synced: 1, pending: 0, needsReview: 0 });
+  await act(async () => {
+    r = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(queue.sync).toHaveBeenCalledTimes(2);
+  expect(financeRefresh.emit).toHaveBeenCalledTimes(1);
+});

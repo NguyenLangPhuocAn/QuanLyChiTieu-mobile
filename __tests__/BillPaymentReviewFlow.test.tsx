@@ -20,6 +20,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://checks.invalid',
+  getApiStorageBaseUrl: () => 'https://checks.invalid',
   apiRequest: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../src/services/transactions', () => ({

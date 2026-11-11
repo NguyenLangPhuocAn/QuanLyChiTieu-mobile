@@ -48,6 +48,7 @@ jest.mock('../src/hooks/useVoiceInput', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'http://qa.test',
+  getApiStorageBaseUrl: () => 'http://qa.test',
 }));
 jest.mock('../src/native/homeWidget', () => ({
   homeWidget: {

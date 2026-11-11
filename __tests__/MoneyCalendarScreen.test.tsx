@@ -10,7 +10,10 @@ import { moneyCalendarPlans } from '../src/services/moneyCalendarPlans';
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 8, currency_default: 'VND' } }),
 }));
-jest.mock('../src/services/api', () => ({ getApiBaseUrl: () => 'http://qa' }));
+jest.mock('../src/services/api', () => ({
+  getApiBaseUrl: () => 'http://qa',
+  getApiStorageBaseUrl: () => 'http://qa',
+}));
 jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (effect: () => void) =>
     require('react').useEffect(effect, [effect]),

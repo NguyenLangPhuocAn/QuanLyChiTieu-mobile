@@ -35,11 +35,21 @@ export default function OfflineSessionSync({
           latest.current.userId === userId &&
           getApiStorageBaseUrl() === server;
         if (!current() || !latest.current.token) return;
-        await offlineTransactionQueue.sync(
+        let result = await offlineTransactionQueue.sync(
           latest.current.token,
           userId,
           current,
         );
+        // Auth can refresh while a batch is being sent. A successful partial
+        // batch should continue with the remaining drafts in this foreground
+        // attempt, without repeatedly retrying a failed first draft.
+        while (current() && result.synced > 0 && result.pending > 0) {
+          result = await offlineTransactionQueue.sync(
+            latest.current.token,
+            userId,
+            current,
+          );
+        }
         if (current()) {
           // Another React root may have drained this same queue first. The widget
           // still refreshes server totals even when its own sync reports zero.

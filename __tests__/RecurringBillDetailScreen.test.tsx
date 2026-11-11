@@ -11,6 +11,7 @@ jest.mock('../src/context/AuthContext', () => ({
 }));
 jest.mock('../src/services/api', () => ({
   getApiBaseUrl: () => 'https://detail.test',
+  getApiStorageBaseUrl: () => 'https://detail.test',
   apiRequest: jest
     .fn()
     .mockResolvedValue([

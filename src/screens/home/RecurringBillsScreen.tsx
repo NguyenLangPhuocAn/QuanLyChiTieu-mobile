@@ -30,6 +30,7 @@ import { useBillPaymentChecks } from '../../hooks/useBillPaymentChecks';
 import { refreshPaymentLink } from '../../services/billPaymentChecks';
 import type { BillPaymentTarget } from '../../utils/billPaymentChecks';
 import { categoriesService } from '../../services/categories';
+import { dashboardCache } from '../../services/dashboardCache';
 import type { Category } from '../../types/category';
 import { useAuth } from '../../context/AuthContext';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
@@ -135,24 +136,32 @@ function RecurringBillsContent({
   useEffect(() => {
     let live = true;
     setCategoryLoading(true);
-    categoriesService
-      .getAll(token)
-      .then(rows => {
+    (async () => {
+      const cached = await dashboardCache
+        .read(scope.userId)
+        .catch(() => null);
+      if (!live) return;
+      if (cached?.categories.length) {
+        setCategories(cached.categories);
+        setCategoryError(false);
+        setCategoryLoading(false);
+      }
+      try {
+        const rows = await categoriesService.getAll(token);
         if (live) {
           setCategories(rows);
           setCategoryError(false);
         }
-      })
-      .catch(() => {
-        if (live) setCategoryError(true);
-      })
-      .finally(() => {
+      } catch {
+        if (live) setCategoryError(!cached?.categories.length);
+      } finally {
         if (live) setCategoryLoading(false);
-      });
+      }
+    })();
     return () => {
       live = false;
     };
-  }, [token, categoryRetry]);
+  }, [scope.userId, token, categoryRetry]);
   const [showDate, setShowDate] = useState(false);
   const [tab, setTab] = useState<'PENDING' | 'DONE' | 'BILLS'>('PENDING');
   const [search, setSearch] = useState('');
