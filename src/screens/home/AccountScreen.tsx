@@ -256,9 +256,6 @@ const AccountScreen = ({
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.title}>Tài khoản</Text>
-        <TouchableOpacity style={styles.logoutIconButton} onPress={signOut}>
-          <LogOut size={18} color={Colors.primary} />
-        </TouchableOpacity>
       </View>
 
       <View style={styles.profileCard}>
@@ -336,9 +333,11 @@ const AccountScreen = ({
             <View style={styles.menuIcon}>
               <UserRound size={19} color={Colors.primary} />
             </View>
-            <View>
-              <Text style={styles.menuTitle}>Thông tin hồ sơ</Text>
-              <Text style={styles.menuSubtitle}>
+            <View style={styles.menuCopy}>
+              <Text style={styles.menuTitle} numberOfLines={1}>
+                Thông tin hồ sơ
+              </Text>
+              <Text style={styles.menuSubtitle} numberOfLines={2}>
                 Tên, SĐT, tiền tệ, mật khẩu
               </Text>
             </View>
@@ -354,9 +353,13 @@ const AccountScreen = ({
             <View style={styles.menuIcon}>
               <ListTree size={19} color={Colors.primary} />
             </View>
-            <View>
-              <Text style={styles.menuTitle}>Danh mục thu chi</Text>
-              <Text style={styles.menuSubtitle}>Quản lý nhóm giao dịch</Text>
+            <View style={styles.menuCopy}>
+              <Text style={styles.menuTitle} numberOfLines={1}>
+                Danh mục thu chi
+              </Text>
+              <Text style={styles.menuSubtitle} numberOfLines={2}>
+                Quản lý nhóm giao dịch
+              </Text>
             </View>
           </View>
           <ChevronRight size={20} color="#B57745" />
@@ -370,9 +373,11 @@ const AccountScreen = ({
             <View style={styles.menuIcon}>
               <Hash size={19} color={Colors.primary} />
             </View>
-            <View>
-              <Text style={styles.menuTitle}>Hashtag</Text>
-              <Text style={styles.menuSubtitle}>
+            <View style={styles.menuCopy}>
+              <Text style={styles.menuTitle} numberOfLines={1}>
+                Hashtag
+              </Text>
+              <Text style={styles.menuSubtitle} numberOfLines={2}>
                 Tạo nhanh tag để lọc và thống kê
               </Text>
             </View>
@@ -466,9 +471,13 @@ const AccountScreen = ({
                 <View style={styles.menuIcon}>
                   <Icon size={19} color={Colors.primary} />
                 </View>
-                <View>
-                  <Text style={styles.menuTitle}>{item.title}</Text>
-                  <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
+                <View style={styles.menuCopy}>
+                  <Text style={styles.menuTitle} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <Text style={styles.menuSubtitle} numberOfLines={2}>
+                    {item.subtitle}
+                  </Text>
                 </View>
               </View>
               <ChevronRight size={20} color="#B57745" />
@@ -678,23 +687,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 14,
   },
   title: {
     fontSize: 28,
     fontWeight: '900',
     color: '#4C2A18',
-  },
-  logoutIconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    backgroundColor: Colors.white,
-    borderWidth: 1.2,
-    borderColor: '#E8B680',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   profileCard: {
     backgroundColor: Colors.white,
@@ -866,6 +864,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  menuCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   menuIcon: {
     width: 42,
     height: 42,
@@ -902,9 +904,9 @@ const styles = StyleSheet.create({
   },
   deleteAccountButton: {
     marginTop: 10,
-    backgroundColor: '#FFF1F0',
+    backgroundColor: Colors.white,
     borderWidth: 1.2,
-    borderColor: '#F3B8B2',
+    borderColor: '#E8B680',
     borderRadius: 18,
     paddingVertical: 15,
     alignItems: 'center',
