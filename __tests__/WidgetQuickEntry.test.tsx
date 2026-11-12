@@ -11,6 +11,7 @@ import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { Alert } from 'react-native';
 import { saveWidgetEntry } from '../src/services/widgetQuickEntry';
 import { saveWidgetLoanEntry } from '../src/services/widgetLoanEntry';
+import CategoryIcon from '../src/components/CategoryIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/services/widgetLoanEntry', () => ({
@@ -47,12 +48,14 @@ jest.mock('../src/hooks/useVoiceInput', () => ({
   },
 }));
 jest.mock('../src/services/api', () => ({
+  API_BASE_URLS: ['http://qa.test'],
   getApiBaseUrl: () => 'http://qa.test',
   getApiStorageBaseUrl: () => 'http://qa.test',
 }));
 jest.mock('../src/native/homeWidget', () => ({
   homeWidget: {
     validateLink: jest.fn(),
+    selectCategory: jest.fn().mockResolvedValue(true),
     closeQuickEntry: jest.fn().mockResolvedValue(true),
     entryReady: jest.fn().mockResolvedValue(undefined),
   },
@@ -70,13 +73,15 @@ jest.mock('../src/services/widgetQuickEntry', () => ({
 const data = {
   wallets: [{ id: 7, name: 'Ví QA', currency: 'VND' }],
   categories: [
-    { id: 9, name: 'Đi lại', type: 'EXPENSE' },
+    { id: 9, name: 'Đi lại', type: 'EXPENSE', icon: 'categories/icons/expense_transport.png' },
     { id: 10, name: 'Lương', type: 'INCOME' },
   ],
   transactions: [],
 } as unknown as DashboardCache;
 const entryUrl =
   'quanlychitieu://quick-entry?scope=http%3A%2F%2Fqa.test%3A7&type=EXPENSE&event=abc&category=9';
+const launcherCategoryUrl =
+  'quanlychitieu://quick-entry?scope=http%3A%2F%2Fqa.test%3A7&type=EXPENSE&action=CATEGORY&widget=12&event=12-CATEGORY&category=9';
 let renderer: TestRenderer.ReactTestRenderer;
 const control = (name: string) =>
   renderer.root.findAll(
@@ -119,7 +124,34 @@ beforeEach(() => {
     isRestoringSession: false,
   });
   jest.mocked(homeWidget.validateLink).mockResolvedValue(true);
+  jest.mocked(homeWidget.selectCategory).mockResolvedValue(true);
   jest.mocked(dashboardCache.read).mockResolvedValue(data);
+});
+
+it('searches launcher categories with icons, saves the selection and returns to the launcher', async () => {
+  await mount(launcherCategoryUrl);
+  expect(control('Tìm danh mục widget')).toBeDefined();
+  expect(control('Số tiền widget')).toBeUndefined();
+  await fill('Tìm danh mục widget', 'di lai');
+  expect(control('Đi lại')).toBeDefined();
+  expect(renderer.root.findByType(CategoryIcon).props.icon).toBe(
+    'categories/icons/expense_transport.png',
+  );
+  await press('Đi lại');
+  expect(homeWidget.selectCategory).toHaveBeenCalledWith(
+    'http://qa.test:7', launcherCategoryUrl, 9,
+  );
+  expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith(undefined);
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+});
+
+it('can clear the launcher category without creating a transaction', async () => {
+  await mount(launcherCategoryUrl);
+  await press('Để chưa phân loại');
+  expect(homeWidget.selectCategory).toHaveBeenCalledWith(
+    'http://qa.test:7', launcherCategoryUrl, null,
+  );
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
 });
 
 it.each(['Vay', 'Cho vay'])(

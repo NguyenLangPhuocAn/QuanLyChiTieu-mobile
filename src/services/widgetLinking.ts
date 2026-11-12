@@ -12,7 +12,7 @@ export const widgetLink = (scope: BillScope, url: string): string | null => {
     !['EXPENSE', 'INCOME', 'LOAN_DEBT'].includes(type ?? '') ||
     !event ||
     event.length > 100 ||
-    !['FORM', 'VOICE', 'CAMERA'].includes(action) ||
+    !['FORM', 'VOICE', 'CAMERA', 'CATEGORY'].includes(action) ||
     (category !== null &&
       (!/^\d+$/.test(category) ||
         !Number.isSafeInteger(Number(category)) ||

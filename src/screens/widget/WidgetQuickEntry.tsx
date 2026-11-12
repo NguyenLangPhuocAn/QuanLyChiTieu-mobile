@@ -65,6 +65,8 @@ type Props = { entryUrl: string };
 type ItemDraft = Omit<ReceiptItem, 'amount'> & { amount: string };
 const dateLabel = (value: string) => value.split('-').reverse().join('/');
 function Panel({ entryUrl }: Props) {
+  const categoryOnly =
+    new URLSearchParams(entryUrl.split('?')[1]).get('action') === 'CATEGORY';
   const {
     user,
     token,
@@ -178,8 +180,8 @@ function Panel({ entryUrl }: Props) {
       )
         throw Error('Lối tắt đã thay đổi. Đóng rồi bấm lại widget.');
       const cached = await dashboardCache.read(user.id);
-      if (!cached?.wallets.length)
-        throw Error('Mở app có mạng một lần để tải ví.');
+      if (!cached || (!categoryOnly && !cached.wallets.length))
+        throw Error('Mở app có mạng một lần để tải dữ liệu.');
       if (!active) return;
       const params = new URLSearchParams(link.slice(link.indexOf('?') + 1));
       const nextType =
@@ -227,6 +229,7 @@ function Panel({ entryUrl }: Props) {
     isCurrencySetupRequired,
     user?.must_change_password,
     loadRevision,
+    categoryOnly,
   ]);
   useEffect(() => {
     if (!user?.id) return;
@@ -409,6 +412,23 @@ function Panel({ entryUrl }: Props) {
   const category = availableCategories.find(
     c => c.id === categoryId && c.type === type,
   );
+  const chooseLauncherCategory = async (id: number | null) => {
+    if (busy || !user?.id) return;
+    setBusy(true);
+    try {
+      const saved = await homeWidget.selectCategory(
+        widgetScope({ userId: user.id, server }),
+        entryUrl,
+        id,
+      );
+      if (!saved) throw Error('Chưa lưu được danh mục vào widget.');
+      close();
+    } catch (e) {
+      setError(getUserFriendlyErrorMessage(e, 'Chưa lưu được danh mục.'));
+    } finally {
+      setBusy(false);
+    }
+  };
   const voicePreview = parseVoiceTransactionDraft(transcript);
   useEffect(() => {
     if (!voicePending.current || voice.status !== 'idle' || !transcript.trim())
@@ -594,8 +614,8 @@ function Panel({ entryUrl }: Props) {
         {!voiceOnly && !photoOnly && (
           <View style={s.header}>
             <Text style={s.title}>
-              {voiceOnly
-                ? 'Nhập bằng giọng nói'
+              {categoryOnly
+                ? 'Chọn danh mục'
                 : review
                 ? 'Kiểm tra giao dịch'
                 : 'Thêm giao dịch'}
@@ -741,6 +761,14 @@ function Panel({ entryUrl }: Props) {
                 </Text>
               )}
             </>
+          ) : categoryOnly ? (
+            <WidgetCategoryPicker
+              categories={data?.categories ?? []}
+              type={type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
+              selectedId={categoryId}
+              onSelect={selected => chooseLauncherCategory(selected.id)}
+              onClear={() => chooseLauncherCategory(null)}
+            />
           ) : picker ? (
             <>
               <WidgetCategoryPicker
@@ -1074,7 +1102,7 @@ function Panel({ entryUrl }: Props) {
             onChange={changeDate}
           />
         )}
-        {ready && !picker && !voiceOnly && !photoOnly && !voiceVisible && (
+        {ready && !categoryOnly && !picker && !voiceOnly && !photoOnly && !voiceVisible && (
           <View style={s.footer}>
             {completedResult ? (
               button('Đóng', close, true, busy)

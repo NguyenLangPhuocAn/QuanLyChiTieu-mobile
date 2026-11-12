@@ -88,6 +88,28 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
   @ReactMethod fun validateLink(scope: String, url: String, promise: Promise) {
     promise.resolve(scope == NovaWidgetProvider.prefs(context).getString("scope", null) && NovaWidgetProvider.validEntry(context, url))
   }
+  @ReactMethod fun selectCategory(scope: String, url: String, categoryId: Double?, promise: Promise) {
+    val p = NovaWidgetProvider.prefs(context)
+    if (scope != p.getString("scope", null) || !NovaWidgetProvider.validEntry(context, url)) {
+      promise.resolve(false)
+      return
+    }
+    val uri = Uri.parse(url)
+    val widgetId = uri.getQueryParameter("widget")?.toIntOrNull() ?: -1
+    val type = uri.getQueryParameter("type") ?: ""
+    val id = categoryId?.toLong()
+    if (uri.getQueryParameter("action") != "CATEGORY" || type !in listOf("EXPENSE", "INCOME") ||
+      (id != null && (categoryId != id.toDouble() || NovaWidgetProvider.categories(context, type).none { it.id == id }))) {
+      promise.resolve(false)
+      return
+    }
+    val key = "category_${widgetId}_$type"
+    val edit = p.edit()
+    if (id == null) edit.remove(key) else edit.putLong(key, id)
+    val saved = edit.commit()
+    if (saved) NovaWidgetProvider.render(context)
+    promise.resolve(saved)
+  }
   @ReactMethod fun entryReady(promise: Promise) {
     NovaWidgetEntryActivity.showContent()
     promise.resolve(null)

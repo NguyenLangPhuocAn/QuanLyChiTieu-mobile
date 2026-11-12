@@ -89,6 +89,9 @@ it('offers only normal income/expense categories and carries a validated categor
   expect(widgetLink(scope, base + '&action=VOICE&category=5')).toContain(
     'widgetAction=VOICE&widgetCategoryId=5',
   );
+  expect(widgetLink(scope, base + '&action=CATEGORY&category=4')).toContain(
+    'widgetAction=CATEGORY&widgetCategoryId=4',
+  );
   for (const suffix of [
     '&action=SAVE',
     '&category=-1',

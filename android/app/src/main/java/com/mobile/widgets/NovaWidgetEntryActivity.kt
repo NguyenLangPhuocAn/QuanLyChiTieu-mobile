@@ -54,7 +54,8 @@ class NovaWidgetEntryActivity : ReactActivity() {
         indeterminateTintList = ColorStateList.valueOf(Color.rgb(255, 136, 0))
       }, LinearLayout.LayoutParams(dp(28), dp(28)))
       addView(TextView(this@NovaWidgetEntryActivity).apply {
-        text = "Đang mở giao dịch…"
+        text = if (intent.data?.getQueryParameter("action") == "CATEGORY")
+          "Đang mở danh mục…" else "Đang mở giao dịch…"
         textSize = 16f
         setTextColor(Color.rgb(74, 43, 26))
         gravity = Gravity.CENTER

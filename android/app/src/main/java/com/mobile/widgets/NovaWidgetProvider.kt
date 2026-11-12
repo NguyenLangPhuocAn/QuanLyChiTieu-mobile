@@ -126,13 +126,9 @@ open class NovaWidgetProvider : AppWidgetProvider() {
             .setData(Uri.parse("nova-widget://type/$id/$choiceType")).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra("type", choiceType)
           views.setOnClickPendingIntent(viewId, PendingIntent.getBroadcast(context, id, select, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         }
-        val choose = Intent(context, NovaWidgetCategoryActivity::class.java)
-          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-          .setData(Uri.parse("nova-widget://category/$id/$type")).putExtra("scope", scope)
-          .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id).putExtra("type", type)
         views.setOnClickPendingIntent(R.id.widget_category, if (scope == null || type == "LOAN_DEBT")
           PendingIntent.getActivity(context, id, entryIntent(context,id,type,"FORM",null), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-          else PendingIntent.getActivity(context, id, choose, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+          else PendingIntent.getActivity(context, id, entryIntent(context,id,type,"CATEGORY",category?.id), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         for ((viewId, action) in listOf(R.id.widget_add to "FORM", R.id.widget_voice to "VOICE", R.id.widget_camera to "CAMERA")) {
           views.setOnClickPendingIntent(viewId, PendingIntent.getActivity(context, id, entryIntent(context,id,type,action,category?.id), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         }

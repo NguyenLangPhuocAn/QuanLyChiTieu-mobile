@@ -11,6 +11,10 @@ import CategoryIcon from './CategoryIcon';
 import type { Category } from '../types/category';
 import { filterNormalCashFlowCategories } from '../utils/transactionClassification';
 
+const searchKey = (value: string) =>
+  value.trim().toLocaleLowerCase('vi').normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+
 export default function WidgetCategoryPicker({
   categories,
   type,
@@ -29,9 +33,7 @@ export default function WidgetCategoryPicker({
     c => c.type === type,
   );
   const visible = eligible.filter(c =>
-    c.name
-      .toLocaleLowerCase('vi')
-      .includes(query.trim().toLocaleLowerCase('vi')),
+    searchKey(c.name).includes(searchKey(query)),
   );
   return (
     <View style={s.list}>
