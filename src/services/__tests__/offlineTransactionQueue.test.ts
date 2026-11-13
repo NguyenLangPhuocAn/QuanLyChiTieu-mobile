@@ -168,6 +168,8 @@ describe('offlineTransactionQueue', () => {
   });
 
   it('removes a draft after the idempotent request is confirmed', async () => {
+    const listener = jest.fn();
+    const unsubscribe = offlineTransactionQueue.subscribe(listener);
     await offlineTransactionQueue.enqueue(7, {
       wallet_id: 2,
       amount: '100000',
@@ -186,6 +188,8 @@ describe('offlineTransactionQueue', () => {
       }),
     );
     await expect(offlineTransactionQueue.list(7)).resolves.toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(3);
+    unsubscribe();
   });
 
   it('keeps an unknown write outcome pending for a safe retry', async () => {

@@ -70,8 +70,10 @@ const parseDrafts = (raw: string | null): OfflineTransactionDraft[] => {
   }
 };
 
-const save = (userId: number, drafts: OfflineTransactionDraft[]) =>
-  AsyncStorage.setItem(storageKey(userId), JSON.stringify(drafts));
+const save = async (userId: number, drafts: OfflineTransactionDraft[]) => {
+  await AsyncStorage.setItem(storageKey(userId), JSON.stringify(drafts));
+  listeners.forEach(listener => listener());
+};
 
 // Compare the complete JSON payload without depending on property order.
 const payloadFingerprint = (payload: CreateTransactionPayload) =>
@@ -242,7 +244,6 @@ export const offlineTransactionQueue = {
       };
       drafts.push(draft);
       await save(userId, drafts);
-      listeners.forEach(listener => listener());
       return draft;
     });
   },
@@ -260,7 +261,6 @@ export const offlineTransactionQueue = {
             (item.server && item.server !== getApiStorageBaseUrl()),
         ),
       );
-      listeners.forEach(listener => listener());
     });
   },
 
@@ -286,7 +286,6 @@ export const offlineTransactionQueue = {
         userId,
         drafts.filter(item => item.server !== server),
       );
-      listeners.forEach(listener => listener());
       return current.length;
     });
   },

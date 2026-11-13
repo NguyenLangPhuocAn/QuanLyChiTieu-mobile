@@ -1835,8 +1835,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           Alert.alert(
             'Đã giữ bản nháp ngoại tuyến',
             receiptFile
-              ? 'Giao dịch sẽ tự đồng bộ khi có mạng. Ảnh hóa đơn chưa được tải lên; hãy thêm lại ảnh sau khi giao dịch xuất hiện trong lịch sử.'
-              : 'Giao dịch sẽ tự đồng bộ khi có mạng. Bản nháp chưa làm thay đổi số dư.',
+              ? 'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Ảnh hóa đơn chưa được tải lên; hãy thêm lại ảnh sau khi giao dịch xuất hiện trong lịch sử.'
+              : 'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Bản nháp chưa làm thay đổi số dư.',
           );
           return;
         }

@@ -106,12 +106,22 @@ const DataManagementScreen = () => {
       setOfflineDrafts(drafts);
       setOfflineChanges(changes);
     });
-    return offlineTransactionChanges.subscribe(() => {
+    const unsubscribeChanges = offlineTransactionChanges.subscribe(() => {
       offlineTransactionChanges
         .list(user.id)
         .then(setOfflineChanges)
         .catch(() => undefined);
     });
+    const unsubscribeDrafts = offlineTransactionQueue.subscribe(() => {
+      offlineTransactionQueue
+        .list(user.id)
+        .then(setOfflineDrafts)
+        .catch(() => undefined);
+    });
+    return () => {
+      unsubscribeChanges();
+      unsubscribeDrafts();
+    };
   }, [user?.id]);
 
   useEffect(() => {
