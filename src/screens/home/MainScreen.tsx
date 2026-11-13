@@ -1946,7 +1946,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     <SafeAreaView style={styles.container}>
       {isOfflineSession ? (
         <Text accessibilityLiveRegion="polite" style={styles.offlineBanner}>
-          Chế độ trên máy · Giao dịch mới sẽ chờ đồng bộ khi kết nối lại.
+          Chế độ trên máy · Thay đổi giao dịch sẽ chờ đồng bộ khi kết nối lại.
         </Text>
       ) : null}
       <View style={styles.content}>{renderContent()}</View>

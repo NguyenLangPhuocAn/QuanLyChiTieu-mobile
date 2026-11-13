@@ -47,6 +47,41 @@ describe('offlineTransactionQueue', () => {
     expect(drafts).toHaveLength(1);
     expect(drafts[0].status).toBe('PENDING');
   });
+  it('does not upload or discard if the offline preview changed after the user saw it', async () => {
+    const first = await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '5000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_first_preview_123456',
+    });
+    const expected = [{ id: first.id, updatedAt: first.updatedAt }];
+    await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '7000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_second_preview_12345',
+    });
+    await expect(
+      offlineTransactionQueue.sync('token', 7, () => true, expected),
+    ).rejects.toThrow('xem lại');
+    await expect(
+      offlineTransactionQueue.discardLocal(7, expected),
+    ).rejects.toThrow('xem lại');
+    expect(createTransaction).not.toHaveBeenCalled();
+    expect(await offlineTransactionQueue.list(7)).toHaveLength(2);
+  });
+  it('discards only the confirmed current-server drafts and never sends money', async () => {
+    const draft = await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '5000',
+      type: 'EXPENSE',
+      client_request_id: 'txn_discard_preview_12345',
+    });
+    const expected = [{ id: draft.id, updatedAt: draft.updatedAt }];
+    expect(await offlineTransactionQueue.discardLocal(7, expected)).toBe(1);
+    expect(await offlineTransactionQueue.list(7)).toEqual([]);
+    expect(createTransaction).not.toHaveBeenCalled();
+  });
   it('keeps a corrupt queue intact rather than replacing it with an empty queue', async () => {
     storage.set('quan_ly_chi_tieu_offline_transactions_v1_7', 'broken json');
     await expect(

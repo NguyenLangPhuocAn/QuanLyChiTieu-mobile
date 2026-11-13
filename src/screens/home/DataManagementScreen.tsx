@@ -44,6 +44,11 @@ import {
   offlineTransactionQueue,
   type OfflineTransactionDraft,
 } from '../../services/offlineTransactionQueue';
+import {
+  offlineTransactionChanges,
+  type OfflineTransactionChange,
+} from '../../services/offlineTransactionChanges';
+import { financeRefresh } from '../../services/financeRefresh';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
@@ -75,6 +80,9 @@ const DataManagementScreen = () => {
   const [offlineDrafts, setOfflineDrafts] = useState<OfflineTransactionDraft[]>(
     [],
   );
+  const [offlineChanges, setOfflineChanges] = useState<
+    OfflineTransactionChange[]
+  >([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
   const [draftEditor, setDraftEditor] = useState<OfflineDraftEditor | null>(
@@ -92,9 +100,17 @@ const DataManagementScreen = () => {
     Promise.all([
       dashboardCache.read(user.id),
       offlineTransactionQueue.list(user.id),
-    ]).then(([nextCache, drafts]) => {
+      offlineTransactionChanges.list(user.id),
+    ]).then(([nextCache, drafts, changes]) => {
       setCache(nextCache);
       setOfflineDrafts(drafts);
+      setOfflineChanges(changes);
+    });
+    return offlineTransactionChanges.subscribe(() => {
+      offlineTransactionChanges
+        .list(user.id)
+        .then(setOfflineChanges)
+        .catch(() => undefined);
     });
   }, [user?.id]);
 
@@ -239,15 +255,41 @@ const DataManagementScreen = () => {
     setExcelPreview(null);
   };
 
-  const syncOfflineDrafts = async () => {
+  const syncOfflineDrafts = async (
+    expectedDrafts: Array<{ id: string; updatedAt: string }>,
+    expectedChanges: Array<{ transactionId: number; revision: number }>,
+  ) => {
     if (!token || !user?.id || isSyncingDrafts) return;
     setIsSyncingDrafts(true);
     try {
-      const result = await offlineTransactionQueue.sync(token, user.id);
+      if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
+      if (
+        JSON.stringify(await offlineTransactionChanges.preview(user.id)) !==
+        JSON.stringify(expectedChanges)
+      )
+        throw Error('Thay đổi trên máy đã đổi. Hãy xem lại trước khi đồng bộ.');
+      const result = await offlineTransactionQueue.sync(
+        token,
+        user.id,
+        () => true,
+        expectedDrafts,
+      );
+      const edits = result.pending
+        ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
+        : await offlineTransactionChanges.sync(
+            token,
+            user.id,
+            expectedChanges,
+            () => true,
+          );
       setOfflineDrafts(await offlineTransactionQueue.list(user.id));
+      setOfflineChanges(await offlineTransactionChanges.list(user.id));
+      financeRefresh.emit();
       Alert.alert(
-        'Đồng bộ bản nháp',
-        `Đã thêm ${result.synced} · Còn chờ ${result.pending} · Cần kiểm tra ${result.needsReview}.`,
+        'Đồng bộ giao dịch',
+        `Đã ghi ${result.synced + edits.synced} · Còn chờ ${
+          result.pending + edits.pending
+        } · Cần kiểm tra ${result.needsReview + edits.needsReview}.`,
       );
     } catch (error) {
       Alert.alert(
@@ -256,6 +298,88 @@ const DataManagementScreen = () => {
       );
     } finally {
       setIsSyncingDrafts(false);
+    }
+  };
+
+  const reviewOfflineChange = async (item: OfflineTransactionChange) => {
+    if (!user?.id || !token) return;
+    try {
+      if (!(await homeWidget.connected())) {
+        Alert.alert(
+          'Chưa có mạng',
+          'Cần kết nối để so sánh với bản trên máy chủ.',
+        );
+        return;
+      }
+      const remote = await offlineTransactionChanges.inspect(token, item);
+      const local =
+        item.action === 'DELETE'
+          ? 'Đã xóa trên điện thoại'
+          : `${item.payload?.type === 'INCOME' ? 'Thu +' : 'Chi -'}${Number(
+              item.payload?.amount,
+            ).toLocaleString('vi-VN')} · ${
+              item.payload?.note || 'Không có ghi chú'
+            }`;
+      const server = remote
+        ? `${remote.type === 'INCOME' ? 'Thu +' : 'Chi -'}${Number(
+            remote.amount,
+          ).toLocaleString('vi-VN')} · ${remote.note || 'Không có ghi chú'}`
+        : 'Giao dịch không còn trên máy chủ';
+      Alert.alert(
+        'Chọn bản cần giữ',
+        `Trên máy: ${local}\nMáy chủ: ${server}`,
+        [
+          { text: 'Để sau', style: 'cancel' },
+          {
+            text: 'Giữ máy chủ',
+            onPress: () => {
+              offlineTransactionChanges
+                .resolve(user.id, item.transactionId, item.revision, 'SERVER')
+                .then(() => financeRefresh.emit())
+                .catch(error =>
+                  Alert.alert(
+                    'Chưa xử lý được',
+                    getUserFriendlyErrorMessage(error),
+                  ),
+                );
+            },
+          },
+          ...(remote
+            ? [
+                {
+                  text: 'Dùng bản trên máy',
+                  onPress: () => {
+                    offlineTransactionChanges
+                      .resolve(
+                        user.id,
+                        item.transactionId,
+                        item.revision,
+                        'LOCAL',
+                        remote,
+                      )
+                      .then(() =>
+                        Alert.alert(
+                          'Đã chọn bản trên máy',
+                          'Nhấn nút đồng bộ để ghi thay đổi lên máy chủ.',
+                        ),
+                      )
+                      .catch(error =>
+                        Alert.alert(
+                          'Chưa xử lý được',
+                          getUserFriendlyErrorMessage(error),
+                        ),
+                      );
+                  },
+                },
+              ]
+            : []),
+        ],
+      );
+    } catch (error) {
+      Alert.alert(
+        'Chưa xem được giao dịch',
+        getUserFriendlyErrorMessage(error),
+      );
     }
   };
 
@@ -567,10 +691,43 @@ const DataManagementScreen = () => {
             </View>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Đồng bộ bản nháp ngoại tuyến"
+              accessibilityLabel="Đồng bộ giao dịch ngoại tuyến"
               style={styles.syncButton}
-              onPress={syncOfflineDrafts}
-              disabled={isSyncingDrafts || offlineDrafts.length === 0}
+              onPress={() =>
+                Alert.alert(
+                  'Ghi giao dịch lên máy chủ?',
+                  `${offlineDrafts.length} giao dịch mới · ${
+                    offlineChanges.filter(item => item.status === 'PENDING')
+                      .length
+                  } lần sửa/xóa đang chờ. Số dư sẽ thay đổi sau khi máy chủ xác nhận.`,
+                  [
+                    { text: 'Xem lại', style: 'cancel' },
+                    {
+                      text: 'Đồng bộ',
+                      onPress: () => {
+                        syncOfflineDrafts(
+                          offlineDrafts.map(item => ({
+                            id: item.id,
+                            updatedAt: item.updatedAt,
+                          })),
+                          offlineChanges
+                            .map(item => ({
+                              transactionId: item.transactionId,
+                              revision: item.revision,
+                            }))
+                            .sort(
+                              (a, b) => a.transactionId - b.transactionId,
+                            ),
+                        ).catch(() => undefined);
+                      },
+                    },
+                  ],
+                )
+              }
+              disabled={
+                isSyncingDrafts ||
+                (offlineDrafts.length === 0 && offlineChanges.length === 0)
+              }
             >
               {isSyncingDrafts ? (
                 <ActivityIndicator color={Colors.primary} size="small" />
@@ -758,6 +915,76 @@ const DataManagementScreen = () => {
           )}
         </View>
 
+        {offlineChanges.length ? (
+          <View style={styles.draftCard}>
+            <Text style={styles.cardTitle}>Sửa, xóa đang chờ</Text>
+            {offlineChanges.map(item => (
+              <View key={item.transactionId} style={styles.draftItem}>
+                <Text style={styles.draftAmount}>
+                  {item.action === 'DELETE' ? 'Xóa' : 'Sửa'} ·{' '}
+                  {item.base.type === 'INCOME' ? 'Thu' : 'Chi'}{' '}
+                  {Number(
+                    item.payload?.amount ?? item.base.amount,
+                  ).toLocaleString('vi-VN')}
+                </Text>
+                <Text style={styles.draftMeta}>
+                  {item.payload?.note ?? item.base.note ?? 'Không có ghi chú'} ·{' '}
+                  {item.status === 'NEEDS_REVIEW'
+                    ? 'Cần xem lại bản máy chủ'
+                    : 'Chưa đồng bộ'}
+                </Text>
+                {item.lastError ? (
+                  <Text style={styles.previewReason}>{item.lastError}</Text>
+                ) : null}
+                <View style={styles.draftRow}>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      style={styles.reviewChangeButton}
+                      onPress={() => {
+                        reviewOfflineChange(item).catch(() => undefined);
+                      }}
+                    >
+                      <Text style={styles.reviewChangeText}>So sánh</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    style={styles.deleteDraftButton}
+                    onPress={() =>
+                      Alert.alert(
+                        'Bỏ thay đổi trên máy?',
+                        'Giao dịch trên máy chủ được giữ nguyên.',
+                        [
+                          { text: 'Giữ lại', style: 'cancel' },
+                          {
+                            text: 'Bỏ thay đổi',
+                            style: 'destructive',
+                            onPress: () => {
+                              if (!user?.id) return;
+                              offlineTransactionChanges
+                                .remove(user.id, item.transactionId)
+                                .then(() => financeRefresh.emit())
+                                .catch(error =>
+                                  Alert.alert(
+                                    'Chưa bỏ được',
+                                    getUserFriendlyErrorMessage(error),
+                                  ),
+                                );
+                            },
+                          },
+                        ],
+                      )
+                    }
+                  >
+                    <Trash2 size={17} color="#C9483D" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <TouchableOpacity
           style={styles.actionCard}
           onPress={() => navigation.navigate('PersonalBackup')}
@@ -940,6 +1167,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  reviewChangeButton: {
+    minHeight: 38,
+    borderRadius: 12,
+    backgroundColor: '#FFF0DF',
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewChangeText: { color: '#A95014', fontSize: 12, fontWeight: '800' },
   draftEditor: {
     borderRadius: 16,
     backgroundColor: '#FFF8F0',

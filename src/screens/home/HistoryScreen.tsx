@@ -51,6 +51,7 @@ import { tagsService } from '../../services/tags';
 import { mapApiTransactions } from '../../utils/mapTransactions';
 import type { Category } from '../../types/category';
 import type { Wallet } from '../../types/wallet';
+import type { ApiTransaction } from '../../types/transaction';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import {
@@ -71,6 +72,12 @@ import {
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import { dashboardCache } from '../../services/dashboardCache';
 import { ApiError } from '../../services/api';
+import {
+  offlineTransactionChanges,
+  type OfflineTransactionChange,
+  type TransactionChangePayload,
+} from '../../services/offlineTransactionChanges';
+import { financeRefresh } from '../../services/financeRefresh';
 
 type HistoryScreenProps = {
   wallets?: Wallet[];
@@ -228,6 +235,11 @@ const HistoryScreen = ({
     count: number;
     updatedAt: string;
   } | null>(null);
+  const [offlineChanges, setOfflineChanges] = useState<
+    OfflineTransactionChange[]
+  >([]);
+  const [cachedCategories, setCachedCategories] = useState<Category[]>([]);
+  const originalRows = useRef(new Map<number, ApiTransaction>());
   const loadRevision = useRef(0);
   const [selectedTransaction, setSelectedTransaction] =
     useState<TransactionItem | null>(null);
@@ -318,21 +330,36 @@ const HistoryScreen = ({
     setLoadError(null);
 
     const loadLocalPage = async () => {
-      if (!user?.id || [
-        transactionQuery.from,
-        transactionQuery.to,
-        transactionQuery.wallet_id,
-        transactionQuery.category_id,
-        transactionQuery.type,
-        transactionQuery.cash_flow,
-        transactionQuery.tag,
-        transactionQuery.q,
-      ].some(Boolean)) return false;
+      if (
+        !user?.id ||
+        [
+          transactionQuery.from,
+          transactionQuery.to,
+          transactionQuery.wallet_id,
+          transactionQuery.category_id,
+          transactionQuery.type,
+          transactionQuery.cash_flow,
+          transactionQuery.tag,
+          transactionQuery.q,
+        ].some(Boolean)
+      )
+        return false;
       const cached = await dashboardCache.read(user.id);
       if (revision !== loadRevision.current || !cached?.transactions.length)
         return false;
+      const localChanges = await offlineTransactionChanges.list(user.id);
+      if (revision !== loadRevision.current) return false;
+      setOfflineChanges(localChanges);
+      setCachedCategories(cached.categories);
+      originalRows.current = new Map(
+        cached.transactions.map(row => [row.id, row]),
+      );
       const rows = mapApiTransactions(
-        cached.transactions,
+        offlineTransactionChanges.apply(
+          cached.transactions,
+          localChanges,
+          categories.length ? categories : cached.categories,
+        ),
         wallets.length ? wallets : cached.wallets,
       );
       const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -340,8 +367,16 @@ const HistoryScreen = ({
         setPage(totalPages);
         return true;
       }
-      setServerTransactions(rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
-      setServerMeta({ total: rows.length, totalPages, income: 0, expense: 0, net: 0 });
+      setServerTransactions(
+        rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+      );
+      setServerMeta({
+        total: rows.length,
+        totalPages,
+        income: 0,
+        expense: 0,
+        net: 0,
+      });
       setCachedView({ count: rows.length, updatedAt: cached.updatedAt });
       setLoadError(null);
       return true;
@@ -354,12 +389,27 @@ const HistoryScreen = ({
         transactionQuery,
       );
       if (revision !== loadRevision.current) return;
+      const localChanges = user?.id
+        ? await offlineTransactionChanges.list(user.id)
+        : [];
+      if (revision !== loadRevision.current) return;
+      setOfflineChanges(localChanges);
+      originalRows.current = new Map(response.data.map(row => [row.id, row]));
       const lastPage = Math.max(1, response.meta.totalPages);
       if (transactionQuery.page && transactionQuery.page > lastPage) {
         setPage(lastPage);
         return;
       }
-      setServerTransactions(mapApiTransactions(response.data, wallets));
+      setServerTransactions(
+        mapApiTransactions(
+          offlineTransactionChanges.apply(
+            response.data,
+            localChanges,
+            categories,
+          ),
+          wallets,
+        ),
+      );
       setCachedView(null);
       setServerMeta({
         total: response.meta.total,
@@ -371,9 +421,14 @@ const HistoryScreen = ({
     } catch (error) {
       if (revision === loadRevision.current) {
         if (
-          !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+          !(
+            error instanceof ApiError &&
+            error.status >= 400 &&
+            error.status < 500
+          ) &&
           (await loadLocalPage())
-        ) return;
+        )
+          return;
         setCachedView(null);
         setLoadError(
           getUserFriendlyErrorMessage(
@@ -385,7 +440,15 @@ const HistoryScreen = ({
     } finally {
       if (revision === loadRevision.current) setIsPageLoading(false);
     }
-  }, [token, transactionQuery, wallets, user?.id, isOfflineSession, page]);
+  }, [
+    token,
+    transactionQuery,
+    wallets,
+    categories,
+    user?.id,
+    isOfflineSession,
+    page,
+  ]);
 
   useEffect(() => {
     fetchTransactionPage();
@@ -393,6 +456,13 @@ const HistoryScreen = ({
       loadRevision.current += 1;
     };
   }, [fetchTransactionPage]);
+  useEffect(
+    () =>
+      financeRefresh.subscribe(() => {
+        fetchTransactionPage().catch(() => undefined);
+      }),
+    [fetchTransactionPage],
+  );
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([fetchTransactionPage(), onRefresh?.()]);
@@ -483,9 +553,19 @@ const HistoryScreen = ({
     }
   }, [page, totalPages]);
 
-  const selectedCategory = categories.find(
-    category => category.id === editCategoryId,
-  );
+  const availableCategories = categories.length ? categories : cachedCategories;
+  const selectedCategory =
+    availableCategories.find(category => category.id === editCategoryId) ??
+    (selectedTransaction?.categoryId === editCategoryId && editCategoryId
+      ? {
+          id: editCategoryId,
+          name: selectedTransaction.category,
+          type:
+            selectedTransaction.type === 'income'
+              ? ('INCOME' as const)
+              : ('EXPENSE' as const),
+        }
+      : undefined);
   const selectedEditWallet =
     wallets.find(wallet => wallet.id === editWalletId) ?? null;
   const editReceiptCurrency =
@@ -501,9 +581,7 @@ const HistoryScreen = ({
       }, 0),
     [editReceiptItems],
   );
-  const editTransactionTotal = Number(
-    parsePositiveMoneyInput(editAmount) ?? 0,
-  );
+  const editTransactionTotal = Number(parsePositiveMoneyInput(editAmount) ?? 0);
   const editReceiptDifference = editTransactionTotal - editReceiptItemTotal;
   const currentEditTags = useMemo(() => parseTagsInput(editTags), [editTags]);
   const recentHashtags = useMemo(() => {
@@ -565,9 +643,9 @@ const HistoryScreen = ({
       setEditDate(item.date.slice(0, 10));
       setEditWalletId(item.walletId ?? wallets[0]?.id ?? null);
       const nextCategory =
-        categories.find(category => category.id === item.categoryId) ??
-        categories.find(category => category.name === item.category);
-      setEditCategoryId(nextCategory?.id ?? null);
+        availableCategories.find(category => category.id === item.categoryId) ??
+        availableCategories.find(category => category.name === item.category);
+      setEditCategoryId(nextCategory?.id ?? item.categoryId ?? null);
       setEditType(
         nextCategory?.type ?? (item.type === 'income' ? 'INCOME' : 'EXPENSE'),
       );
@@ -580,7 +658,7 @@ const HistoryScreen = ({
       );
       setShouldRemoveReceipt(false);
     },
-    [categories, navigation, wallets],
+    [availableCategories, navigation, wallets],
   );
 
   useEffect(() => {
@@ -617,7 +695,7 @@ const HistoryScreen = ({
   };
 
   const openEditCategoryPicker = () => {
-    const currentCategory = categories.find(
+    const currentCategory = availableCategories.find(
       category => category.id === editCategoryId,
     );
 
@@ -631,7 +709,9 @@ const HistoryScreen = ({
 
   const handleEditTypeChange = (type: 'INCOME' | 'EXPENSE') => {
     setEditType(type);
-    const nextCategory = categories.find(category => category.type === type);
+    const nextCategory = availableCategories.find(
+      category => category.type === type,
+    );
     setEditCategoryId(nextCategory?.id ?? null);
   };
 
@@ -717,7 +797,7 @@ const HistoryScreen = ({
 
   const handleSaveTransaction = () =>
     runTransactionMutation(async () => {
-      if (!token || !selectedTransaction) {
+      if (!selectedTransaction) {
         Alert.alert(
           'Thông báo',
           'Vui lòng đăng nhập lại để cập nhật giao dịch.',
@@ -741,7 +821,14 @@ const HistoryScreen = ({
       }
 
       const transactionId = Number(selectedTransaction.id);
-      const category = categories.find(item => item.id === editCategoryId);
+      const category =
+        availableCategories.find(item => item.id === editCategoryId) ??
+        (selectedTransaction.categoryId === editCategoryId
+          ? selectedCategory
+          : undefined);
+      const categoryIsSelectable = availableCategories.some(
+        item => item.id === editCategoryId,
+      );
 
       const normalizedReceiptItems = [] as Array<{
         name: string;
@@ -769,6 +856,79 @@ const HistoryScreen = ({
         return;
       }
 
+      const updatePayload: TransactionChangePayload = {
+        wallet_id: editWalletId,
+        ...(categoryIsSelectable ? { category_id: editCategoryId } : {}),
+        amount: plainAmount,
+        type: category.type,
+        note: editNote.trim(),
+        receipt_items: normalizedReceiptItems,
+        ...(shouldRemoveReceipt && !editReceiptFile
+          ? { receipt_image: null }
+          : {}),
+        transaction_date: editDate,
+        tags: parseTagsInput(editTags),
+      };
+      const pendingChange = offlineChanges.some(
+        item => item.transactionId === transactionId,
+      );
+      if (isOfflineSession || cachedView || pendingChange) {
+        if (editReceiptFile) {
+          Alert.alert(
+            'Ảnh chưa lưu được offline',
+            'Hãy nối mạng để tải ảnh hóa đơn mới. Các thông tin khác vẫn có thể sửa trên máy.',
+          );
+          return;
+        }
+        if (!user?.id) return;
+        const base =
+          originalRows.current.get(transactionId) ??
+          (await dashboardCache.read(user.id))?.transactions.find(
+            item => item.id === transactionId,
+          );
+        if (!base) {
+          Alert.alert(
+            'Chưa đủ dữ liệu trên máy',
+            'Mở giao dịch khi có mạng một lần rồi thử lại.',
+          );
+          return;
+        }
+        Alert.alert(
+          'Lưu sửa đổi trên máy?',
+          `${category.type === 'INCOME' ? 'Thu +' : 'Chi -'}${formatCurrency(
+            Number(plainAmount),
+            selectedEditWallet?.currency ?? preferredCurrency,
+          )}\nDữ liệu chưa đổi trên máy chủ cho đến khi bạn chọn đồng bộ.`,
+          [
+            { text: 'Xem lại', style: 'cancel' },
+            {
+              text: 'Lưu trên máy',
+              onPress: () => {
+                offlineTransactionChanges
+                  .upsert(user.id, base, 'UPDATE', updatePayload)
+                  .then(() => fetchTransactionPage())
+                  .then(() => resetEditForm())
+                  .catch(error =>
+                    Alert.alert(
+                      'Chưa lưu được',
+                      getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+                    ),
+                  );
+              },
+            },
+          ],
+        );
+        return;
+      }
+
+      if (!token) {
+        Alert.alert(
+          'Chưa đăng nhập',
+          'Giao dịch trên máy đã được giữ; hãy kết nối lại để cập nhật máy chủ.',
+        );
+        return;
+      }
+
       setIsSaving(true);
       let detailsSaved = false;
       let receiptSaved = !editReceiptFile;
@@ -781,7 +941,7 @@ const HistoryScreen = ({
         // Backend lưu thu/chi theo type INCOME/EXPENSE, nên type luôn đi theo danh mục đang chọn.
         await transactionsService.update(token, transactionId, {
           wallet_id: editWalletId,
-          category_id: editCategoryId,
+          ...(categoryIsSelectable ? { category_id: editCategoryId } : {}),
           amount: plainAmount,
           type: category.type,
           note: editNote.trim(),
@@ -824,7 +984,7 @@ const HistoryScreen = ({
     });
 
   const handleDeleteTransaction = () => {
-    if (!token || !selectedTransaction) {
+    if (!selectedTransaction) {
       return;
     }
 
@@ -832,6 +992,56 @@ const HistoryScreen = ({
 
     if (!Number.isFinite(transactionId)) {
       Alert.alert('Thông báo', 'Giao dịch này chưa đồng bộ nên chưa thể xóa.');
+      return;
+    }
+
+    const pendingChange = offlineChanges.some(
+      item => item.transactionId === transactionId,
+    );
+    if (isOfflineSession || cachedView || pendingChange) {
+      if (!user?.id) return;
+      Alert.alert(
+        'Xóa giao dịch trên máy?',
+        'Giao dịch sẽ ẩn trên máy. Dữ liệu máy chủ chỉ đổi sau khi bạn chọn đồng bộ.',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          {
+            text: 'Xóa trên máy',
+            style: 'destructive',
+            onPress: () => {
+              dashboardCache
+                .read(user.id)
+                .then(cache => {
+                  const base =
+                    originalRows.current.get(transactionId) ??
+                    cache?.transactions.find(item => item.id === transactionId);
+                  if (!base) throw Error('Chưa có giao dịch gốc trên máy.');
+                  return offlineTransactionChanges.upsert(
+                    user.id,
+                    base,
+                    'DELETE',
+                  );
+                })
+                .then(() => fetchTransactionPage())
+                .then(() => resetEditForm())
+                .catch(error =>
+                  Alert.alert(
+                    'Chưa xóa được',
+                    getUserFriendlyErrorMessage(error, 'Vui lòng thử lại.'),
+                  ),
+                );
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (!token) {
+      Alert.alert(
+        'Chưa đăng nhập',
+        'Hãy kết nối lại để xóa giao dịch trên máy chủ.',
+      );
       return;
     }
 
@@ -892,8 +1102,14 @@ const HistoryScreen = ({
 
         {cachedView ? (
           <Text style={styles.offlineNotice}>
-            Dữ liệu trên máy · {cachedView.count} giao dịch đã tải. Cần kết nối
-            để xem lịch sử đầy đủ hoặc sửa giao dịch.
+            Dữ liệu trên máy · {cachedView.count} giao dịch đã tải. Thay đổi khi
+            mất mạng sẽ chờ bạn chọn đồng bộ.
+          </Text>
+        ) : null}
+        {offlineChanges.length ? (
+          <Text style={styles.offlineNotice}>
+            {offlineChanges.length} giao dịch sửa/xóa trên máy đang chờ. Tổng
+            thu/chi bên dưới vẫn theo dữ liệu máy chủ.
           </Text>
         ) : null}
 
@@ -955,8 +1171,6 @@ const HistoryScreen = ({
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={`Sửa giao dịch ${item.id}`}
-                  accessibilityState={{ disabled: Boolean(cachedView) }}
-                  disabled={Boolean(cachedView)}
                   key={item.id}
                   style={styles.card}
                   activeOpacity={0.86}
@@ -972,6 +1186,11 @@ const HistoryScreen = ({
                     <Text style={styles.meta}>
                       {item.category} · {item.wallet}
                     </Text>
+                    {offlineChanges.some(
+                      change => change.transactionId === Number(item.id),
+                    ) ? (
+                      <Text style={styles.meta}>Đang chờ đồng bộ</Text>
+                    ) : null}
                     {(item.tags ?? []).length > 0 ? (
                       <View style={styles.tagRow}>
                         {(item.tags ?? []).slice(0, 3).map(tag => (
@@ -1370,7 +1589,9 @@ const HistoryScreen = ({
                     key={`edit-receipt-item-${index}`}
                   >
                     <View style={styles.receiptItemIndex}>
-                      <Text style={styles.receiptItemIndexText}>{index + 1}</Text>
+                      <Text style={styles.receiptItemIndexText}>
+                        {index + 1}
+                      </Text>
                     </View>
                     <View style={styles.receiptItemFields}>
                       <TextInput
@@ -1476,7 +1697,10 @@ const HistoryScreen = ({
                       Tổng thanh toán
                     </Text>
                     <Text style={styles.receiptSummaryValue}>
-                      {formatCurrency(editTransactionTotal, editReceiptCurrency)}
+                      {formatCurrency(
+                        editTransactionTotal,
+                        editReceiptCurrency,
+                      )}
                     </Text>
                   </View>
                   {editTransactionTotal > 0 &&

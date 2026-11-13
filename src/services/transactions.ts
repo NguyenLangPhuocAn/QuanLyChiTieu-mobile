@@ -5,6 +5,7 @@ import type {
   ReceiptItem,
   ReceiptOcrResult,
 } from '../types/transaction';
+import type { TransactionSnapshot } from './offlineTransactionChanges';
 
 export type TransactionQuery = {
   wallet_id?: number;
@@ -117,6 +118,7 @@ export const transactionsService = {
       receipt_items?: ReceiptItem[] | null;
       transaction_date?: string;
       tags?: string[];
+      offline_expected?: TransactionSnapshot;
     },
   ) {
     return apiRequest<ApiTransaction>(`/transactions/${id}`, {
@@ -126,10 +128,13 @@ export const transactionsService = {
     });
   },
 
-  remove(token: string, id: number) {
+  remove(token: string, id: number, offlineExpected?: TransactionSnapshot) {
     return apiRequest<ApiTransaction>(`/transactions/${id}`, {
       method: 'DELETE',
       token,
+      ...(offlineExpected
+        ? { body: { offline_expected: offlineExpected } }
+        : {}),
     });
   },
 

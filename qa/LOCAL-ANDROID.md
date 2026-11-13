@@ -12,7 +12,7 @@ App kiểm thử tách riêng: `com.mobile.dev`, version có hậu tố `-dev`. 
 5. Trong android, chạy `gradlew :app:installDebug -PQA_ISOLATED_APP=true -PreactNativeArchitectures=x86_64 --no-daemon --max-workers=2`. Có thể giới hạn heap JVM còn 1 GB khi máy ít RAM. Đây là cài bản debug phục vụ test, không ký/phát hành APK production.
 6. Mở `com.mobile.dev/com.mobile.MainActivity`. Lần Metro biên dịch đầu có thể chờ lâu; chờ kết thúc trước khi kiểm tra luồng. Không lấy thời gian này làm thời gian mở APK phát hành.
 
-`qa/metro.local.cjs` chỉ chuyển API config sang local khi dùng riêng lệnh Metro trên. File cấu hình production không bị sửa. `node --test qa/metro.local.test.cjs` kiểm tra điều này.
+`qa/metro.local.cjs` chuyển cả API config và danh sách endpoint sang `qa/apiEndpoints.qa.ts` khi dùng lệnh Metro riêng trên. Tất cả yêu cầu trong bundle QA tới `localhost:3303` qua ADB reverse, không rơi về API production. File cấu hình production không bị sửa. `node --test qa/metro.local.test.cjs` kiểm tra điều này.
 
 ## Ảnh và thao tác
 

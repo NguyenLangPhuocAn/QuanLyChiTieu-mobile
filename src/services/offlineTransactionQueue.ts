@@ -109,9 +109,21 @@ const runSync = async (
   token: string,
   userId: number,
   isCurrent: () => boolean,
+  expected?: Array<{ id: string; updatedAt: string }>,
 ): Promise<OfflineQueueSyncResult> => {
   const server = getApiStorageBaseUrl();
   const drafts = parseDrafts(await AsyncStorage.getItem(storageKey(userId)));
+  if (expected) {
+    const current = drafts
+      .filter(item => item.server === server)
+      .map(item => ({ id: item.id, updatedAt: item.updatedAt }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (
+      JSON.stringify(current) !==
+      JSON.stringify([...expected].sort((a, b) => a.id.localeCompare(b.id)))
+    )
+      throw Error('Bản trên máy đã thay đổi. Hãy xem lại trước khi đồng bộ.');
+  }
   let synced = 0;
 
   for (const draft of drafts) {
@@ -244,9 +256,38 @@ export const offlineTransactionQueue = {
         userId,
         drafts.filter(
           item =>
-            item.id !== id || (item.server && item.server !== getApiStorageBaseUrl()),
+            item.id !== id ||
+            (item.server && item.server !== getApiStorageBaseUrl()),
         ),
       );
+      listeners.forEach(listener => listener());
+    });
+  },
+
+  async discardLocal(
+    userId: number,
+    expected: Array<{ id: string; updatedAt: string }>,
+  ) {
+    return withUserLock(userId, async () => {
+      const server = getApiStorageBaseUrl();
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      const current = drafts
+        .filter(item => item.server === server)
+        .map(item => ({ id: item.id, updatedAt: item.updatedAt }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      if (
+        JSON.stringify(current) !==
+        JSON.stringify([...expected].sort((a, b) => a.id.localeCompare(b.id)))
+      )
+        throw Error('Dữ liệu trên máy đã thay đổi. Hãy xem lại trước khi bỏ.');
+      await save(
+        userId,
+        drafts.filter(item => item.server !== server),
+      );
+      listeners.forEach(listener => listener());
+      return current.length;
     });
   },
 
@@ -261,7 +302,8 @@ export const offlineTransactionQueue = {
       );
       const draft = drafts.find(
         item =>
-          item.id === id && (!item.server || item.server === getApiStorageBaseUrl()),
+          item.id === id &&
+          (!item.server || item.server === getApiStorageBaseUrl()),
       );
       if (!draft) return null;
       if (draft.server && draft.server !== getApiStorageBaseUrl()) return null;
@@ -297,7 +339,8 @@ export const offlineTransactionQueue = {
       );
       const draft = drafts.find(
         item =>
-          item.id === id && (!item.server || item.server === getApiStorageBaseUrl()),
+          item.id === id &&
+          (!item.server || item.server === getApiStorageBaseUrl()),
       );
       if (!draft) return null;
       if (draft.server && draft.server !== getApiStorageBaseUrl()) return null;
@@ -310,12 +353,22 @@ export const offlineTransactionQueue = {
     });
   },
 
-  sync(token: string, userId: number, isCurrent: () => boolean = () => true) {
+  sync(
+    token: string,
+    userId: number,
+    isCurrent: () => boolean = () => true,
+    expected?: Array<{ id: string; updatedAt: string }>,
+  ) {
     const sessionIsCurrent = captureApiSession();
     let activeSync = activeSyncByUser.get(userId);
     if (!activeSync) {
       activeSync = withUserLock(userId, () =>
-        runSync(token, userId, () => sessionIsCurrent() && isCurrent()),
+        runSync(
+          token,
+          userId,
+          () => sessionIsCurrent() && isCurrent(),
+          expected,
+        ),
       ).finally(() => {
         activeSyncByUser.delete(userId);
       });

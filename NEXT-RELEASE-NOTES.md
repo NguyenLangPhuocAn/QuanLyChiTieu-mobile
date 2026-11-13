@@ -2,6 +2,9 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Giao dịch Thu/Chi có thể sửa và xóa từ Lịch sử khi mất kết nối; app giữ thay đổi trên máy và chưa đổi số dư server cho tới lúc xác nhận đồng bộ.
+- Khi có mạng lại, app hiển thị từng giao dịch trên máy cạnh bản máy chủ. Người dùng chọn ghi bản máy, giữ bản máy chủ hoặc để sau; bỏ bản máy cần xác nhận lần hai. Máy chủ chặn ghi đè nếu giao dịch đã thay đổi trong lúc offline; có bước so sánh và xử lý xung đột tại Dữ liệu và xuất nhập.
+- Kiểm tra trên Android QA local: sửa, xóa, giữ bản máy chủ và xung đột đều đạt; [biên bản và ảnh](qa/evidence/2026-11-13-offline-transactions/README.md). Tạo giao dịch mới trực tiếp trên emulator chưa hoàn tất vì Uiautomator timeout; unit test xác nhận hàng chờ/chống trùng. Chưa phát hành APK hoặc thay backend production.
 - Chạm danh mục trên widget màn hình chính mở bộ chọn cùng kiểu với form trong app: danh sách có icon và ô tìm theo tên. Tìm kiếm chấp nhận cả cách gõ không dấu.
 - Danh mục Chi và Thu được chọn, ghi nhớ riêng trên widget. Chọn xong quay về launcher và hiện tên ngay; vẫn có lựa chọn Chưa phân loại. Việc chọn danh mục không ghi giao dịch.
 - Bộ chọn dùng danh mục đã lưu trên máy khi backend tạm ngắt. Trên giả lập QA đã thử lọc `Di`, chọn `Di chuyển`/`Lương`, rồi tắt riêng backend QA và chọn `Thưởng`; widget cập nhật đúng, không mất danh mục Chi. [Ảnh và bước thử](qa/evidence/2026-11-12-widget-category/README.md).
