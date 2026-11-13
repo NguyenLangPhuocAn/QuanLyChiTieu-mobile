@@ -129,7 +129,7 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết ngân sách</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.headerSpacer} />
       </View>
 
       {isLoading && !budget ? (
@@ -341,11 +341,10 @@ const styles = StyleSheet.create({
   headerButton: {
     width: 42,
     height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFF0E2',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSpacer: { width: 42, height: 42 },
   headerTitle: { color: '#4A2B1A', fontSize: 19, fontWeight: '900' },
   content: { padding: 16, paddingBottom: 44, gap: 14 },
   loadingBlock: {

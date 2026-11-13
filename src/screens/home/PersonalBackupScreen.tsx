@@ -234,7 +234,7 @@ const PersonalBackupScreen = () => {
           <ArrowLeft size={21} color="#5B351E" />
         </TouchableOpacity>
         <Text style={styles.title}>Backup cá nhân</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.headerSpacer} />
       </View>
       <ScrollView
         contentContainerStyle={styles.content}
@@ -419,11 +419,10 @@ const styles = StyleSheet.create({
   headerButton: {
     width: 42,
     height: 42,
-    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF0DF',
   },
+  headerSpacer: { width: 42, height: 42 },
   title: { color: '#4A2B1A', fontSize: 19, fontWeight: '900' },
   content: { padding: 16, paddingBottom: 44, gap: 14 },
   hero: {

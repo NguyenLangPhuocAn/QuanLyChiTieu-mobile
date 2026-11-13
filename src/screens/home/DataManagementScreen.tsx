@@ -18,7 +18,6 @@ import type {
 import {
   ArrowLeft,
   CloudOff,
-  Database,
   Download,
   FileSpreadsheet,
   Pencil,
@@ -53,9 +52,6 @@ import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 import { homeWidget } from '../../native/homeWidget';
-import { getApiStorageBaseUrl } from '../../services/api';
-import PlanningSyncControls from '../../components/PlanningSyncControls';
-import BillBookBackup from '../../components/BillBookBackup';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -504,7 +500,7 @@ const DataManagementScreen = () => {
         </TouchableOpacity>
 
         <Text style={styles.title}>Dữ liệu và xuất nhập</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -624,70 +620,6 @@ const DataManagementScreen = () => {
             </TouchableOpacity>
           </View>
         ) : null}
-        {homeWidget.supported ? (
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Thêm widget Nova"
-            style={styles.localCard}
-            onPress={() => {
-              const add = async () => {
-                try {
-                  if (!(await homeWidget.requestPin('full')))
-                    Alert.alert(
-                      'Thêm widget',
-                      'Nhấn giữ màn hình chính → Widget → Nova → Thu chi nhanh.',
-                    );
-                } catch {
-                  Alert.alert(
-                    'Chưa thêm được widget',
-                    'Thử thêm Nova từ danh sách widget trên màn hình chính.',
-                  );
-                }
-              };
-              add();
-            }}
-          >
-            <View style={styles.localCopy}>
-              <Text style={styles.cardTitle}>Widget màn hình chính</Text>
-              <Text style={styles.cardText}>
-                Bảng thu, chi hôm nay, danh mục, thêm giao dịch, nói và chụp hóa
-                đơn ngay trên màn hình chính.
-              </Text>
-              <Text style={styles.cacheMeta}>Thêm widget Nova</Text>
-            </View>
-          </TouchableOpacity>
-        ) : null}
-        <View style={styles.localCard}>
-          <View style={styles.localIcon}>
-            <Database size={23} color={Colors.primary} />
-          </View>
-          <View style={styles.localCopy}>
-            <Text style={styles.cardTitle}>Bản dữ liệu trên máy</Text>
-            <Text style={styles.cardText}>
-              Ứng dụng lưu bản sao gần nhất để vẫn xem được dữ liệu khi mất kết
-              nối.
-            </Text>
-            <Text style={styles.cacheMeta}>
-              {cache
-                ? `${cache.transactions.length} giao dịch · cập nhật ${new Date(
-                    cache.updatedAt,
-                  ).toLocaleString('vi-VN')}`
-                : 'Chưa có bản dữ liệu trên máy'}
-            </Text>
-          </View>
-        </View>
-
-        {user?.id ? (
-          <>
-            <PlanningSyncControls
-              scope={{ userId: user.id, server: getApiStorageBaseUrl() }}
-            />
-            <BillBookBackup
-              scope={{ userId: user.id, server: getApiStorageBaseUrl() }}
-            />
-          </>
-        ) : null}
-
         <View style={styles.draftCard}>
           <View style={styles.draftHeader}>
             <View style={styles.actionIcon}>
@@ -1068,29 +1000,12 @@ const styles = StyleSheet.create({
   headerButton: {
     width: 42,
     height: 42,
-    borderRadius: 15,
-    backgroundColor: '#FFF0DF',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSpacer: { width: 42, height: 42 },
   title: { color: '#4A2B1A', fontSize: 19, fontWeight: '900' },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
-  localCard: {
-    flexDirection: 'row',
-    gap: 12,
-    borderRadius: 22,
-    backgroundColor: '#FFEBD8',
-    padding: 15,
-  },
-  localIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  localCopy: { flex: 1 },
   cardTitle: { color: '#4A2B1A', fontWeight: '900' },
   cardText: {
     color: '#7A5438',
@@ -1098,12 +1013,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '700',
     marginTop: 4,
-  },
-  cacheMeta: {
-    color: '#B65D1A',
-    fontSize: 11,
-    fontWeight: '900',
-    marginTop: 8,
   },
   actionCard: {
     minHeight: 92,

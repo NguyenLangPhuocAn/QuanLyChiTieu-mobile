@@ -387,7 +387,7 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Trung tâm tài chính</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -1005,11 +1005,10 @@ const styles = StyleSheet.create({
   headerButton: {
     width: 42,
     height: 42,
-    borderRadius: 15,
-    backgroundColor: '#FFF0DF',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerSpacer: { width: 42, height: 42 },
   title: { color: '#4A2B1A', fontSize: 19, fontWeight: '900' },
   content: { padding: 16, gap: 12, paddingBottom: 44 },
   loadingCard: {

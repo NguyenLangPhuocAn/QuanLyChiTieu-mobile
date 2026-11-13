@@ -448,7 +448,7 @@ const AccountScreen = ({
           },
           {
             title: 'Dữ liệu và xuất nhập',
-            subtitle: 'Bản sao trên máy, xuất và nhập Excel',
+            subtitle: 'Giao dịch chờ, xuất và nhập Excel',
             Icon: Download,
             action: () => navigation.navigate('DataManagement', { wallets }),
           },
