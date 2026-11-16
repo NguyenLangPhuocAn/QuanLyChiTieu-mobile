@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
+import { dashboardCache } from '../../services/dashboardCache';
 import { resolveCategoryIconUrl } from '../../utils/categoryIcons';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { filterNormalCashFlowCategories } from '../../utils/transactionClassification';
@@ -56,7 +57,9 @@ const scopeFilterLabels: Record<CategoryScopeFilter, string> = {
 };
 
 const CategoriesScreen = ({ navigation, route }: Props) => {
-  const { token, user } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
+  const activeUserId = useRef(user?.id);
+  activeUserId.current = user?.id;
   const {
     categories,
     selectedBudgetCategory,
@@ -78,6 +81,10 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   const [scopeFilter, setScopeFilter] = useState<CategoryScopeFilter>('ALL');
   const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const readOnly = isOfflineSession || Boolean(cachedAt);
+  const showOfflineWriteNotice = () =>
+    Alert.alert('Cần kết nối', 'Thêm, sửa và xóa danh mục cần có mạng. Danh mục trên máy vẫn có thể chọn cho giao dịch.');
   const [isSaving, setIsSaving] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
@@ -91,21 +98,37 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   const canUseScopeFilter = canCreateCategory;
 
   const fetchCategories = useCallback(async () => {
-    if (!token) {
+    if (!token || !user?.id) {
       return;
     }
-
+    const userId = user.id;
+    const current = () => activeUserId.current === userId;
     setIsLoading(true);
-
+    const cached = await dashboardCache.read(userId).catch(() => null);
+    if (!current()) return;
+    if (cached) {
+      setCategories(cached.categories);
+      setCachedAt(cached.updatedAt);
+    } else {
+      setCategories([]);
+      setCachedAt(null);
+    }
+    if (isOfflineSession) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const response = await categoriesService.getAll(token);
+      if (!current()) return;
       setCategories(response);
+      setCachedAt(null);
     } catch (error) {
-      Alert.alert('Lỗi tải danh mục', getUserFriendlyErrorMessage(error, 'Không thể tải danh mục.'));
+      if (current() && !cached)
+        Alert.alert('Lỗi tải danh mục', getUserFriendlyErrorMessage(error, 'Không thể tải danh mục.'));
     } finally {
-      setIsLoading(false);
+      if (current()) setIsLoading(false);
     }
-  }, [setCategories, token]);
+  }, [setCategories, token, user?.id, isOfflineSession]);
 
   useEffect(() => {
     fetchCategories();
@@ -144,6 +167,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const openCreateModal = () => {
+    if (readOnly) return showOfflineWriteNotice();
     if (!canCreateCategory) {
       Alert.alert('Cần Premium', 'Tài khoản hiện tại chưa thể thêm danh mục cá nhân.');
       return;
@@ -158,6 +182,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const openEditModal = (category: Category) => {
+    if (readOnly) return showOfflineWriteNotice();
     if (category.is_system) {
       return;
     }
@@ -223,6 +248,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const saveCategory = async () => {
+    if (readOnly) return showOfflineWriteNotice();
     if (!token) {
       return;
     }
@@ -267,6 +293,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const deleteCategory = async () => {
+    if (readOnly) return showOfflineWriteNotice();
     if (!token || !selectedCategory || selectedCategory.is_system) {
       return;
     }
@@ -336,13 +363,25 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
+        {cachedAt ? (
+          <Text style={styles.cacheNotice}>
+            Dữ liệu danh mục trên máy · chỉ xem · cập nhật{' '}
+            {Number.isFinite(Date.parse(cachedAt))
+              ? new Date(cachedAt).toLocaleString('vi-VN')
+              : 'trước đó'}
+          </Text>
+        ) : null}
         {isLoading ? (
           <View style={styles.loadingBlock}>
             <ActivityIndicator color={Colors.primary} />
           </View>
         ) : visibleCategories.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Không tìm thấy danh mục</Text>
+            <Text style={styles.emptyTitle}>
+              {isOfflineSession && !cachedAt
+                ? 'Chưa có danh mục trên máy'
+                : 'Không tìm thấy danh mục'}
+            </Text>
           </View>
         ) : (
           visibleCategories.map(category => {
@@ -496,6 +535,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { color: '#805C43', marginBottom: 12 },
   container: {
     flex: 1,
     backgroundColor: '#FFF3E8',

@@ -2,6 +2,9 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Giao dịch Thu/Chi đính kèm ảnh hóa đơn không còn bị đưa vào hàng chờ offline rồi mất ảnh âm thầm. Khi không có mạng, app giữ form/ảnh và giải thích cần bỏ ảnh để lưu giao dịch trên máy, hoặc chờ kết nối để lưu cả ảnh. Khi kết nối rớt giữa lúc tải ảnh, app cũng giữ form/ảnh để thử lại.
+- Màn Ví và Danh mục đọc bản đã tải theo tài khoản khi không tới API, ghi rõ thời điểm cập nhật và chỉ xem. Thêm/sửa/xóa ví, chuyển tiền và thêm/sửa/xóa danh mục bị chặn rõ khi offline; chưa có hàng chờ cho hai nhóm này.
+- Android QA local: force-stop/mở lại khi ngắt API vẫn có giao dịch Chi 7.123 đ trong hàng chờ; khi nối lại app hiện bản máy/server và chỉ ghi một giao dịch sau khi chọn bản máy. Đã thử chặn ảnh hóa đơn và màn Ví offline. [Ảnh, bước thử và giới hạn](qa/evidence/2026-11-16-offline-audit/README.md); [ma trận offline](qa/OFFLINE-CAPABILITY-AUDIT-2026-11-16.md). 45/45 ca tập trung, TypeScript và ESLint đạt. Chưa phát hành APK hoặc thay backend production.
 - Gọn trang Tài khoản → Dữ liệu: bỏ bốn khối Widget, Bản dữ liệu trên máy, Đồng bộ lịch giữa thiết bị và Sao lưu/khôi phục lịch; các thao tác giao dịch chờ, Backup cá nhân, nhập/xuất Excel vẫn ở trang này. Bỏ nền màu quanh nút quay lại và ô màu trống đối diện trên các header liên quan. Đã chụp [ảnh Android QA local](qa/evidence/2026-11-14-account-cleanup/README.md); chưa phát hành APK.
 - Giao dịch Thu/Chi có thể sửa và xóa từ Lịch sử khi mất kết nối; app giữ thay đổi trên máy và chưa đổi số dư server cho tới lúc xác nhận đồng bộ.
 - Khi có mạng lại, app hiển thị từng giao dịch trên máy cạnh bản máy chủ. Người dùng chọn ghi bản máy, giữ bản máy chủ hoặc để sau; bỏ bản máy cần xác nhận lần hai. Máy chủ chặn ghi đè nếu giao dịch đã thay đổi trong lúc offline; có bước so sánh và xử lý xung đột tại Dữ liệu và xuất nhập.

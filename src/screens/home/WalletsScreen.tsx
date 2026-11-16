@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { walletsService } from '../../services/wallets';
 import { budgetsService } from '../../services/budgets';
+import { dashboardCache } from '../../services/dashboardCache';
 import type { Wallet } from '../../types/wallet';
 import type { Budget } from '../../types/budget';
 import { useFinance } from '../../context/FinanceContext';
@@ -75,11 +76,17 @@ const findActiveBudget = (budgets: Budget[], walletId: number) => {
 };
 
 const WalletsScreen = ({ navigation, route }: Props) => {
-  const { token, user } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
+  const activeUserId = useRef(user?.id);
+  activeUserId.current = user?.id;
   const { preferredCurrency, transactions } = useFinance();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const readOnly = isOfflineSession || Boolean(cachedAt);
+  const showOfflineWriteNotice = () =>
+    Alert.alert('Cần kết nối', 'Thêm, sửa, xóa ví và chuyển tiền cần có mạng. Dữ liệu ví trên máy chỉ để xem.');
   const [isSavingWallet, setIsSavingWallet] = useState(false);
   const { run: runWalletMutation } = useSingleFlight();
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
@@ -101,27 +108,46 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   );
 
   const fetchWallets = useCallback(async () => {
-    if (!token) {
+    if (!token || !user?.id) {
       return;
     }
-
+    const userId = user.id;
+    const current = () => activeUserId.current === userId;
     setIsLoading(true);
-
+    const cached = await dashboardCache.read(userId).catch(() => null);
+    if (!current()) return;
+    if (cached) {
+      setWallets(cached.wallets);
+      setBudgets(cached.budgets);
+      setCachedAt(cached.updatedAt);
+    } else {
+      setWallets([]);
+      setBudgets([]);
+      setCachedAt(null);
+    }
+    if (isOfflineSession) {
+      setIsLoading(false);
+      return;
+    }
     try {
       const response = await walletsService.getAll(token);
       const nextBudgets = await budgetsService.getAll(token);
+      if (!current()) return;
       setWallets(response);
       setBudgets(nextBudgets);
+      setCachedAt(null);
     } catch (error) {
-      const message = getUserFriendlyErrorMessage(
-        error,
-        'Không thể tải danh sách ví.',
-      );
-      Alert.alert('Lỗi tải ví', message);
+      if (current() && !cached) {
+        const message = getUserFriendlyErrorMessage(
+          error,
+          'Không thể tải danh sách ví.',
+        );
+        Alert.alert('Lỗi tải ví', message);
+      }
     } finally {
-      setIsLoading(false);
+      if (current()) setIsLoading(false);
     }
-  }, [token]);
+  }, [token, user?.id, isOfflineSession]);
 
   useFocusEffect(
     useCallback(() => {
@@ -149,6 +175,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   );
 
   const openCreateWalletModal = () => {
+    if (readOnly) return showOfflineWriteNotice();
     setEditingWallet(null);
     setWalletName('');
     setWalletBalance('');
@@ -158,6 +185,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   };
 
   const openEditWalletModal = (wallet: Wallet) => {
+    if (readOnly) return showOfflineWriteNotice();
     setEditingWallet(wallet);
     setWalletName(wallet.name);
     setWalletBalance(String(wallet.balance ?? 0));
@@ -168,6 +196,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
 
   const handleSaveWallet = () =>
     runWalletMutation(async () => {
+      if (readOnly) return showOfflineWriteNotice();
       if (!token) {
         return;
       }
@@ -218,6 +247,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     });
 
   const handleDeleteWallet = () => {
+    if (readOnly) return showOfflineWriteNotice();
     if (!token || !editingWallet) {
       return;
     }
@@ -284,6 +314,14 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {cachedAt ? (
+          <Text style={styles.cacheNotice}>
+            Dữ liệu ví trên máy · chỉ xem · cập nhật{' '}
+            {Number.isFinite(Date.parse(cachedAt))
+              ? new Date(cachedAt).toLocaleString('vi-VN')
+              : 'trước đó'}
+          </Text>
+        ) : null}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Tổng số dư ví</Text>
           <Text style={styles.summaryBalance}>
@@ -304,7 +342,11 @@ const WalletsScreen = ({ navigation, route }: Props) => {
 
         <TouchableOpacity
           style={styles.transferShortcut}
-          onPress={() => navigation.navigate('WalletTransfers')}
+          onPress={() =>
+            readOnly
+              ? showOfflineWriteNotice()
+              : navigation.navigate('WalletTransfers')
+          }
         >
           <View style={styles.transferShortcutIcon}>
             <ArrowRightLeft size={22} color={Colors.white} />
@@ -326,16 +368,20 @@ const WalletsScreen = ({ navigation, route }: Props) => {
           </View>
         ) : regularWallets.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Bạn chưa có ví nào</Text>
-            <Text style={styles.emptyText}>
-              Tạo ví đầu tiên để bắt đầu theo dõi số dư, ngân sách và giao dịch.
+            <Text style={styles.emptyTitle}>
+              {isOfflineSession ? 'Chưa có dữ liệu ví trên máy' : 'Bạn chưa có ví nào'}
             </Text>
-            <TouchableOpacity
+            <Text style={styles.emptyText}>
+              {isOfflineSession
+                ? 'Kết nối mạng và mở danh sách ví một lần để tải dữ liệu.'
+                : 'Tạo ví đầu tiên để bắt đầu theo dõi số dư, ngân sách và giao dịch.'}
+            </Text>
+            {!isOfflineSession ? <TouchableOpacity
               style={styles.primaryButton}
               onPress={openCreateWalletModal}
             >
               <Text style={styles.primaryButtonText}>Tạo ví đầu tiên</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
           </View>
         ) : (
           regularWallets.map(wallet => {
@@ -609,6 +655,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { color: '#805C43', marginBottom: 12 },
   container: {
     flex: 1,
     backgroundColor: '#FFF7EF',

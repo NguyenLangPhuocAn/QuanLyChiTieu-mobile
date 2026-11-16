@@ -40,6 +40,7 @@ jest.mock('../src/services/bankNotificationExtraction', () => ({
 }));
 
 let mockUser: { id: number; currency_default: string } | null = null;
+let mockOfflineSession = false;
 const mockSetParams = jest.fn();
 const mockGoBack = jest.fn();
 let mockShake: () => void;
@@ -69,7 +70,11 @@ jest.mock('@react-navigation/native', () => ({
   useIsFocused: () => true,
 }));
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-token', user: mockUser }),
+  useAuth: () => ({
+    token: 'test-token',
+    user: mockUser,
+    isOfflineSession: mockOfflineSession,
+  }),
 }));
 jest.mock('../src/context/FinanceContext', () => {
   const stable = {
@@ -242,6 +247,7 @@ const button = (label: string) =>
 beforeEach(async () => {
   mockSpeechEvents = {};
   mockUser = null;
+  mockOfflineSession = false;
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -541,6 +547,89 @@ it('attaches a receipt image without running AI', async () => {
   expect(button('Đổi ảnh')).toBeTruthy();
   expect(button('Đọc bằng AI')).toBeTruthy();
   expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
+});
+
+it('keeps the form and image when an offline session cannot retain a receipt', async () => {
+  const enqueue = jest.spyOn(offlineTransactionQueue, 'enqueue');
+  mockUser = { id: 7, currency_default: 'VND' };
+  mockOfflineSession = true;
+  await act(async () => tree.update(<MainScreen />));
+  (launchImageLibrary as jest.Mock).mockResolvedValue({
+    assets: [
+      {
+        uri: 'file:///receipt-only.jpg',
+        type: 'image/jpeg',
+        fileName: 'receipt-only.jpg',
+      },
+    ],
+  });
+  await act(async () =>
+    chat().onCreateTransaction!({
+      ...draft,
+      wallet_name: 'Tiền mặt',
+      category_name: 'Ăn uống',
+    } as any),
+  );
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Ảnh hóa đơn không bắt buộc' })
+      .props.onPress(),
+  );
+  await act(async () => button('Thêm ảnh hóa đơn').props.onPress());
+  const choices = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Thêm ảnh hóa đơn',
+  )[2];
+  await act(async () =>
+    choices.find((item: any) => item.text === 'Thư viện ảnh').onPress(),
+  );
+  await act(async () => button('Lưu giao dịch').props.onPress());
+
+  expect(Alert.alert).toHaveBeenCalledWith(
+    'Ảnh hóa đơn chưa lưu được offline',
+    expect.stringContaining('Hãy bỏ ảnh'),
+  );
+  expect(button('Đổi ảnh')).toBeTruthy();
+  expect(enqueue).not.toHaveBeenCalled();
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('does not silently discard a receipt when the network fails during save', async () => {
+  const enqueue = jest.spyOn(offlineTransactionQueue, 'enqueue');
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  (launchImageLibrary as jest.Mock).mockResolvedValue({
+    assets: [{ uri: 'file:///receipt-only.jpg', type: 'image/jpeg' }],
+  });
+  jest
+    .mocked(transactionsService.create)
+    .mockRejectedValueOnce(new ApiError('Network request failed', 0));
+  await act(async () =>
+    chat().onCreateTransaction!({
+      ...draft,
+      wallet_name: 'Tiền mặt',
+      category_name: 'Ăn uống',
+    } as any),
+  );
+  await act(async () =>
+    tree.root
+      .findByProps({ accessibilityLabel: 'Ảnh hóa đơn không bắt buộc' })
+      .props.onPress(),
+  );
+  await act(async () => button('Thêm ảnh hóa đơn').props.onPress());
+  const choices = (Alert.alert as jest.Mock).mock.calls.find(
+    call => call[0] === 'Thêm ảnh hóa đơn',
+  )[2];
+  await act(async () =>
+    choices.find((item: any) => item.text === 'Thư viện ảnh').onPress(),
+  );
+  await act(async () => button('Lưu giao dịch').props.onPress());
+
+  expect(Alert.alert).toHaveBeenCalledWith(
+    'Chưa lưu giao dịch',
+    expect.stringContaining('Form và ảnh vẫn còn'),
+  );
+  expect(button('Bỏ ảnh')).toBeTruthy();
+  expect(enqueue).not.toHaveBeenCalled();
 });
 
 it('cancelling the image picker does not create a transaction', async () => {

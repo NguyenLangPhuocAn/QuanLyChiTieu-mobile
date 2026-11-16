@@ -1755,6 +1755,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 repeatDraft?.requestId ?? createClientRequestId(),
             }),
       };
+      if (isOfflineSession && receiptFile) {
+        Alert.alert(
+          'Ảnh hóa đơn chưa lưu được offline',
+          'Ảnh chưa thể giữ an toàn trên máy để tải lên sau. Hãy bỏ ảnh rồi lưu giao dịch trên máy, hoặc giữ form và lưu cả ảnh khi có mạng.',
+        );
+        return;
+      }
       if (repeatDraft) {
         const fingerprint = JSON.stringify({
           payload: createPayload,
@@ -1810,6 +1817,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         );
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
+          if (receiptFile) {
+            Alert.alert(
+              'Chưa lưu giao dịch',
+              'Mất kết nối khi đang lưu ảnh hóa đơn. Form và ảnh vẫn còn ở đây. Hãy thử lại khi có mạng, hoặc bỏ ảnh rồi lưu giao dịch trên máy.',
+            );
+            return;
+          }
           try {
             await offlineTransactionQueue.enqueue(user.id, createPayload);
           } catch (storageError) {
@@ -1834,9 +1848,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           resetTransactionForm();
           Alert.alert(
             'Đã giữ bản nháp ngoại tuyến',
-            receiptFile
-              ? 'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Ảnh hóa đơn chưa được tải lên; hãy thêm lại ảnh sau khi giao dịch xuất hiện trong lịch sử.'
-              : 'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Bản nháp chưa làm thay đổi số dư.',
+            'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Bản nháp chưa làm thay đổi số dư.',
           );
           return;
         }

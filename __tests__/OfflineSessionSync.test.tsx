@@ -11,9 +11,10 @@ import { financeRefresh } from '../src/services/financeRefresh';
 import { offlineTransactionChanges as changes } from '../src/services/offlineTransactionChanges';
 
 const mockRetry = jest.fn();
+let mockUserId = 9;
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 9 },
+    user: { id: mockUserId },
     token: 'qa',
     isRestoringSession: false,
     retryRestoreSession: mockRetry,
@@ -80,6 +81,7 @@ const pressReview = (label: string) => {
 };
 
 beforeEach(() => {
+  mockUserId = 9;
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   Object.defineProperty(AppState, 'currentState', {
@@ -217,4 +219,29 @@ it('does not prompt while offline', async () => {
   });
   expect(Alert.alert).not.toHaveBeenCalled();
   expect(mockRetry).not.toHaveBeenCalled();
+});
+
+it('ignores an old account review after switching accounts', async () => {
+  jest.mocked(queue.list).mockImplementation(async userId =>
+    userId === 9 ? [draft] : [],
+  );
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  const target = renderer!.root
+    .findAllByType(Text)
+    .find(node => node.props.children === 'Dùng thay đổi trên máy');
+  expect(target).toBeDefined();
+  let parent = target!.parent;
+  while (parent && typeof parent.props.onPress !== 'function')
+    parent = parent.parent;
+  const staleChoice = parent!.props.onPress;
+
+  mockUserId = 10;
+  await act(async () => renderer!.update(<OfflineSessionSync />));
+  await act(async () => staleChoice());
+
+  expect(queue.list).toHaveBeenCalledWith(10);
+  expect(queue.sync).not.toHaveBeenCalled();
+  expect(queue.discardLocal).not.toHaveBeenCalled();
 });
