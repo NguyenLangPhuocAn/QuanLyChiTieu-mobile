@@ -18,5 +18,6 @@
 
 - `MainScreenDrafts`, `OfflineSessionSync`, `CategoriesScreen`: 45/45 ca qua; TypeScript `--noEmit` và ESLint các file sửa đạt.
 - Ca đổi tài khoản tự động xác nhận bản nháp của tài khoản cũ không được đồng bộ từ hộp so sánh cũ. Bài thử đổi tài khoản trực tiếp trên điện thoại chưa thực hiện.
+- Ca tự động bấm lưu hai lần trên cùng form ảnh khi request liên tiếp mất mạng xác nhận hai lần dùng cùng `client_request_id`; backend hiện kiểm tra mã này và từ chối cùng mã nếu nội dung khác. Chưa mô phỏng mất phản hồi **sau khi** server đã ghi ảnh/giao dịch trên Android.
 - Ảnh hóa đơn hiện **không** được lưu bền vững trong hàng chờ. Vì vậy UI ngăn lưu offline; người dùng bỏ ảnh để giữ giao dịch hoặc chờ có mạng. Không coi OCR/AI là offline.
 - Chưa thử sửa/xóa và widget lại trong đúng phiên QA này; bằng chứng Android trước đó ở `../2026-11-13-offline-transactions/README.md` và `../2026-11-11-offline-matrix/README.md`. Chưa thử xung đột server mới trong phiên này; dùng ca tự động và bằng chứng 13/11.

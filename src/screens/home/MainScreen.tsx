@@ -289,6 +289,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [receiptFile, setReceiptFile] = useState<ReceiptUploadFile | null>(
     null,
   );
+  // Keep the same idempotency key while the current form remains open.
+  const transactionRequestId = useRef(createClientRequestId());
   const [receiptItems, setReceiptItems] = useState<ReceiptItemDraft[]>([]);
   const [isReceiptDetailsExpanded, setIsReceiptDetailsExpanded] =
     useState(false);
@@ -768,6 +770,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const resetTransactionForm = () => {
+    transactionRequestId.current = createClientRequestId();
     repeatReviewEpoch.current++;
     billReviewEpoch.current++;
     setBillPayment(null);
@@ -1752,7 +1755,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             }
           : {
               client_request_id:
-                repeatDraft?.requestId ?? createClientRequestId(),
+                repeatDraft?.requestId ?? transactionRequestId.current,
             }),
       };
       if (isOfflineSession && receiptFile) {

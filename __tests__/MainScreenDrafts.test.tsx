@@ -602,6 +602,7 @@ it('does not silently discard a receipt when the network fails during save', asy
   });
   jest
     .mocked(transactionsService.create)
+    .mockRejectedValueOnce(new ApiError('Network request failed', 0))
     .mockRejectedValueOnce(new ApiError('Network request failed', 0));
   await act(async () =>
     chat().onCreateTransaction!({
@@ -630,6 +631,13 @@ it('does not silently discard a receipt when the network fails during save', asy
   );
   expect(button('Bỏ ảnh')).toBeTruthy();
   expect(enqueue).not.toHaveBeenCalled();
+  await act(async () => button('Lưu giao dịch').props.onPress());
+  const attempts = jest.mocked(transactionsService.create).mock.calls;
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0][1].client_request_id).toBeTruthy();
+  expect(attempts[1][1].client_request_id).toBe(
+    attempts[0][1].client_request_id,
+  );
 });
 
 it('cancelling the image picker does not create a transaction', async () => {
