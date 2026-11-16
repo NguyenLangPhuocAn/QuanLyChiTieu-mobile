@@ -2,6 +2,9 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Tìm giao dịch khi mất kết nối dùng những giao dịch đã tải trên máy: lọc ngày, ví, danh mục, Thu/Chi, số tiền, hashtag và ghi chú kể cả khi gõ không dấu. Các sửa/xóa đang chờ cũng được phản ánh. Màn ghi rõ số giao dịch cache, thời điểm cập nhật và rằng kết quả có thể thiếu giao dịch trên server.
+- Thống kê từ dữ liệu máy ghi nguồn, thời điểm và cảnh báo dữ liệu cũ/thiếu. Phiên offline không có cache không đưa ra số 0 như thống kê; xuất/gửi báo cáo vẫn cần mạng. Lịch tiền và “chi an toàn” hiển thị thời điểm cache và cảnh báo sau 24 giờ; không tính mức chi ở Trung tâm tài chính khi thiếu ví phù hợp.
+- Emulator QA đã tắt Wi-Fi/dữ liệu di động và tìm được đúng 1 giao dịch QA theo ghi chú từ 3 giao dịch đã tải. [Ảnh và giới hạn](qa/evidence/2026-11-16-offline-wave2/README.md). 17/17 ca tập trung và 86/86 ca quy tắc/lịch/nhắc đạt; TypeScript và ESLint đạt. Bản debug cần Metro nên cold start khi radio tắt chưa kiểm chứng được bằng bản standalone. Chưa build/ký/phát hành APK hoặc thay server production.
 - Giao dịch Thu/Chi đính kèm ảnh hóa đơn không còn bị đưa vào hàng chờ offline rồi mất ảnh âm thầm. Khi không có mạng, app giữ form/ảnh và giải thích cần bỏ ảnh để lưu giao dịch trên máy, hoặc chờ kết nối để lưu cả ảnh. Khi kết nối rớt giữa lúc tải ảnh, app cũng giữ form/ảnh để thử lại.
 - Khi bấm lưu lại cùng một form sau lỗi mạng, app dùng lại mã yêu cầu chống trùng. Máy chủ trả giao dịch cũ nếu lần đầu đã ghi thành công; nếu nội dung form đổi, máy chủ báo xung đột thay vì ghi thêm giao dịch khác.
 - Màn Ví và Danh mục đọc bản đã tải theo tài khoản khi không tới API, ghi rõ thời điểm cập nhật và chỉ xem. Thêm/sửa/xóa ví, chuyển tiền và thêm/sửa/xóa danh mục bị chặn rõ khi offline; chưa có hàng chờ cho hai nhóm này.

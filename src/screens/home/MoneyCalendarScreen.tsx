@@ -262,6 +262,22 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
           <>
             <View style={s.hero}>
               <Text style={s.label}>Chi an toàn mỗi ngày</Text>
+              <Text style={s.muted}>
+                Dữ liệu ví trên máy cập nhật{' '}
+                {data?.cache.updatedAt &&
+                Number.isFinite(Date.parse(data.cache.updatedAt))
+                  ? new Date(data.cache.updatedAt).toLocaleString('vi-VN')
+                  : 'không rõ thời điểm'}
+                . Kết quả có thể thiếu giao dịch chưa tải hoặc chưa đồng bộ.
+              </Text>
+              {(!data?.cache.updatedAt ||
+                !Number.isFinite(Date.parse(data.cache.updatedAt)) ||
+                Date.now() - Date.parse(data.cache.updatedAt) > 24 * 60 * 60 * 1000) && (
+                <Text accessibilityRole="alert" style={s.warning}>
+                  Dữ liệu ví đã cũ hoặc chưa rõ thời điểm. Hãy kết nối và làm mới
+                  trước khi quyết định chi.
+                </Text>
+              )}
               <Text style={s.amount}>
                 {model.hasWallets
                   ? money(model.safeDaily)

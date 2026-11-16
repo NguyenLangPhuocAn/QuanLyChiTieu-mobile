@@ -30,6 +30,9 @@ import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { categoriesService } from '../../services/categories';
+import { ApiError } from '../../services/api';
+import { dashboardCache } from '../../services/dashboardCache';
+import { offlineTransactionChanges } from '../../services/offlineTransactionChanges';
 import {
   transactionsService,
   type TransactionQuery,
@@ -46,6 +49,7 @@ import {
   formatShortDate,
 } from '../../utils/format';
 import { mapApiTransactions } from '../../utils/mapTransactions';
+import { searchCachedTransactions } from '../../utils/offlineTransactionSearch';
 import {
   filterNormalCashFlowCategories,
   isLoanDebtCategory,
@@ -95,7 +99,7 @@ const isNormalCashFlowTransaction = (transaction: TransactionItem) =>
   transaction.cashFlowType !== 'loan_debt';
 
 const TransactionSearchScreen = ({ navigation, route }: Props) => {
-  const { token } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
   const { categories, preferredCurrency, setCategories } = useFinance();
   const wallets = useMemo(
     () => route.params.wallets ?? [],
@@ -157,6 +161,10 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [cachedView, setCachedView] = useState<{
+    updatedAt: string;
+    loadedCount: number;
+  } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const selectedCategory = useMemo(
     () => categories.find(category => category.id === categoryId) ?? null,
@@ -186,7 +194,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
   const selectedWeek = resolveSearchWeek(weekOptions, selectedWeekStart, today);
 
   useEffect(() => {
-    if (!token) {
+    if (!token || isOfflineSession) {
       return;
     }
 
@@ -194,7 +202,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
       .getAll(token)
       .then(setCategories)
       .catch(() => undefined);
-  }, [setCategories, token]);
+  }, [setCategories, token, isOfflineSession]);
 
   const selectMonth = useCallback(
     (month: number) => {
@@ -317,6 +325,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
     if (!token) {
       setIsLoading(false);
       setTransactions([]);
+      setCachedView(null);
       setMeta({ total: 0, totalPages: 1, income: 0, expense: 0, net: 0 });
       setSearchError(null);
       return;
@@ -325,9 +334,52 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
     setIsLoading(true);
     setSearchError(null);
     setTransactions([]);
+    setCachedView(null);
     setMeta({ total: 0, totalPages: 1, income: 0, expense: 0, net: 0 });
     const timer = setTimeout(async () => {
+      const loadCached = async () => {
+        if (!user?.id) return false;
+        const cached = await dashboardCache.read(user.id).catch(() => null);
+        if (!active || !cached) return false;
+        const changes = await offlineTransactionChanges.list(user.id);
+        if (!active) return false;
+        const rows = searchCachedTransactions(
+          offlineTransactionChanges.apply(
+            cached.transactions,
+            changes,
+            cached.categories,
+          ),
+          cached.categories,
+          serverQuery,
+        );
+        const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+        if ((serverQuery.page ?? 1) > totalPages) {
+          setPage(totalPages);
+          return true;
+        }
+        setTransactions(
+          mapApiTransactions(
+            rows.slice(
+              ((serverQuery.page ?? 1) - 1) * PAGE_SIZE,
+              (serverQuery.page ?? 1) * PAGE_SIZE,
+            ),
+            cached.wallets,
+          ),
+        );
+        setMeta({ total: rows.length, totalPages, income: 0, expense: 0, net: 0 });
+        setCachedView({
+          updatedAt: cached.updatedAt,
+          loadedCount: cached.transactions.length,
+        });
+        setCategories(cached.categories);
+        return true;
+      };
       try {
+        if (isOfflineSession) {
+          if (!(await loadCached()))
+            setSearchError('Chưa có giao dịch đã tải trên máy để tìm.');
+          return;
+        }
         const response = await transactionsService.getPage(token, serverQuery);
         if (!active) return;
         if ((serverQuery.page ?? 1) > response.meta.totalPages) {
@@ -335,6 +387,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
           return;
         }
         setTransactions(mapApiTransactions(response.data, wallets));
+        setCachedView(null);
         setMeta({
           total: response.meta.total,
           totalPages: response.meta.totalPages,
@@ -343,6 +396,12 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
           net: response.meta.net ?? 0,
         });
       } catch (error) {
+        if (
+          active &&
+          !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+          (await loadCached().catch(() => false))
+        )
+          return;
         if (active)
           setSearchError(
             getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
@@ -355,7 +414,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
       active = false;
       clearTimeout(timer);
     };
-  }, [serverQuery, token, wallets, retryCount]);
+  }, [serverQuery, token, user?.id, isOfflineSession, wallets, retryCount, setCategories]);
 
   useEffect(() => {
     if (selectedYear === currentYear && selectedMonth > currentMonth) {
@@ -518,6 +577,15 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
             placeholderTextColor="#A26B48"
           />
         </View>
+
+        {cachedView ? (
+          <Text style={styles.cacheNotice}>
+            Đang tìm trong {cachedView.loadedCount} giao dịch đã tải trên máy · cập nhật{' '}
+            {Number.isFinite(Date.parse(cachedView.updatedAt))
+              ? new Date(cachedView.updatedAt).toLocaleString('vi-VN')
+              : 'trước đó'}. Kết quả có thể thiếu giao dịch chưa tải.
+          </Text>
+        ) : null}
 
         <View style={styles.summaryGrid}>
           <View
@@ -1200,6 +1268,7 @@ const TransactionSearchScreen = ({ navigation, route }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { color: '#805C43', marginBottom: 12 },
   retryButton: {
     minHeight: 44,
     paddingHorizontal: 20,

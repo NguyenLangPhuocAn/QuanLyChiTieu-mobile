@@ -3,12 +3,18 @@ import { Alert, Modal, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import StatisticsScreen from '../src/screens/home/StatisticsScreen';
 import { statisticsService } from '../src/services/statistics';
+import { dashboardCache } from '../src/services/dashboardCache';
+let mockOffline = false;
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
     token: 'test',
     user: { id: 1, email: 'owner@example.com', role: 'PREMIUM' },
+    isOfflineSession: mockOffline,
   }),
+}));
+jest.mock('../src/services/dashboardCache', () => ({
+  dashboardCache: { read: jest.fn() },
 }));
 jest.mock('../src/context/FinanceContext', () => {
   const transactions: unknown[] = [];
@@ -47,6 +53,8 @@ const field = (label: string) =>
   renderer.root.findByProps({ accessibilityLabel: label });
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockOffline = false;
+  jest.mocked(dashboardCache.read).mockResolvedValue(null);
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await act(async () => {
     renderer = TestRenderer.create(
@@ -63,6 +71,33 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => renderer.unmount());
   jest.restoreAllMocks();
+});
+it('shows cached statistics provenance offline and suppresses false zero when cache is absent', async () => {
+  await act(async () => renderer.unmount());
+  service.get.mockClear();
+  mockOffline = true;
+  jest.mocked(dashboardCache.read).mockResolvedValueOnce({
+    updatedAt: '2026-11-16T10:00:00.000Z',
+    transactions: [{ id: 1 }],
+  } as never);
+  await act(async () => {
+    renderer = TestRenderer.create(
+      <StatisticsScreen navigation={{ goBack: jest.fn() } as never} route={{ params: {} } as never} />,
+    );
+  });
+  expect(JSON.stringify(renderer.toJSON())).toContain('Thống kê từ 1 giao dịch đã tải trên máy');
+  expect(service.get).not.toHaveBeenCalled();
+  await act(async () => renderer.unmount());
+  jest.mocked(dashboardCache.read).mockResolvedValueOnce(null);
+  await act(async () => {
+    renderer = TestRenderer.create(
+      <StatisticsScreen navigation={{ goBack: jest.fn() } as never} route={{ params: {} } as never} />,
+    );
+  });
+  const view = JSON.stringify(renderer.toJSON());
+  expect(view).toContain('Chưa có giao dịch đã tải trên máy');
+  expect(view).not.toContain('Số dư còn lại tháng này');
+  expect(service.get).not.toHaveBeenCalled();
 });
 it('rejects an invalid email without submitting', async () => {
   await act(async () => {

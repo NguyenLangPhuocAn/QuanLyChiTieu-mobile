@@ -115,6 +115,16 @@ it('does not fabricate safe spending when bill storage fails and can retry', asy
   await press('Thử lại');
   expect(JSON.stringify(tree.toJSON())).toContain('23.333');
 });
+it('labels cached safe spending and warns when the wallet snapshot is stale', async () => {
+  jest.mocked(dashboardCache.read).mockResolvedValueOnce({
+    wallets: [{ id: 1, currency: 'VND', balance: 1000000 }],
+    updatedAt: '2026-10-27T05:00:00Z',
+  } as never);
+  await mount();
+  const text = JSON.stringify(tree.toJSON());
+  expect(text).toContain('Kết quả có thể thiếu giao dịch chưa tải');
+  expect(text).toContain('Dữ liệu ví đã cũ');
+});
 it('requires a plan confirmation and rejects it after leaving the screen', async () => {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   await mount();

@@ -36,6 +36,7 @@ import { useFinance } from '../../context/FinanceContext';
 import type { TransactionItem } from '../../data/mockTransactions';
 import { localDocumentPicker } from '../../native/documentPicker';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
+import { dashboardCache } from '../../services/dashboardCache';
 import {
   statisticsService,
   type ReportDateRange,
@@ -953,8 +954,13 @@ const incomeDonutColors = [
 ];
 
 const StatisticsScreen = ({ navigation, route }: Props) => {
-  const { token, user } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
   const { transactions, preferredCurrency } = useFinance();
+  const [cacheInfo, setCacheInfo] = useState<{
+    updatedAt: string;
+    count: number;
+  } | null>(null);
+  const [cacheChecked, setCacheChecked] = useState(false);
   const [period, setPeriod] = useState<PeriodMode>('month');
   const [activeTab, setActiveTab] = useState<StatisticsTab>('overview');
   const [selectedDate, setSelectedDate] = useState(formatDateInput(now));
@@ -1044,6 +1050,7 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
       ? selectedYear === now.getFullYear()
       : false;
   const canUseApiStats =
+    !isOfflineSession &&
     hasFullStats &&
     walletId === null &&
     apiStatsPeriod !== null &&
@@ -1057,6 +1064,32 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
   }, [period, periodRange, walletId]);
 
   useEffect(() => {
+    let active = true;
+    setCacheChecked(false);
+    setCacheInfo(null);
+    if (!user?.id) {
+      setCacheChecked(true);
+      return;
+    }
+    dashboardCache
+      .read(user.id)
+      .then(cache => {
+        if (active && cache)
+          setCacheInfo({
+            updatedAt: cache.updatedAt,
+            count: cache.transactions.length,
+          });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setCacheChecked(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!token || !canUseApiStats || !apiStatsPeriod) {
       setApiStats(null);
       return;
@@ -1068,7 +1101,10 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
     statisticsService
       .get(token, apiStatsPeriod)
       .then(result => {
-        if (active) setApiStats(result);
+        if (active) {
+          setApiStats(result);
+          setStatsError('');
+        }
       })
       .catch(error => {
         if (!active) return;
@@ -1476,6 +1512,26 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
       }
     });
 
+  if (isOfflineSession && (!cacheChecked || !cacheInfo)) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={navigation.goBack}>
+            <ArrowLeft size={22} color="#4A2B1A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Thống kê</Text>
+        </View>
+        <View style={styles.content}>
+          <Text style={styles.headerMeta}>
+            {cacheChecked
+              ? 'Chưa có giao dịch đã tải trên máy để tính thống kê. Hãy kết nối và mở Tổng quan một lần.'
+              : 'Đang đọc dữ liệu trên máy…'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
@@ -1507,6 +1563,25 @@ const StatisticsScreen = ({ navigation, route }: Props) => {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {!apiStats && (isOfflineSession || !canUseApiStats || !!statsError) ? (
+          <View style={styles.filterCard}>
+            <Text style={styles.headerMeta}>
+              {cacheInfo
+                ? `Thống kê từ ${cacheInfo.count} giao dịch đã tải trên máy · cập nhật ${
+                    Number.isFinite(Date.parse(cacheInfo.updatedAt))
+                      ? new Date(cacheInfo.updatedAt).toLocaleString('vi-VN')
+                      : 'không rõ thời điểm'
+                  }. Có thể thiếu giao dịch chưa tải hoặc chưa đồng bộ.`
+                : 'Thống kê chỉ từ dữ liệu đang có trong phiên này; chưa có bản lưu để xác nhận đủ giao dịch.'}
+              {cacheInfo &&
+              (!Number.isFinite(Date.parse(cacheInfo.updatedAt)) ||
+                Date.now() - Date.parse(cacheInfo.updatedAt) >
+                  24 * 60 * 60 * 1000)
+                ? ' Dữ liệu đã cũ, hãy kết nối và làm mới.'
+                : ''}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.tabRow}>
           {visibleTabs.map(tab => (
             <TouchableOpacity

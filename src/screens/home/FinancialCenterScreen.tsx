@@ -405,13 +405,34 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
               Chưa có dữ liệu gần nhất. Quay lại Tổng quan và làm mới một lần.
             </Text>
           </View>
+        ) : !cache.wallets.some(wallet => wallet.currency === currency) ? (
+          <View style={styles.warningCard}>
+            <AlertTriangle size={21} color="#9A5A00" />
+            <Text style={styles.warningText}>
+              Chưa có dữ liệu ví cùng tiền tệ trên máy để tính mức chi hôm nay.
+            </Text>
+          </View>
         ) : null}
 
+        {cache?.wallets.some(wallet => wallet.currency === currency) ? (
         <View style={styles.heroCard}>
           <View style={styles.heroIcon}>
             <HeartPulse size={23} color={Colors.white} />
           </View>
           <Text style={styles.heroLabel}>Có thể chi hôm nay</Text>
+          <Text style={styles.heroText}>
+            Dữ liệu trên máy cập nhật{' '}
+            {Number.isFinite(Date.parse(cache.updatedAt))
+              ? new Date(cache.updatedAt).toLocaleString('vi-VN')
+              : 'không rõ thời điểm'}
+            . Có thể thiếu giao dịch chưa tải hoặc chưa đồng bộ.
+          </Text>
+          {(!Number.isFinite(Date.parse(cache.updatedAt)) ||
+            Date.now() - Date.parse(cache.updatedAt) > 24 * 60 * 60 * 1000) && (
+            <Text accessibilityRole="alert" style={styles.heroWarning}>
+              Dữ liệu đã cũ. Hãy kết nối và làm mới trước khi quyết định chi.
+            </Text>
+          )}
           <Text style={styles.heroValue}>
             {formatCurrency(safeSpend.amount, currency)}
           </Text>
@@ -456,6 +477,7 @@ const FinancialCenterScreen = ({ navigation, route }: Props) => {
             ))}
           </View>
         </View>
+        ) : null}
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>

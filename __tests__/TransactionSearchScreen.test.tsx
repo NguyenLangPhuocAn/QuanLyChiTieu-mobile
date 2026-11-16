@@ -1,15 +1,30 @@
 import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
+import { Text } from 'react-native';
 import TransactionSearchScreen from '../src/screens/home/TransactionSearchScreen';
 import { transactionsService } from '../src/services/transactions';
+import { dashboardCache } from '../src/services/dashboardCache';
+import { offlineTransactionChanges } from '../src/services/offlineTransactionChanges';
+
+let mockOffline = false;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockOffline = false;
   jest.mocked(transactionsService.getPage).mockReset();
+  jest.mocked(dashboardCache.read).mockResolvedValue(null);
+  jest.mocked(offlineTransactionChanges.list).mockResolvedValue([]);
+  jest.mocked(offlineTransactionChanges.apply).mockImplementation(rows => rows);
 });
 
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test' }),
+  useAuth: () => ({ token: 'test', user: { id: 7 }, isOfflineSession: mockOffline }),
+}));
+jest.mock('../src/services/dashboardCache', () => ({
+  dashboardCache: { read: jest.fn() },
+}));
+jest.mock('../src/services/offlineTransactionChanges', () => ({
+  offlineTransactionChanges: { list: jest.fn(), apply: jest.fn() },
 }));
 jest.mock('../src/context/FinanceContext', () => {
   const state = {
@@ -201,6 +216,54 @@ it('debounces typing and keeps the newest search when responses arrive out of or
       renderer.root.findAllByProps({ children: 23 }).length,
     ).toBeGreaterThan(0);
     expect(renderer.root.findAllByProps({ children: 91 })).toHaveLength(0);
+  } finally {
+    await act(() => renderer?.unmount());
+    jest.useRealTimers();
+  }
+});
+
+it('searches only cached records while offline and labels the limited result set', async () => {
+  jest.useFakeTimers();
+  mockOffline = true;
+  jest.mocked(dashboardCache.read).mockResolvedValue({
+    updatedAt: '2026-11-16T10:00:00.000Z',
+    wallets: [{ id: 1, name: 'Ví QA', currency: 'VND' }],
+    categories: [{ id: 9, name: 'Ăn uống', type: 'EXPENSE' }],
+    transactions: [
+      {
+        id: 51,
+        wallet_id: 1,
+        category_id: 9,
+        amount: '-79000',
+        currency: 'VND',
+        note: 'Cà phê QA',
+        transaction_date: '2026-11-16',
+        type: 'EXPENSE',
+      },
+    ],
+    tags: [],
+    budgets: [],
+    savingsGoals: [],
+  } as never);
+  const props = {
+    navigation: { goBack: jest.fn() },
+    route: { params: { wallets: [] } },
+  } as unknown as React.ComponentProps<typeof TransactionSearchScreen>;
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  try {
+    await act(() => {
+      renderer = ReactTestRenderer.create(<TransactionSearchScreen {...props} />);
+    });
+    await act(async () => jest.advanceTimersByTimeAsync(250));
+    expect(transactionsService.getPage).not.toHaveBeenCalled();
+    expect(dashboardCache.read).toHaveBeenCalledWith(7);
+    expect(renderer.root.findAllByType(Text).some(node =>
+      String(node.props.children).includes('Kết quả có thể thiếu giao dịch chưa tải'),
+    )).toBe(true);
+    await act(() => renderer.root.findByProps({ placeholder: 'Tìm theo ghi chú' }).props.onChangeText('ca phe'));
+    await act(async () => jest.advanceTimersByTimeAsync(250));
+    expect(renderer.root.findAllByProps({ children: 'Cà phê QA' }).length).toBeGreaterThan(0);
+    expect(transactionsService.getPage).not.toHaveBeenCalled();
   } finally {
     await act(() => renderer?.unmount());
     jest.useRealTimers();
