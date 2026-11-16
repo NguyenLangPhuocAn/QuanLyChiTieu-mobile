@@ -1,4 +1,8 @@
-import { findMatchingSmartRule } from '../src/services/smartRules';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  findMatchingSmartRule,
+  smartRulesService,
+} from '../src/services/smartRules';
 
 describe('findMatchingSmartRule', () => {
   const rules = [
@@ -62,4 +66,29 @@ describe('findMatchingSmartRule', () => {
       ])?.categoryName,
     ).toBe('Tiền lương');
   });
+});
+
+it('keeps an intentionally empty rule list after reopening the local store', async () => {
+  const storage = new Map<string, string>();
+  jest
+    .mocked(AsyncStorage.getItem)
+    .mockImplementation(async key => storage.get(key) ?? null);
+  jest.mocked(AsyncStorage.setItem).mockImplementation(async (key, value) => {
+    storage.set(key, value);
+  });
+
+  expect(await smartRulesService.hasSavedRules(7)).toBe(false);
+  await smartRulesService.saveRules(7, [
+    {
+      id: 'grab',
+      keyword: 'Grab',
+      categoryId: 9,
+      categoryName: 'Di chuyển',
+      enabled: true,
+    },
+  ]);
+  await smartRulesService.saveRules(7, []);
+  expect(await smartRulesService.hasSavedRules(7)).toBe(true);
+  expect(await smartRulesService.getRules(7)).toEqual([]);
+  expect(await smartRulesService.hasSavedRules(8)).toBe(false);
 });

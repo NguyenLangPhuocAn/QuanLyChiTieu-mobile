@@ -16,7 +16,7 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Vay/Nợ | Màn danh sách/form gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Chưa có cache/hàng chờ/đối chiếu. |
 | Lịch hóa đơn | Lịch cục bộ theo tài khoản/API | Lưu cục bộ | Lưu cục bộ | Lưu cục bộ dạng lưu trữ | Lịch không có nghĩa đã trả; thanh toán vẫn cần giao dịch và đối chiếu server. Chưa thử trọn luồng Android offline. |
 | Lịch tiền | Khoản dự kiến cục bộ, giao dịch cache | Khoản dự kiến lưu cục bộ | Chưa có thao tác sửa trực tiếp | Xóa khoản dự kiến cục bộ | Chưa kiểm trọn luồng Android offline; số dư/giao dịch vẫn phụ thuộc cache và hàng chờ Thu/Chi. |
-| Quy tắc tự chọn danh mục và nhắc Android | Dữ liệu lưu trên máy | Quy tắc/lời nhắc lưu cục bộ | Lưu cục bộ | Lưu cục bộ | 86 ca mã tập trung cho quy tắc, hóa đơn, lịch tiền và nhắc đạt; chưa lặp toàn bộ thao tác sau đóng/mở app với radio tắt trên Android. |
+| Quy tắc tự chọn danh mục và nhắc Android | Dữ liệu lưu trên máy | Quy tắc/lời nhắc lưu cục bộ | Lưu cục bộ | Lưu cục bộ | Sửa lỗi xóa hết quy tắc rồi mở lại bị tạo quy tắc mẫu. Emulator mất API đã tạo/xóa quy tắc và giữ danh sách trống sau force-stop/mở lại; vẫn cần Metro nên chưa đạt cold start radio tắt. Lời nhắc Android chưa lặp toàn bộ thao tác thực tế. |
 | AI, OCR, Excel, backup | Chưa có bằng chứng toàn luồng offline | Chưa xác nhận | Chưa xác nhận | Chưa xác nhận | Không quảng cáo offline cho các luồng này. |
 
 ## Thứ tự tiếp theo

@@ -62,6 +62,9 @@ export const findMatchingSmartRule = (note: string, rules: SmartRule[]) => {
 };
 
 export const smartRulesService = {
+  async hasSavedRules(userId: number) {
+    return (await AsyncStorage.getItem(storageKey(userId))) !== null;
+  },
   async getRules(userId: number) {
     const raw = await AsyncStorage.getItem(storageKey(userId));
     if (!raw) return [];

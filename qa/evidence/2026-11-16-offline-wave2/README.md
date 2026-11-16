@@ -12,6 +12,7 @@
 2. Nạp app khi còn kết nối Metro, tắt Wi-Fi/dữ liệu khi app đang chạy. Form Thu/Chi vẫn mở được ([ảnh](13-radio-off-form.png)); chưa lưu giao dịch trong lượt này.
 3. Từ Lịch sử mở Tìm giao dịch khi app vẫn chạy, chọn bộ lọc và chờ API QA thất bại. Màn chuyển sang tìm trong **3 giao dịch đã tải trên máy**, ghi thời điểm cập nhật và cảnh báo kết quả có thể thiếu ([ảnh](33-search-cached-result.png)).
 4. Chọn nhóm **Chi**, vẫn thấy 3 kết quả trong dữ liệu QA đã tải ([ảnh](34-search-expense-offline.png)). Nhập `OfflineQA16Nov`: còn đúng 1 kết quả, số tiền 7.123 đ ([ảnh](35-search-note-offline.png)). Đây là tìm kiếm và lọc cache, không phải danh sách đầy đủ từ máy chủ.
+5. Khi API QA không chạy nhưng Metro vẫn cấp mã debug, mở Quy tắc thông minh bằng tài khoản QA local. Tạo quy tắc `QAoffline16` cho danh mục Chi offline QA ([ảnh](43-rules-created.png)); xóa quy tắc cuối cùng ([ảnh](44-rules-deleted.png)), rời màn rồi vào lại ([ảnh](46-rules-reopen-settled.png)). Sau `force-stop` và mở lại app, danh sách vẫn trống ([ảnh](51-rules-after-restart.png)). Đây là phép thử lưu cục bộ khi mất API, **không phải** cold start khi cả Wi-Fi/dữ liệu di động đều tắt vì bản debug cần Metro.
 
 ## Kiểm tra mã
 
@@ -23,6 +24,7 @@
 
 - Chưa thử lại thêm/sửa/xóa Thu/Chi và widget với **cả Wi-Fi lẫn dữ liệu di động tắt**, đóng/mở app, reconnect 3 lựa chọn, retry sau khi server đã ghi, xung đột, đổi tài khoản và ảnh sau khi tắt app trong đúng phiên này. Bằng chứng QA mất API ở [đợt trước](../2026-11-16-offline-audit/README.md) và [sửa/xóa/xung đột 13/11](../2026-11-13-offline-transactions/README.md) không thay thế cold start standalone.
 - Các ca quy tắc, hóa đơn, lịch tiền và nhắc Android ở trên là kiểm thử mã; chưa kiểm trọn luồng tạo/sửa/xóa sau khi tắt app trên Android thật. Chưa triển khai ghi offline cho Ví/Danh mục.
+- Quy tắc đã thử riêng tạo/xóa và giữ trạng thái sau khi tắt mở app trên emulator mất API. Chưa thử lại với cả hai radio tắt, nhiều tài khoản và quy tắc Thu trên điện thoại thật.
 
 ## SHA-256 ảnh gốc
 
@@ -34,3 +36,7 @@
 | `33-search-cached-result.png` | `7D388481807F88D5F4067E3970689EA7C5EA3867D915BB269947944FA1BF0605` |
 | `34-search-expense-offline.png` | `4A9F1A810C746A8216D1C598ED1F3FBF9790D69072767CE22B18933268D7AC6F` |
 | `35-search-note-offline.png` | `E77266F9F75A21568B8AFCB6D470D53C6E627B3CB59C423B869EAF0EAA7FBF5A` |
+| `43-rules-created.png` | `785932F4D1D4043D5F1ED4D1FD3B6E608DAA18AEC068C3E8B8FB130B3D80A331` |
+| `44-rules-deleted.png` | `5D2A0FE993E2F145D4AFA1817A8A34DD6F96458E7349AE6FD0E936205443CEAD` |
+| `46-rules-reopen-settled.png` | `70D7A61B1BA106D8384E3BEFB2EFEA366C85C3430B54EEC3B0B3ECD46BBA94EA` |
+| `51-rules-after-restart.png` | `3EA258B93ABAE1A779708A90C90344DC4B720BE3DDC7A26766DAD72731CAC242` |

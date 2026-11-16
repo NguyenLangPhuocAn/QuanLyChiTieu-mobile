@@ -53,7 +53,7 @@ const SmartRulesScreen = () => {
   useEffect(() => {
     if (!user?.id) return;
     smartRulesService.getRules(user.id).then(async saved => {
-      if (saved.length > 0) {
+      if (saved.length > 0 || (await smartRulesService.hasSavedRules(user.id))) {
         setRules(saved);
         return;
       }
