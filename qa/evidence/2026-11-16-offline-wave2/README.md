@@ -21,6 +21,7 @@
 - Thống kê: offline không gọi API thống kê; khi không có cache, không hiển thị số 0 như kết quả. Khi tính từ cache, hiện số giao dịch và thời điểm tải. Lịch tiền và mức chi an toàn hiện thời điểm cache, cảnh báo sau 24 giờ hoặc khi không rõ thời điểm. Khoản dự kiến sửa bằng bản gốc đã đọc; nếu bản lưu thay đổi trước lúc xác nhận, thao tác bị từ chối.
 - 17/17 ca tập trung qua 4 bộ (Tìm giao dịch, bộ lọc cache, Thống kê, Lịch tiền); thêm 86/86 ca hiện có cho quy tắc, hóa đơn định kỳ, lịch tiền và nhắc Android. TypeScript `--noEmit` và ESLint file sửa đạt.
 - Bổ sung kiểm thử ưu tiên dữ liệu mới: trong ca màn MainScreen, cache ví cũ cố ý trả sau API; màn giữ ví mới. Bộ MainScreen 34/34 ca, các bộ Tài khoản/đồng bộ/quy tắc/bộ chọn danh mục widget 21/21 ca, TypeScript và ESLint đạt. Đây là kiểm thử mã; chưa tái tạo cuộc đua này bằng mạng di động thật.
+- Bổ sung cache tham chiếu Thu/Chi: 2/2 ca dịch vụ xác nhận giữ ví/danh mục khi chưa có bản Tổng quan và từ chối cache sai máy chủ; 37/37 ca MainScreen gồm API Lịch sử lỗi nhưng vẫn giữ ví, mở form với ví cache khi offline và phản hồi tài khoản cũ về muộn không hiện ở tài khoản mới. TypeScript và ESLint đạt. Lượt mở app debug local trên emulator ngày 19/11 dừng ở màn `Loading from 10.0.2.2:8081`; không lấy lượt này làm bằng chứng UI mới đạt. Cấu hình QA tạm đã khôi phục, Metro và ADB reverse đã dừng.
 
 ## Chưa xác nhận
 

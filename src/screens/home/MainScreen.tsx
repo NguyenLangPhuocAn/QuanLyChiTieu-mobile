@@ -381,7 +381,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const shouldReopenTransactionForm = useRef(false);
   const dashboardFetchInFlight = useRef<Promise<void> | null>(null);
+  const dashboardFetchUserId = useRef<number | undefined>(undefined);
   const dashboardDataVisible = useRef(false);
+  const freshReferencesVisible = useRef(false);
+  const activeUserId = useRef(user?.id);
+  activeUserId.current = user?.id;
   const amountInputRef = useRef<TextInput>(null);
   const transactionFormScrollRef = useRef<ScrollView>(null);
 
@@ -403,16 +407,27 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   useEffect(() => {
     let cancelled = false;
     dashboardDataVisible.current = false;
+    freshReferencesVisible.current = false;
     dashboardFetchInFlight.current = null;
     if (!user?.id) return () => undefined;
 
-    dashboardCache
-      .read(user.id)
-      .then(cached => {
+    Promise.all([
+      dashboardCache.read(user.id).catch(() => null),
+      dashboardCache.readReferences(user.id).catch(() => null),
+    ])
+      .then(([cached, references]) => {
         // A slow disk read must not replace a newer response that arrived first.
-        if (!cancelled && cached && !dashboardDataVisible.current) {
+        if (
+          cancelled ||
+          dashboardDataVisible.current ||
+          freshReferencesVisible.current
+        ) return;
+        if (cached) {
           applyDashboardSnapshot(cached);
           setRefreshing(false);
+        } else if (references) {
+          setWallets(references.wallets);
+          setCategories(references.categories);
         }
       })
       .catch(() => undefined);
@@ -420,18 +435,33 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     return () => {
       cancelled = true;
     };
-  }, [applyDashboardSnapshot, user?.id]);
+  }, [applyDashboardSnapshot, setCategories, user?.id]);
 
   const fetchDashboardData = useCallback(
     (showIndicator = true) => {
       if (!token) return Promise.resolve();
-      if (dashboardFetchInFlight.current) {
+      if (
+        dashboardFetchInFlight.current &&
+        dashboardFetchUserId.current === user?.id
+      ) {
         return dashboardFetchInFlight.current;
       }
 
+      const requestUserId = user?.id;
       if (showIndicator || !dashboardDataVisible.current) setRefreshing(true);
       const request = (async () => {
+        let referenceRequest: Promise<[Wallet[], Category[]]> | null = null;
         try {
+          const walletRequest = walletsService.getAll(token);
+          const categoryRequest = categoriesService.getAll(token);
+          referenceRequest = Promise.all([walletRequest, categoryRequest]);
+          if (user?.id) {
+            referenceRequest
+              .then(([walletData, categoryData]) =>
+                dashboardCache.saveReferences(user.id, walletData, categoryData),
+              )
+              .catch(() => undefined);
+          }
           const [
             nextWallets,
             nextTransactions,
@@ -440,9 +470,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             nextBudgets,
             nextSavingsGoals,
           ] = await Promise.all([
-            walletsService.getAll(token),
+            walletRequest,
             transactionsService.getAll(token),
-            categoriesService.getAll(token),
+            categoryRequest,
             tagsService.getAll(token),
             budgetsService.getAll(token),
             savingsService.getAll(token).catch(() => []),
@@ -457,6 +487,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             savingsGoals: nextSavingsGoals,
             updatedAt: new Date().toISOString(),
           };
+          if (activeUserId.current !== requestUserId) return;
           applyDashboardSnapshot(snapshot);
           if (user?.id) {
             dashboardCache.save(user.id, snapshot).catch(() => undefined);
@@ -466,20 +497,42 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             .then(nextUnread => setNotificationUnreadCount(nextUnread.count))
             .catch(() => undefined);
         } catch (error) {
-          const cached = user?.id ? await dashboardCache.read(user.id) : null;
+          const freshReferences = await referenceRequest?.catch(() => null);
+          if (activeUserId.current !== requestUserId) return;
+          const cached = requestUserId
+            ? await dashboardCache.read(requestUserId).catch(() => null)
+            : null;
+          const references = requestUserId
+            ? await dashboardCache.readReferences(requestUserId).catch(() => null)
+            : null;
+          if (activeUserId.current !== requestUserId) return;
           if (cached && !dashboardDataVisible.current) {
             applyDashboardSnapshot(cached);
+          } else if (references && !dashboardDataVisible.current) {
+            setWallets(references.wallets);
+            setCategories(references.categories);
+          }
+          if (freshReferences) {
+            freshReferencesVisible.current = true;
+            setWallets(freshReferences[0]);
+            setCategories(freshReferences[1]);
           }
           if (!cached || showIndicator) {
             Alert.alert(
-              cached ? 'Đang dùng dữ liệu trên máy' : 'Không tải được dữ liệu',
+              cached
+                ? 'Đang dùng dữ liệu trên máy'
+                : freshReferences || references
+                ? 'Dữ liệu tải chưa đủ'
+                : 'Không tải được dữ liệu',
               cached
                 ? 'Không kết nối được máy chủ. Ứng dụng đang hiển thị bản dữ liệu gần nhất trên thiết bị.'
+                : freshReferences || references
+                ? 'Có thể chọn ví và danh mục đã tải để ghi Thu/Chi. Lịch sử và số dư có thể chưa đủ dữ liệu.'
                 : getUserFriendlyErrorMessage(error, 'Không thể tải dữ liệu.'),
             );
           }
         } finally {
-          setRefreshing(false);
+          if (activeUserId.current === requestUserId) setRefreshing(false);
         }
       })().finally(() => {
         if (dashboardFetchInFlight.current === request) {
@@ -488,9 +541,10 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       });
 
       dashboardFetchInFlight.current = request;
+      dashboardFetchUserId.current = requestUserId;
       return request;
     },
-    [applyDashboardSnapshot, token, user?.id],
+    [applyDashboardSnapshot, setCategories, token, user?.id],
   );
 
   useEffect(() => {

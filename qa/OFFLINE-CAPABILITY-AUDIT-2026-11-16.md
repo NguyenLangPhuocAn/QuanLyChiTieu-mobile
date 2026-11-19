@@ -10,8 +10,8 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Chi an toàn hôm nay | Lịch tiền tính từ ví cache, lịch và khoản chờ; hiện thời điểm, cảnh báo cache cũ; Trung tâm tài chính không hiện số khi thiếu ví cache | Không ghi tiền | Không áp dụng | Không áp dụng | Cảnh báo sau 24 giờ hoặc thời điểm không rõ; vẫn chỉ là ước tính, có thể thiếu giao dịch chưa tải. Ca màn Lịch tiền qua, chưa chụp Android với mã mới. |
 | Widget Thu/Chi | Dữ liệu/danh mục đã lưu | Qua kiểm tra/xác nhận | Qua Lịch sử | Qua Lịch sử | [Bằng chứng cũ](WIDGET-OFFLINE.md); chưa lặp cold start widget 16/11. Mic/OCR chưa xác nhận offline. |
 | Tài khoản đã đăng nhập | Hồ sơ xác thực trước đó được giữ trên máy cho phiên offline | Đăng nhập mới cần mạng | Thay đổi hồ sơ cần mạng | Xóa tài khoản cần mạng | Bản local không cấp quyền API; khi có mạng, server kiểm tra lại phiên. Đổi tài khoản cần xác thực khi online. Chưa chứng minh cold start bản standalone trên điện thoại thật. |
-| Ví | Cache Tổng quan, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Chuyển tiền bị chặn. Chưa có ID tạm, hàng chờ và giải quyết xung đột; cache chỉ phản ánh lần tải gần nhất. |
-| Danh mục | Cache Tổng quan, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Chọn danh mục cũ cho Thu/Chi được; chưa có ID tạm và ánh xạ vào giao dịch chờ. Màn riêng chưa chụp Android; ca tự động đạt. |
+| Ví | Cache Tổng quan và cache tham chiếu Thu/Chi riêng, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Ví đã tải vẫn có thể chọn nếu API Lịch sử/Ngân sách lỗi; chuyển tiền bị chặn. Không có hàng chờ ghi ví. |
+| Danh mục | Cache Tổng quan và cache tham chiếu Thu/Chi riêng, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Danh mục đã tải vẫn có thể chọn nếu API khác lỗi; không tự tạo danh mục mới. Cache tách theo tài khoản và máy chủ; ca mã đạt, chưa chụp Android với mã mới. |
 | Ngân sách | Tổng quan có một phần cache; màn quản lý gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Chưa có cache màn quản lý theo bộ lọc hoặc hàng chờ. |
 | Mục tiêu tiết kiệm | Tổng quan có cache; màn quản lý gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Ghi tiền tiết kiệm cần kiểm tra ví và xung đột. |
 | Vay/Nợ | Màn danh sách/form gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Chưa có cache/hàng chờ/đối chiếu. |
@@ -20,7 +20,7 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Quy tắc tự chọn danh mục và nhắc Android | Dữ liệu lưu trên máy | Quy tắc/lời nhắc lưu cục bộ | Lưu cục bộ | Lưu cục bộ | Sửa lỗi xóa hết quy tắc rồi mở lại bị tạo quy tắc mẫu. Emulator mất API đã tạo/xóa quy tắc và giữ danh sách trống sau force-stop/mở lại; vẫn cần Metro nên chưa đạt cold start radio tắt. Lời nhắc Android chưa lặp toàn bộ thao tác thực tế. |
 | AI, OCR, Excel, backup | Chưa có bằng chứng toàn luồng offline | Chưa xác nhận | Chưa xác nhận | Chưa xác nhận | Không quảng cáo offline cho các luồng này. |
 
-Khi API và cache cùng về lúc mở app, bản API mới được ưu tiên; cache trả muộn không được ghi đè danh sách ví/danh mục mới. Ca màn hình cố ý trì hoãn cache kiểm tra điều này. Các nhóm chỉ đọc không được tự tạo ví/danh mục/quy tắc để hợp thức hóa một giao dịch.
+Khi API và cache cùng về lúc mở app, bản API mới được ưu tiên; cache trả muộn không được ghi đè danh sách ví/danh mục mới. Phản hồi của tài khoản cũ đến muộn cũng không được đưa vào form tài khoản mới. Cache ví/danh mục tham chiếu được lưu ngay khi hai API của chúng thành công, không chờ Lịch sử/Ngân sách. Ca màn hình cố ý trì hoãn cache, đổi tài khoản và làm lỗi API Lịch sử đã đạt. Các nhóm chỉ đọc không được tự tạo ví/danh mục/quy tắc để hợp thức hóa một giao dịch. Lượt chạy Android local 19/11 bị kẹt ở màn nạp Metro; chưa xác nhận giao diện mới trên giả lập.
 
 ## Thứ tự tiếp theo
 

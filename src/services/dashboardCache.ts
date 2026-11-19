@@ -19,6 +19,14 @@ export type DashboardCache = {
 };
 
 const key = (userId: number) => `quan_ly_chi_tieu_local_data_${userId}`;
+const referenceKey = (userId: number) =>
+  `quan_ly_chi_tieu_transaction_references_${userId}`;
+type TransactionReferences = {
+  server: string;
+  wallets: Wallet[];
+  categories: Category[];
+  updatedAt: string;
+};
 const listeners = new Set<() => void>();
 
 export const dashboardCache = {
@@ -37,6 +45,37 @@ export const dashboardCache = {
     await AsyncStorage.setItem(key(userId), JSON.stringify(value));
     listeners.forEach(listener => listener());
     return value;
+  },
+
+  async saveReferences(
+    userId: number,
+    wallets: Wallet[],
+    categories: Category[],
+  ) {
+    const value: TransactionReferences = {
+      server: getApiStorageBaseUrl(),
+      wallets,
+      categories,
+      updatedAt: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(referenceKey(userId), JSON.stringify(value));
+    return value;
+  },
+
+  async readReferences(userId: number): Promise<TransactionReferences | null> {
+    const raw = await AsyncStorage.getItem(referenceKey(userId));
+    if (!raw) return null;
+    try {
+      const value = JSON.parse(raw) as TransactionReferences;
+      return value.server === getApiStorageBaseUrl() &&
+        Array.isArray(value.wallets) &&
+        Array.isArray(value.categories) &&
+        typeof value.updatedAt === 'string'
+        ? value
+        : null;
+    } catch {
+      return null;
+    }
   },
 
   async read(userId: number): Promise<DashboardCache | null> {

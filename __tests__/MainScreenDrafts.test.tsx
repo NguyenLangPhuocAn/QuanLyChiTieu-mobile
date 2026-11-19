@@ -11,6 +11,7 @@ import MainScreen from '../src/screens/home/MainScreen';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
+import { walletsService } from '../src/services/wallets';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
 import { bankNotificationExtraction } from '../src/services/bankNotificationExtraction';
@@ -283,6 +284,61 @@ it('keeps the fresh wallet list when a slower offline cache read finishes last',
   } as DashboardCache));
   expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
   expect(JSON.stringify(tree.toJSON())).not.toContain('Ví cũ');
+});
+
+it('keeps transaction wallets when a separate dashboard request fails', async () => {
+  jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
+  jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue(null);
+  const saved = jest.spyOn(dashboardCache, 'saveReferences').mockResolvedValue({
+    server: getApiBaseUrl(), wallets: [], categories: [], updatedAt: '',
+  });
+  jest.mocked(transactionsService.getAll).mockRejectedValueOnce(new Error('API failed'));
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
+  expect(saved).toHaveBeenCalledWith(7, expect.arrayContaining([
+    expect.objectContaining({ name: 'Tiền mặt' }),
+  ]), []);
+});
+
+it('opens the transaction form with previously loaded reference wallets while offline', async () => {
+  jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
+  jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue({
+    server: getApiBaseUrl(),
+    wallets: [{
+      id: 99, user_id: 7, name: 'Ví đã tải', currency: 'VND', balance: '100000',
+      created_at: '2026-11-16T00:00:00.000Z',
+    }],
+    categories: [{ id: 4, name: 'Ăn uống', type: 'EXPENSE' }],
+    updatedAt: '2026-11-16T00:00:00.000Z',
+  });
+  jest.mocked(walletsService.getAll).mockRejectedValueOnce(new Error('offline'));
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  expect(JSON.stringify(tree.toJSON())).toContain('Ví đã tải');
+  expect(transactionsService.create).not.toHaveBeenCalled();
+});
+
+it('does not show another account’s late wallet response', async () => {
+  jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
+  jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue(null);
+  let finishOld!: (wallets: Awaited<ReturnType<typeof walletsService.getAll>>) => void;
+  jest.mocked(walletsService.getAll).mockImplementationOnce(
+    () => new Promise(resolve => { finishOld = resolve; }),
+  );
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  mockUser = { id: 8, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  await act(async () => finishOld([{
+    id: 99, user_id: 7, name: 'Ví tài khoản cũ', currency: 'VND', balance: '1',
+    created_at: '2026-11-16T00:00:00.000Z',
+  }]));
+  expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
+  expect(JSON.stringify(tree.toJSON())).not.toContain('Ví tài khoản cũ');
 });
 
 it('previews speech then fills a draft without saving or choosing a wallet', async () => {
