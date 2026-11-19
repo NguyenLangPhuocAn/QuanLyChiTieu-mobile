@@ -14,7 +14,9 @@ import OfflineSyncReviewModal, {
   type OfflineSyncReview,
 } from './OfflineSyncReviewModal';
 
-// Foreground only: no polling or claim that JS runs after Android force-stop.
+// Retry only while a foreground session has local writes waiting for the API.
+// Android connectivity events do not cover an API outage on working Wi-Fi.
+const RECONNECT_RETRY_MS = 20_000;
 const promptedUsers = new Set<number>();
 export default function OfflineSessionSync({
   onSynced,
@@ -39,6 +41,19 @@ export default function OfflineSessionSync({
       running = false,
       asking = false,
       shownKey = '';
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearRetry = () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = undefined;
+    };
+    const scheduleRetry = () => {
+      if (!active || asking || retryTimer || AppState.currentState !== 'active')
+        return;
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        attempt().catch(() => undefined);
+      }, RECONNECT_RETRY_MS);
+    };
     const refresh = async () => {
       await latest.current.onSynced?.();
       financeRefresh.emit();
@@ -53,21 +68,25 @@ export default function OfflineSessionSync({
       )
         return;
       running = true;
+      let retryPending = false;
       try {
-        if (!(await homeWidget.connected())) return;
-        if (!(await latest.current.retryRestoreSession())) return;
         const current = () =>
           active &&
           latest.current.userId === userId &&
           getApiStorageBaseUrl() === server;
-        if (!current() || !latest.current.token) return;
         const drafts = (await offlineTransactionQueue.list(userId)).filter(
           item => item.server === server,
         );
         const changes = await offlineTransactionChanges.list(userId);
+        if (!current()) return;
+        retryPending = Boolean(drafts.length || changes.length);
         if (drafts.some(item => item.status === 'SYNCING')) return;
+        if (!(await homeWidget.connected())) return;
+        if (!(await latest.current.retryRestoreSession())) return;
+        if (!current() || !latest.current.token) return;
         if (!drafts.length && !changes.length) {
           shownKey = '';
+          clearRetry();
           if (current()) await refresh();
           return;
         }
@@ -77,7 +96,10 @@ export default function OfflineSessionSync({
         }));
         const expectedChanges = await offlineTransactionChanges.preview(userId);
         const key = JSON.stringify([expected, expectedChanges]);
-        if (shownKey === key || !current()) return;
+        if (shownKey === key || !current()) {
+          retryPending = false;
+          return;
+        }
         const remote: OfflineSyncReview['remote'] = {};
         if (changes.length) {
           for (let offset = 0; offset < changes.length; offset += 100) {
@@ -117,8 +139,11 @@ export default function OfflineSessionSync({
           return;
         shownKey = key;
         asking = true;
+        retryPending = false;
+        clearRetry();
         promptedUsers.add(userId);
         const choose = async (source: 'local' | 'cloud') => {
+          let retryAfterChoice = false;
           try {
             if (!current() || !latest.current.token) return;
             if (source === 'cloud') {
@@ -173,18 +198,21 @@ export default function OfflineSessionSync({
                 result.needsReview ||
                 edits.pending ||
                 edits.needsReview
-              )
+              ) {
+                shownKey = '';
+                retryAfterChoice = Boolean(result.pending || edits.pending);
                 Alert.alert(
                   'Còn giao dịch cần kiểm tra',
                   `${result.pending + edits.pending} đang chờ · ${
                     result.needsReview + edits.needsReview
                   } cần xem lại.`,
                 );
-              else shownKey = '';
+              } else shownKey = '';
             }
             if (current()) await refresh();
           } catch (error) {
             shownKey = '';
+            retryAfterChoice = source === 'local';
             Alert.alert(
               'Chưa hoàn tất',
               error instanceof Error
@@ -195,6 +223,7 @@ export default function OfflineSessionSync({
             asking = false;
             promptedUsers.delete(userId);
             choiceRef.current = null;
+            if (retryAfterChoice && current()) scheduleRetry();
           }
         };
         choiceRef.current = choice => {
@@ -228,13 +257,15 @@ export default function OfflineSessionSync({
         };
         setReview({ drafts, changes, remote });
       } catch {
-        /* durable drafts remain; next reconnect/resume retries */
+        /* Durable drafts remain; retry only for pending writes in foreground. */
       } finally {
         running = false;
+        if (retryPending) scheduleRetry();
       }
     };
     const foreground = AppState.addEventListener('change', state => {
       if (state === 'active') attempt().catch(() => undefined);
+      else clearRetry();
     });
     const reconnect = homeWidget.subscribe(() => {
       attempt().catch(() => undefined);
@@ -245,7 +276,10 @@ export default function OfflineSessionSync({
     attempt().catch(() => undefined);
     return () => {
       active = false;
+      clearRetry();
       if (asking) promptedUsers.delete(userId);
+      choiceRef.current = null;
+      setReview(null);
       foreground.remove();
       reconnect();
       queued();

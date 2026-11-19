@@ -24,6 +24,8 @@ Khi API và cache cùng về lúc mở app, bản API mới được ưu tiên; 
 
 Lượt QA 19/11 tạo hai khoản Chi 4.157 đ và 2.391 đ khi ngắt API; bản nháp còn sau khởi động lại, chỉ ghi sau khi nối API và xác nhận. Cơ sở dữ liệu QA có đúng một bản ghi cho mỗi khoản, số dư ví giảm đúng 6.548 đ. Nút đồng bộ thủ công trước đó bỏ qua màn xem từng khoản; nay dùng màn so sánh với lựa chọn bản máy, bản máy chủ hoặc để sau. Phiên đối chiếu tự động kiểm lại hàng chờ trước khi hiện để tránh hỏi lại một khoản đã đồng bộ. 47/47 ca tập trung đạt; chưa thử cold start khi tắt cả Wi-Fi/4G trên APK độc lập.
 
+QA nối mạng tiếp theo 19/11: khi Wi-Fi vẫn có nhưng API QA mất kết nối, tạo Chi 3.471 đ vào hàng chờ. Khôi phục API khi app còn mở, màn chọn bản máy/máy chủ/để sau tự hiện sau vòng thử lại 20 giây; chọn để sau rồi force-stop/mở lại vẫn có lựa chọn; chỉ khi chọn bản máy, DB QA mới có một giao dịch −3.471 đ và Tổng chi tháng tăng đúng 3.471 đ. [Ảnh gốc và bước thử](evidence/2026-11-19-offline-reconnect/README.md). 33/33 ca tập trung đạt, gồm lỗi mạng sau khi xác nhận và tín hiệu Android khi mạng trở lại. Vòng thử lại chỉ chạy lúc app ở foreground và có Thu/Chi đang chờ; không tự gửi tiền. Chưa thử mất phản hồi tại đúng ranh giới server đã ghi trên emulator hoặc cold start APK độc lập.
+
 ## Thứ tự tiếp theo
 
 1. Khép bài thử Thu/Chi trên điện thoại thật: tắt Wi-Fi/4G, khởi động lạnh bản standalone, tạo/sửa/xóa trong app và widget, đổi tài khoản, xung đột và gửi lại sau khi server đã ghi. Kiểm ảnh form sau đóng/mở. Chỉ thử bản standalone khi người dùng chốt cập nhật; hiện không build APK.

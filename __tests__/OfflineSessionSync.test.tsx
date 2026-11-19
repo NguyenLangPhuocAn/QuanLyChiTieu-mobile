@@ -221,6 +221,93 @@ it('does not prompt while offline', async () => {
   expect(mockRetry).not.toHaveBeenCalled();
 });
 
+it('reacts to Android network recovery without writing before confirmation', async () => {
+  jest
+    .mocked(homeWidget.connected)
+    .mockResolvedValueOnce(false)
+    .mockResolvedValue(true);
+  jest.mocked(queue.list).mockResolvedValue([draft]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(mockRetry).not.toHaveBeenCalled();
+  await act(async () => {
+    online();
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Giao dịch mới'),
+  ).toBe(true);
+  expect(queue.sync).not.toHaveBeenCalled();
+});
+
+it('offers the choice after the API recovers without a Wi-Fi change or app restart', async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(queue.list).mockResolvedValue([draft]);
+    mockRetry.mockResolvedValueOnce(false).mockResolvedValue(true);
+    await act(async () => {
+      renderer = TestRenderer.create(<OfflineSessionSync />);
+    });
+    expect(queue.sync).not.toHaveBeenCalled();
+    expect(
+      renderer!.root
+        .findAllByType(Text)
+        .some(node => node.props.children === 'Giao dịch mới'),
+    ).toBe(false);
+
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(
+      renderer!.root
+        .findAllByType(Text)
+        .some(node => node.props.children === 'Giao dịch mới'),
+    ).toBe(true);
+    expect(queue.sync).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pressReview('Để sau');
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(mockRetry).toHaveBeenCalledTimes(2);
+    expect(queue.sync).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('asks again after a confirmed sync loses its network response and keeps the draft', async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(queue.list).mockResolvedValue([draft]);
+    jest
+      .mocked(queue.sync)
+      .mockResolvedValue({ synced: 0, pending: 1, needsReview: 0 });
+    await act(async () => {
+      renderer = TestRenderer.create(<OfflineSessionSync />);
+    });
+    await act(async () => {
+      pressReview('Dùng thay đổi trên máy');
+    });
+    expect(queue.sync).toHaveBeenCalledTimes(1);
+    expect(queue.discardLocal).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(20_000);
+    });
+    expect(
+      renderer!.root
+        .findAllByType(Text)
+        .some(node => node.props.children === 'Giao dịch mới'),
+    ).toBe(true);
+    expect(queue.sync).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it('does not show a stale choice after a manual sync clears the queue', async () => {
   jest
     .mocked(queue.list)
