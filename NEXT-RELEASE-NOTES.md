@@ -2,6 +2,8 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Đồng bộ giao dịch từ trang Dữ liệu nay mở màn xem từng khoản Thu/Chi đang chờ, cho chọn dùng bản máy, giữ bản máy chủ hoặc để sau. Bỏ bản máy vẫn cần xác nhận thêm. Phiên đối chiếu tự động không hỏi lại hàng chờ đã được đồng bộ thủ công.
+- Android QA khi ngắt API: tài khoản, ví, danh mục đã tải vẫn dùng được trong form Thu/Chi; hai bản nháp Chi 4.157 đ và 2.391 đ còn sau khởi động lại và mỗi khoản chỉ ghi một lần lên database QA khi nối lại. [Ảnh và biên bản](qa/evidence/2026-11-19-offline-reference/README.md). 47/47 ca tập trung, TypeScript và ESLint đạt. Bản debug vẫn cần Metro; chưa thử cold start không Wi-Fi/4G trên APK độc lập, chưa phát hành bản mới.
 - Lịch tiền: khoản dự kiến do người dùng tự nhập có thể sửa trực tiếp, xem trước rồi mới lưu; app từ chối bản sửa cũ nếu khoản đã đổi. Đã thử thêm/sửa/xóa và giữ bản sửa sau khi đóng mở app QA lúc API ngắt. Bỏ khối sao lưu lịch ở cuối màn. [Ảnh và giới hạn](qa/evidence/2026-11-16-offline-wave2/README.md). Đây không phải giao dịch thực.
 - Phạm vi offline hiện tại tập trung vào giao dịch Thu/Chi. Tài khoản, ví, danh mục và quy tắc thông minh cần đọc bản đã tải để hỗ trợ nhập Thu/Chi; app không tự tạo thêm các mục đó khi mất mạng. Các nhóm khác chưa có hàng chờ ghi offline.
 - Khi vừa mở app, nếu API trả dữ liệu mới trước khi cache cũ đọc xong, danh sách ví/danh mục mới vẫn được giữ. Ca màn hình cố ý cho cache trả muộn đã kiểm tra thứ tự này.

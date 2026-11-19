@@ -65,6 +65,7 @@ export default function OfflineSessionSync({
           item => item.server === server,
         );
         const changes = await offlineTransactionChanges.list(userId);
+        if (drafts.some(item => item.status === 'SYNCING')) return;
         if (!drafts.length && !changes.length) {
           shownKey = '';
           if (current()) await refresh();
@@ -96,6 +97,24 @@ export default function OfflineSessionSync({
           }
         }
         if (!current()) return;
+        // A manual sync may finish while remote snapshots are being fetched.
+        // Never offer a choice for a queue that has already changed or emptied.
+        const latestDrafts = (
+          await offlineTransactionQueue.list(userId)
+        ).filter(item => item.server === server);
+        const latestChanges = await offlineTransactionChanges.preview(userId);
+        if (
+          !current() ||
+          latestDrafts.some(item => item.status === 'SYNCING') ||
+          JSON.stringify(
+            latestDrafts.map(item => ({
+              id: item.id,
+              updatedAt: item.updatedAt,
+            })),
+          ) !== JSON.stringify(expected) ||
+          JSON.stringify(latestChanges) !== JSON.stringify(expectedChanges)
+        )
+          return;
         shownKey = key;
         asking = true;
         promptedUsers.add(userId);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -52,6 +52,10 @@ import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
 import { homeWidget } from '../../native/homeWidget';
+import { getApiStorageBaseUrl } from '../../services/api';
+import OfflineSyncReviewModal, {
+  type OfflineSyncReview,
+} from '../../components/OfflineSyncReviewModal';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -65,6 +69,14 @@ type OfflineDraftEditor = {
   walletId: number;
   categoryId?: number;
   type: 'INCOME' | 'EXPENSE';
+};
+
+type ManualSyncReview = OfflineSyncReview & {
+  userId: number;
+  server: string;
+  token: string;
+  expectedDrafts: Array<{ id: string; updatedAt: string }>;
+  expectedChanges: Array<{ transactionId: number; revision: number }>;
 };
 
 const DataManagementScreen = () => {
@@ -84,12 +96,19 @@ const DataManagementScreen = () => {
   const [draftEditor, setDraftEditor] = useState<OfflineDraftEditor | null>(
     null,
   );
+  const [manualReview, setManualReview] = useState<ManualSyncReview | null>(
+    null,
+  );
+  const currentScope = useRef({ userId: user?.id, token });
+  currentScope.current = { userId: user?.id, token };
   const [excelPreview, setExcelPreview] = useState<{
     file: PickedDocument;
     result: ExcelImportPreview;
     selectedRows: number[];
     inboxDraftId?: string;
   } | null>(null);
+
+  useEffect(() => setManualReview(null), [user?.id, token]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -264,32 +283,40 @@ const DataManagementScreen = () => {
   const syncOfflineDrafts = async (
     expectedDrafts: Array<{ id: string; updatedAt: string }>,
     expectedChanges: Array<{ transactionId: number; revision: number }>,
+    scope: { userId: number; server: string; token: string },
   ) => {
-    if (!token || !user?.id || isSyncingDrafts) return;
+    if (isSyncingDrafts) return;
+    const isCurrent = () =>
+      currentScope.current.userId === scope.userId &&
+      currentScope.current.token === scope.token &&
+      getApiStorageBaseUrl() === scope.server;
     setIsSyncingDrafts(true);
     try {
+      if (!isCurrent()) throw Error('Tài khoản đã đổi. Hãy xem lại.');
       if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
       if (
-        JSON.stringify(await offlineTransactionChanges.preview(user.id)) !==
-        JSON.stringify(expectedChanges)
+        JSON.stringify(
+          await offlineTransactionChanges.preview(scope.userId),
+        ) !== JSON.stringify(expectedChanges)
       )
         throw Error('Thay đổi trên máy đã đổi. Hãy xem lại trước khi đồng bộ.');
       const result = await offlineTransactionQueue.sync(
-        token,
-        user.id,
-        () => true,
+        scope.token,
+        scope.userId,
+        isCurrent,
         expectedDrafts,
       );
       const edits = result.pending
         ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
         : await offlineTransactionChanges.sync(
-            token,
-            user.id,
+            scope.token,
+            scope.userId,
             expectedChanges,
-            () => true,
+            isCurrent,
           );
-      setOfflineDrafts(await offlineTransactionQueue.list(user.id));
-      setOfflineChanges(await offlineTransactionChanges.list(user.id));
+      if (!isCurrent()) return;
+      setOfflineDrafts(await offlineTransactionQueue.list(scope.userId));
+      setOfflineChanges(await offlineTransactionChanges.list(scope.userId));
       financeRefresh.emit();
       Alert.alert(
         'Đồng bộ giao dịch',
@@ -305,6 +332,123 @@ const DataManagementScreen = () => {
     } finally {
       setIsSyncingDrafts(false);
     }
+  };
+
+  const prepareManualReview = async () => {
+    if (!token || !user?.id || isSyncingDrafts) return;
+    const scope = { userId: user.id, token, server: getApiStorageBaseUrl() };
+    try {
+      if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
+      const [drafts, changes] = await Promise.all([
+        offlineTransactionQueue.list(scope.userId),
+        offlineTransactionChanges.list(scope.userId),
+      ]);
+      const currentDrafts = drafts.filter(item => item.server === scope.server);
+      if (!currentDrafts.length && !changes.length) {
+        Alert.alert('Không có giao dịch đang chờ');
+        return;
+      }
+      const remote: OfflineSyncReview['remote'] = {};
+      for (const change of changes) {
+        remote[change.transactionId] = await offlineTransactionChanges.inspect(
+          token,
+          change,
+        );
+      }
+      const expectedChanges = await offlineTransactionChanges.preview(
+        scope.userId,
+      );
+      if (
+        currentScope.current.userId !== scope.userId ||
+        currentScope.current.token !== scope.token ||
+        getApiStorageBaseUrl() !== scope.server
+      )
+        throw Error('Tài khoản đã đổi. Hãy xem lại.');
+      setManualReview({
+        ...scope,
+        drafts: currentDrafts,
+        changes,
+        remote,
+        expectedDrafts: currentDrafts.map(item => ({
+          id: item.id,
+          updatedAt: item.updatedAt,
+        })),
+        expectedChanges,
+      });
+    } catch (error) {
+      Alert.alert(
+        'Chưa xem được giao dịch',
+        getUserFriendlyErrorMessage(error),
+      );
+    }
+  };
+
+  const chooseManualReview = (choice: 'later' | 'local' | 'server') => {
+    const review = manualReview;
+    if (!review) return;
+    if (choice === 'later') {
+      setManualReview(null);
+      return;
+    }
+    if (choice === 'local') {
+      setManualReview(null);
+      syncOfflineDrafts(
+        review.expectedDrafts,
+        review.expectedChanges,
+        review,
+      ).catch(() => undefined);
+      return;
+    }
+    Alert.alert(
+      'Bỏ thay đổi trên máy?',
+      `${
+        review.drafts.length + review.changes.length
+      } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Bỏ thay đổi',
+          style: 'destructive',
+          onPress: () => {
+            const discard = async () => {
+              if (
+                currentScope.current.userId !== review.userId ||
+                currentScope.current.token !== review.token ||
+                getApiStorageBaseUrl() !== review.server
+              )
+                throw Error('Tài khoản đã đổi. Hãy xem lại.');
+              if (
+                JSON.stringify(
+                  await offlineTransactionChanges.preview(review.userId),
+                ) !== JSON.stringify(review.expectedChanges)
+              )
+                throw Error(
+                  'Thay đổi trên máy đã đổi. Hãy xem lại trước khi bỏ.',
+                );
+              await offlineTransactionQueue.discardLocal(
+                review.userId,
+                review.expectedDrafts,
+              );
+              await offlineTransactionChanges.discard(
+                review.userId,
+                review.expectedChanges,
+              );
+              setManualReview(null);
+              setOfflineDrafts(
+                await offlineTransactionQueue.list(review.userId),
+              );
+              setOfflineChanges(
+                await offlineTransactionChanges.list(review.userId),
+              );
+              financeRefresh.emit();
+            };
+            discard().catch(error =>
+              Alert.alert('Chưa bỏ được', getUserFriendlyErrorMessage(error)),
+            );
+          },
+        },
+      ],
+    );
   };
 
   const reviewOfflineChange = async (item: OfflineTransactionChange) => {
@@ -635,37 +779,7 @@ const DataManagementScreen = () => {
               accessibilityRole="button"
               accessibilityLabel="Đồng bộ giao dịch ngoại tuyến"
               style={styles.syncButton}
-              onPress={() =>
-                Alert.alert(
-                  'Ghi giao dịch lên máy chủ?',
-                  `${offlineDrafts.length} giao dịch mới · ${
-                    offlineChanges.filter(item => item.status === 'PENDING')
-                      .length
-                  } lần sửa/xóa đang chờ. Số dư sẽ thay đổi sau khi máy chủ xác nhận.`,
-                  [
-                    { text: 'Xem lại', style: 'cancel' },
-                    {
-                      text: 'Đồng bộ',
-                      onPress: () => {
-                        syncOfflineDrafts(
-                          offlineDrafts.map(item => ({
-                            id: item.id,
-                            updatedAt: item.updatedAt,
-                          })),
-                          offlineChanges
-                            .map(item => ({
-                              transactionId: item.transactionId,
-                              revision: item.revision,
-                            }))
-                            .sort(
-                              (a, b) => a.transactionId - b.transactionId,
-                            ),
-                        ).catch(() => undefined);
-                      },
-                    },
-                  ],
-                )
-              }
+              onPress={() => prepareManualReview().catch(() => undefined)}
               disabled={
                 isSyncingDrafts ||
                 (offlineDrafts.length === 0 && offlineChanges.length === 0)
@@ -982,6 +1096,10 @@ const DataManagementScreen = () => {
           </View>
         </TouchableOpacity>
       </ScrollView>
+      <OfflineSyncReviewModal
+        review={manualReview}
+        onChoose={chooseManualReview}
+      />
     </SafeAreaView>
   );
 };

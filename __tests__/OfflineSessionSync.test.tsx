@@ -221,10 +221,26 @@ it('does not prompt while offline', async () => {
   expect(mockRetry).not.toHaveBeenCalled();
 });
 
+it('does not show a stale choice after a manual sync clears the queue', async () => {
+  jest
+    .mocked(queue.list)
+    .mockResolvedValueOnce([draft])
+    .mockResolvedValueOnce([]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Giao dịch mới'),
+  ).toBe(false);
+  expect(queue.sync).not.toHaveBeenCalled();
+});
+
 it('ignores an old account review after switching accounts', async () => {
-  jest.mocked(queue.list).mockImplementation(async userId =>
-    userId === 9 ? [draft] : [],
-  );
+  jest
+    .mocked(queue.list)
+    .mockImplementation(async userId => (userId === 9 ? [draft] : []));
   await act(async () => {
     renderer = TestRenderer.create(<OfflineSessionSync />);
   });
