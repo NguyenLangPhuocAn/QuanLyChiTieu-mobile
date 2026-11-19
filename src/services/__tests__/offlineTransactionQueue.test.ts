@@ -211,6 +211,35 @@ describe('offlineTransactionQueue', () => {
     expect(draft.attempts).toBe(1);
   });
 
+  it('retries an ambiguous write with the original request id after recovery', async () => {
+    await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '3471',
+      type: 'EXPENSE',
+      client_request_id: 'txn_reconnect_same_request_123',
+    });
+    createTransaction
+      .mockRejectedValueOnce(
+        new ApiError('Mất phản hồi', 0, 'REQUEST_OUTCOME_UNKNOWN'),
+      )
+      .mockResolvedValueOnce({ id: 91 });
+
+    expect(await offlineTransactionQueue.sync('token', 7)).toEqual({
+      synced: 0,
+      pending: 1,
+      needsReview: 0,
+    });
+    expect(await offlineTransactionQueue.sync('token', 7)).toEqual({
+      synced: 1,
+      pending: 0,
+      needsReview: 0,
+    });
+    expect(createTransaction).toHaveBeenCalledTimes(2);
+    for (const [, payload] of createTransaction.mock.calls)
+      expect(payload.client_request_id).toBe('txn_reconnect_same_request_123');
+    await expect(offlineTransactionQueue.list(7)).resolves.toEqual([]);
+  });
+
   it('requires review when the server rejects the draft data', async () => {
     await offlineTransactionQueue.enqueue(7, {
       wallet_id: 2,

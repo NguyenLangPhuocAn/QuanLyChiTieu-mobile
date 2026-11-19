@@ -15,7 +15,7 @@
 
 ## Kiểm thử mã và giới hạn
 
-- `OfflineSessionSync`, hàng chờ tạo Thu/Chi và hàng chờ sửa/xóa: **33/33** ca qua 3 bộ. Có ca Android network callback, API phục hồi không đổi Wi-Fi, người dùng chọn để sau, mất phản hồi khi đang đồng bộ, tài khoản cũ, hàng chờ bị đồng bộ thủ công trong lúc đối chiếu. TypeScript `--noEmit`, ESLint file sửa và Prettier đạt.
+- `OfflineSessionSync`, hàng chờ tạo Thu/Chi và hàng chờ sửa/xóa: **34/34** ca qua 3 bộ. Có ca Android network callback, API phục hồi không đổi Wi-Fi, người dùng chọn để sau, mất phản hồi khi đang đồng bộ rồi gửi lại cùng mã yêu cầu, tài khoản cũ, hàng chờ bị đồng bộ thủ công trong lúc đối chiếu. TypeScript `--noEmit`, ESLint file sửa và Prettier đạt.
 - Mất phản hồi **đúng lúc API đã ghi nhưng app chưa nhận kết quả** được thử ở mức mã với hàng chờ và mã yêu cầu ổn định; chưa tạo lỗi mạng chính xác theo thời điểm đó trên emulator trong đợt này. Lần thử Android dùng API mất kết nối trước khi lưu, rồi khôi phục khi app mở.
 - Chưa chạy cold start trên APK standalone với cả Wi-Fi/4G tắt hoặc điện thoại thật. Ảnh hóa đơn chưa lưu bền vững offline và vẫn bị chặn. Ví, danh mục, tài khoản, quy tắc chỉ đọc bản đã tải phục vụ Thu/Chi; không có hàng chờ ghi cho các mục này.
 
