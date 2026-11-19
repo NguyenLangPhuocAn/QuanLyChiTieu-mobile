@@ -61,7 +61,7 @@ export default function OfflineSyncReviewModal({
                   {item.payload.note || 'Không có ghi chú'}
                 </Text>
                 <Text style={styles.remote}>
-                  Máy chủ: Chưa có giao dịch này
+                  Máy chủ: Chưa xác định đã nhận khoản này
                 </Text>
               </View>
             ))}

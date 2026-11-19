@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import DataManagementScreen from '../src/screens/home/DataManagementScreen';
 import OfflineSyncReviewModal from '../src/components/OfflineSyncReviewModal';
@@ -103,6 +103,15 @@ it('shows the actual offline transaction before manual sync and lets the user de
   });
   await openReview();
   expect(review().props.review.drafts[0].payload.amount).toBe('4157');
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node =>
+        String(node.props.children).includes(
+          'Máy chủ: Chưa xác định đã nhận khoản này',
+        ),
+      ),
+  ).toBe(true);
   expect(offlineTransactionQueue.sync).not.toHaveBeenCalled();
   await act(async () => review().props.onChoose('later'));
   expect(review().props.review).toBeNull();
