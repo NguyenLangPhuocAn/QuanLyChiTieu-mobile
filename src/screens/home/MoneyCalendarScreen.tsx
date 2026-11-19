@@ -39,7 +39,6 @@ import {
   type MoneyPlan,
 } from '../../utils/moneyCalendar';
 import type { BillBook } from '../../utils/recurringBills';
-import BillBookBackup from '../../components/BillBookBackup';
 import { toDateKey } from '../../utils/budgetPeriod';
 import { formatCurrency } from '../../utils/format';
 import {
@@ -64,6 +63,7 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [form, setForm] = useState(false);
+  const [editingOriginal, setEditingOriginal] = useState<MoneyPlan | null>(null);
   const [label, setLabel] = useState(''),
     [amount, setAmount] = useState('');
   const [date, setDate] = useState(toDateKey(new Date()));
@@ -85,7 +85,8 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
     };
   }, [today]);
   const writing = useRef(false),
-    generation = useRef(0);
+    generation = useRef(0),
+    scrollRef = useRef<ScrollView>(null);
   const scope = useMemo(
     () => ({ userId: user?.id ?? 0, server }),
     [user?.id, server],
@@ -98,6 +99,7 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
       setError('');
       setLoading(true);
       setForm(false);
+      setEditingOriginal(null);
       const refresh = async () => {
         const id = ++request;
         try {
@@ -188,6 +190,7 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
       if (version === generation.current) {
         setData(old => (old ? { ...old, plans } : old));
         setForm(false);
+        setEditingOriginal(null);
       }
     } catch (e) {
       if (version === generation.current)
@@ -197,10 +200,10 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
       setBusy(false);
     }
   };
-  const addPlan = () => {
+  const savePlan = () => {
     try {
       const plan = validateMoneyPlan({
-        id: createClientRequestId(),
+        id: editingOriginal?.id ?? createClientRequestId(),
         label,
         date,
         type,
@@ -209,7 +212,7 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
       });
       const version = generation.current;
       Alert.alert(
-        'Thêm khoản dự kiến',
+        editingOriginal ? 'Sửa khoản dự kiến' : 'Thêm khoản dự kiến',
         `${plan.label}\n${day(plan.date)} · ${
           plan.type === 'INCOME' ? '+' : '−'
         }${money(
@@ -218,9 +221,15 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
         [
           { text: 'Hủy', style: 'cancel' },
           {
-            text: 'Thêm vào lịch',
+            text: editingOriginal ? 'Lưu thay đổi' : 'Thêm vào lịch',
             onPress: () =>
-              mutate(() => moneyCalendarPlans.add(scope, plan), version),
+              mutate(
+                () =>
+                  editingOriginal
+                    ? moneyCalendarPlans.replace(scope, editingOriginal, plan)
+                    : moneyCalendarPlans.add(scope, plan),
+                version,
+              ),
           },
         ],
       );
@@ -242,6 +251,7 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
         <Text style={s.title}>Lịch tiền</Text>
       </View>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
       >
@@ -344,9 +354,11 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
               {action(
                 'Thêm dự kiến',
                 () => {
+                  setEditingOriginal(null);
                   setLabel('');
                   setAmount('');
                   setDate(today);
+                  setType('INCOME');
                   setForm(true);
                 },
                 true,
@@ -354,8 +366,19 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
               )}
             </View>
             {form && (
-              <View style={s.card}>
-                <Text style={s.label}>Khoản thu / chi dự kiến</Text>
+              <View
+                style={s.card}
+                onLayout={event =>
+                  editingOriginal &&
+                  scrollRef.current?.scrollTo({
+                    y: Math.max(0, event.nativeEvent.layout.y - 180),
+                    animated: true,
+                  })
+                }
+              >
+                <Text style={s.label}>
+                  {editingOriginal ? 'Sửa khoản dự kiến' : 'Khoản thu / chi dự kiến'}
+                </Text>
                 <Text style={s.muted}>
                   Hóa đơn đã có lịch không cần nhập lại ở đây.
                 </Text>
@@ -402,8 +425,8 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
                   editable={!busy}
                 />
                 <View style={s.row}>
-                  {action('Hủy dự kiến', () => setForm(false), false, busy)}
-                  {action('Kiểm tra dự kiến', addPlan, true, busy)}
+                  {action('Hủy dự kiến', () => { setForm(false); setEditingOriginal(null); }, false, busy)}
+                  {action('Kiểm tra dự kiến', savePlan, true, busy)}
                 </View>
               </View>
             )}
@@ -433,6 +456,24 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
                         nay
                       </Text>
                     )}
+                    {!event.billId &&
+                      action(
+                        'Sửa dự kiến ' + event.label,
+                        () => {
+                          const original = data?.plans.find(
+                            plan => plan.id === event.id.slice(5),
+                          );
+                          if (!original) return;
+                          setEditingOriginal(original);
+                          setLabel(original.label);
+                          setAmount(String(original.amount));
+                          setDate(original.date);
+                          setType(original.type);
+                          setForm(true);
+                        },
+                        false,
+                        busy,
+                      )}
                     {!event.billId &&
                       action(
                         'Bỏ dự kiến ' + event.label,
@@ -471,12 +512,6 @@ export default function MoneyCalendarScreen({ navigation }: Props) {
             ))}
           </>
         )}
-        <BillBookBackup
-          scope={scope}
-          onRestored={async () => {
-            setRevision(value => value + 1);
-          }}
-        />
       </ScrollView>
     </SafeAreaView>
   );

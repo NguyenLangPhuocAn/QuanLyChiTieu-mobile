@@ -15,13 +15,12 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Mục tiêu tiết kiệm | Tổng quan có cache; màn quản lý gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Ghi tiền tiết kiệm cần kiểm tra ví và xung đột. |
 | Vay/Nợ | Màn danh sách/form gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Chưa có cache/hàng chờ/đối chiếu. |
 | Lịch hóa đơn | Lịch cục bộ theo tài khoản/API | Lưu cục bộ | Lưu cục bộ | Lưu cục bộ dạng lưu trữ | Lịch không có nghĩa đã trả; thanh toán vẫn cần giao dịch và đối chiếu server. Chưa thử trọn luồng Android offline. |
-| Lịch tiền | Khoản dự kiến cục bộ, giao dịch cache | Khoản dự kiến lưu cục bộ | Chưa có thao tác sửa trực tiếp | Xóa khoản dự kiến cục bộ | Chưa kiểm trọn luồng Android offline; số dư/giao dịch vẫn phụ thuộc cache và hàng chờ Thu/Chi. |
+| Lịch tiền | Khoản dự kiến cục bộ, giao dịch cache | Khoản dự kiến lưu cục bộ | Sửa khoản dự kiến cục bộ sau xem trước | Xóa khoản dự kiến cục bộ sau xác nhận | Android QA ngắt API đã thử thêm/sửa/xóa và force-stop/mở lại, khoản sửa vẫn giữ; bản debug vẫn cần Metro. Số dư/giao dịch vẫn phụ thuộc cache và hàng chờ Thu/Chi. |
 | Quy tắc tự chọn danh mục và nhắc Android | Dữ liệu lưu trên máy | Quy tắc/lời nhắc lưu cục bộ | Lưu cục bộ | Lưu cục bộ | Sửa lỗi xóa hết quy tắc rồi mở lại bị tạo quy tắc mẫu. Emulator mất API đã tạo/xóa quy tắc và giữ danh sách trống sau force-stop/mở lại; vẫn cần Metro nên chưa đạt cold start radio tắt. Lời nhắc Android chưa lặp toàn bộ thao tác thực tế. |
 | AI, OCR, Excel, backup | Chưa có bằng chứng toàn luồng offline | Chưa xác nhận | Chưa xác nhận | Chưa xác nhận | Không quảng cáo offline cho các luồng này. |
 
 ## Thứ tự tiếp theo
 
 1. Khép bài thử Thu/Chi trên điện thoại thật: tắt Wi-Fi/4G, khởi động lạnh bản standalone, tạo/sửa/xóa trong app và widget, đổi tài khoản, xung đột và gửi lại sau khi server đã ghi. Kiểm ảnh form sau đóng/mở. Chỉ thử bản standalone khi người dùng chốt cập nhật; hiện không build APK.
-2. Lặp Android offline cho Thống kê, Lịch tiền, quy tắc, lịch hóa đơn và lời nhắc: kiểm tra tạo/sửa/xóa, đóng/mở, thời điểm cache và lịch không tự chuyển Đã trả. Sau đó hoàn thiện cache đọc Ngân sách/Mục tiêu tiết kiệm theo tài khoản, giữ trạng thái chỉ xem.
-3. **Chỉ sau khi nhóm trên đạt**, thiết kế hàng chờ Ví và Danh mục: ID tạm, ánh xạ vào giao dịch chờ, thứ tự gửi, phiên bản server/kiểm tra xung đột, xem trước số dư và khóa chống gửi trùng. Thử nhiều tài khoản và khởi động lại trước khi mở UI ghi.
-4. Sau Ví/Danh mục mới xét Ngân sách, Tiết kiệm, Vay/Nợ. Mọi khoản tiền phải xem trước/xác nhận và không tự ghi đè khi reconnect.
+2. Ưu tiên dữ liệu cần để nhập Thu/Chi: tài khoản đăng nhập đã xác thực, ví, danh mục và quy tắc thông minh phải đọc được bản đã tải trên máy khi API ngắt; kiểm tra đổi tài khoản và thiếu cache. Người dùng tự chọn tạo các mục phụ thuộc khi muốn, app không tự sinh mục mới để hoàn thành giao dịch.
+3. Chỉ Thu/Chi có hàng chờ ghi offline trong phạm vi hiện tại. Ví, Danh mục và các nhóm kế hoạch khác không tự thêm/sửa/xóa hoặc đồng bộ ghi khi mất mạng; các luồng đọc phải nêu rõ nguồn và thời điểm dữ liệu. Chỉ mở rộng ghi offline khi người dùng yêu cầu riêng.

@@ -45,6 +45,20 @@ it('serializes writes and rejects duplicate ids or a changed backend', async () 
     'thay đổi',
   );
 });
+it('edits a planned amount after review and rejects a stale edit', async () => {
+  await service.add(scope, plan);
+  const original = (await service.read(scope))[0];
+  const revised = { ...original, amount: 6000000, date: '2026-11-02' };
+  await service.replace(scope, original, revised);
+  expect(await service.read(scope)).toEqual([revised]);
+  await expect(
+    service.replace(scope, original, { ...original, amount: 7000000 }),
+  ).rejects.toThrow('đã thay đổi');
+  expect(await service.read(scope)).toEqual([revised]);
+  await expect(
+    service.replace(scope, revised, { ...revised, id: 'another' }),
+  ).rejects.toThrow('Mã khoản');
+});
 it('preserves corrupt storage and never replaces it when adding a plan', async () => {
   const key = 'money-calendar:v1:http://qa:1';
   await AsyncStorage.setItem(key, 'broken');

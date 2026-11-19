@@ -2,6 +2,8 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Lịch tiền: khoản dự kiến do người dùng tự nhập có thể sửa trực tiếp, xem trước rồi mới lưu; app từ chối bản sửa cũ nếu khoản đã đổi. Đã thử thêm/sửa/xóa và giữ bản sửa sau khi đóng mở app QA lúc API ngắt. Bỏ khối sao lưu lịch ở cuối màn. [Ảnh và giới hạn](qa/evidence/2026-11-16-offline-wave2/README.md). Đây không phải giao dịch thực.
+- Phạm vi offline hiện tại tập trung vào giao dịch Thu/Chi. Tài khoản, ví, danh mục và quy tắc thông minh cần đọc bản đã tải để hỗ trợ nhập Thu/Chi; app không tự tạo thêm các mục đó khi mất mạng. Các nhóm khác chưa có hàng chờ ghi offline.
 - Quy tắc tự chọn danh mục: xóa quy tắc cuối cùng sẽ giữ danh sách trống sau khi rời màn và khởi động lại app; quy tắc mẫu chỉ tạo cho tài khoản chưa từng lưu quy tắc. Đã thử trên Android QA khi API ngắt, có ảnh tạo/xóa/mở lại trong [biên bản offline](qa/evidence/2026-11-16-offline-wave2/README.md). Chưa xác nhận cold start khi cả Wi-Fi và dữ liệu di động đều tắt trên bản standalone.
 - Tìm giao dịch khi mất kết nối dùng những giao dịch đã tải trên máy: lọc ngày, ví, danh mục, Thu/Chi, số tiền, hashtag và ghi chú kể cả khi gõ không dấu. Các sửa/xóa đang chờ cũng được phản ánh. Màn ghi rõ số giao dịch cache, thời điểm cập nhật và rằng kết quả có thể thiếu giao dịch trên server.
 - Thống kê từ dữ liệu máy ghi nguồn, thời điểm và cảnh báo dữ liệu cũ/thiếu. Phiên offline không có cache không đưa ra số 0 như thống kê; xuất/gửi báo cáo vẫn cần mạng. Lịch tiền và “chi an toàn” hiển thị thời điểm cache và cảnh báo sau 24 giờ; không tính mức chi ở Trung tâm tài chính khi thiếu ví phù hợp.

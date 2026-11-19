@@ -38,7 +38,7 @@ jest.mock('../src/services/offlineTransactionQueue', () => ({
   createClientRequestId: () => 'plan-test',
 }));
 jest.mock('../src/services/moneyCalendarPlans', () => ({
-  moneyCalendarPlans: { read: jest.fn(), add: jest.fn(), remove: jest.fn() },
+  moneyCalendarPlans: { read: jest.fn(), add: jest.fn(), replace: jest.fn(), remove: jest.fn() },
 }));
 const bill = {
   id: 'rent',
@@ -134,6 +134,7 @@ it('requires a plan confirmation and rejects it after leaving the screen', async
     control('Số tiền dự kiến').props.onChangeText('5000000');
   });
   await press('Kiểm tra dự kiến');
+  expect(alert.mock.calls.at(-1)?.[0]).toBe('Thêm khoản dự kiến');
   expect(moneyCalendarPlans.add).not.toHaveBeenCalled();
   const buttons = alert.mock.calls.at(-1)![2]!;
   await act(async () => tree.unmount());
@@ -141,5 +142,26 @@ it('requires a plan confirmation and rejects it after leaving the screen', async
     buttons.find(b => b.text === 'Thêm vào lịch')!.onPress!(),
   );
   expect(moneyCalendarPlans.add).not.toHaveBeenCalled();
+  alert.mockRestore();
+});
+it('opens a planned payment for editing and confirms the changed amount before saving', async () => {
+  const original = {
+    id: 'rent-plan', label: 'Tiền nhà thêm', date: '2026-11-01',
+    amount: 200000, currency: 'VND', type: 'EXPENSE' as const,
+  };
+  jest.mocked(moneyCalendarPlans.read).mockResolvedValue([original]);
+  jest.mocked(moneyCalendarPlans.replace).mockResolvedValue([{ ...original, amount: 250000 }]);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  await mount();
+  await press('Sửa dự kiến Tiền nhà thêm');
+  expect(control('Số tiền dự kiến').props.value).toContain('200.000');
+  await act(async () => control('Số tiền dự kiến').props.onChangeText('250000'));
+  await press('Kiểm tra dự kiến');
+  expect(moneyCalendarPlans.replace).not.toHaveBeenCalled();
+  expect(alert.mock.calls.at(-1)?.[1]).toContain('250.000');
+  await act(async () => alert.mock.calls.at(-1)![2]!.find(b => b.text === 'Lưu thay đổi')!.onPress!());
+  expect(moneyCalendarPlans.replace).toHaveBeenCalledWith(
+    { userId: 8, server: 'http://qa' }, original, { ...original, amount: 250000 },
+  );
   alert.mockRestore();
 });
