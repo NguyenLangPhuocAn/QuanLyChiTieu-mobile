@@ -20,6 +20,7 @@
 - Tìm kiếm cache lọc theo ghi chú không dấu, ngày, ví, danh mục, Thu/Chi, số tiền, hashtag và nhóm vay/nợ; áp dụng thay đổi Thu/Chi đang chờ trước khi lọc. Ca màn hình xác nhận offline không gọi API.
 - Thống kê: offline không gọi API thống kê; khi không có cache, không hiển thị số 0 như kết quả. Khi tính từ cache, hiện số giao dịch và thời điểm tải. Lịch tiền và mức chi an toàn hiện thời điểm cache, cảnh báo sau 24 giờ hoặc khi không rõ thời điểm. Khoản dự kiến sửa bằng bản gốc đã đọc; nếu bản lưu thay đổi trước lúc xác nhận, thao tác bị từ chối.
 - 17/17 ca tập trung qua 4 bộ (Tìm giao dịch, bộ lọc cache, Thống kê, Lịch tiền); thêm 86/86 ca hiện có cho quy tắc, hóa đơn định kỳ, lịch tiền và nhắc Android. TypeScript `--noEmit` và ESLint file sửa đạt.
+- Bổ sung kiểm thử ưu tiên dữ liệu mới: trong ca màn MainScreen, cache ví cũ cố ý trả sau API; màn giữ ví mới. Bộ MainScreen 34/34 ca, các bộ Tài khoản/đồng bộ/quy tắc/bộ chọn danh mục widget 21/21 ca, TypeScript và ESLint đạt. Đây là kiểm thử mã; chưa tái tạo cuộc đua này bằng mạng di động thật.
 
 ## Chưa xác nhận
 

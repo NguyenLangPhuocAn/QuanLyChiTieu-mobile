@@ -9,6 +9,7 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Thống kê và báo cáo | Tính từ giao dịch trong phiên/cache; ghi thời điểm và cảnh báo thiếu/cũ; không hiện số 0 khi phiên offline chưa có cache | Không áp dụng | Không áp dụng | Không áp dụng | Ca mã xác nhận offline không gọi API thống kê. Xuất/gửi báo cáo vẫn cần API; chưa chụp màn Android với mã mới. |
 | Chi an toàn hôm nay | Lịch tiền tính từ ví cache, lịch và khoản chờ; hiện thời điểm, cảnh báo cache cũ; Trung tâm tài chính không hiện số khi thiếu ví cache | Không ghi tiền | Không áp dụng | Không áp dụng | Cảnh báo sau 24 giờ hoặc thời điểm không rõ; vẫn chỉ là ước tính, có thể thiếu giao dịch chưa tải. Ca màn Lịch tiền qua, chưa chụp Android với mã mới. |
 | Widget Thu/Chi | Dữ liệu/danh mục đã lưu | Qua kiểm tra/xác nhận | Qua Lịch sử | Qua Lịch sử | [Bằng chứng cũ](WIDGET-OFFLINE.md); chưa lặp cold start widget 16/11. Mic/OCR chưa xác nhận offline. |
+| Tài khoản đã đăng nhập | Hồ sơ xác thực trước đó được giữ trên máy cho phiên offline | Đăng nhập mới cần mạng | Thay đổi hồ sơ cần mạng | Xóa tài khoản cần mạng | Bản local không cấp quyền API; khi có mạng, server kiểm tra lại phiên. Đổi tài khoản cần xác thực khi online. Chưa chứng minh cold start bản standalone trên điện thoại thật. |
 | Ví | Cache Tổng quan, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Chuyển tiền bị chặn. Chưa có ID tạm, hàng chờ và giải quyết xung đột; cache chỉ phản ánh lần tải gần nhất. |
 | Danh mục | Cache Tổng quan, ghi thời điểm | Bị chặn | Bị chặn | Bị chặn | Chọn danh mục cũ cho Thu/Chi được; chưa có ID tạm và ánh xạ vào giao dịch chờ. Màn riêng chưa chụp Android; ca tự động đạt. |
 | Ngân sách | Tổng quan có một phần cache; màn quản lý gọi API | Chưa hỗ trợ | Chưa hỗ trợ | Chưa hỗ trợ | Chưa có cache màn quản lý theo bộ lọc hoặc hàng chờ. |
@@ -18,6 +19,8 @@ Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. 
 | Lịch tiền | Khoản dự kiến cục bộ, giao dịch cache | Khoản dự kiến lưu cục bộ | Sửa khoản dự kiến cục bộ sau xem trước | Xóa khoản dự kiến cục bộ sau xác nhận | Android QA ngắt API đã thử thêm/sửa/xóa và force-stop/mở lại, khoản sửa vẫn giữ; bản debug vẫn cần Metro. Số dư/giao dịch vẫn phụ thuộc cache và hàng chờ Thu/Chi. |
 | Quy tắc tự chọn danh mục và nhắc Android | Dữ liệu lưu trên máy | Quy tắc/lời nhắc lưu cục bộ | Lưu cục bộ | Lưu cục bộ | Sửa lỗi xóa hết quy tắc rồi mở lại bị tạo quy tắc mẫu. Emulator mất API đã tạo/xóa quy tắc và giữ danh sách trống sau force-stop/mở lại; vẫn cần Metro nên chưa đạt cold start radio tắt. Lời nhắc Android chưa lặp toàn bộ thao tác thực tế. |
 | AI, OCR, Excel, backup | Chưa có bằng chứng toàn luồng offline | Chưa xác nhận | Chưa xác nhận | Chưa xác nhận | Không quảng cáo offline cho các luồng này. |
+
+Khi API và cache cùng về lúc mở app, bản API mới được ưu tiên; cache trả muộn không được ghi đè danh sách ví/danh mục mới. Ca màn hình cố ý trì hoãn cache kiểm tra điều này. Các nhóm chỉ đọc không được tự tạo ví/danh mục/quy tắc để hợp thức hóa một giao dịch.
 
 ## Thứ tự tiếp theo
 

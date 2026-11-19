@@ -409,7 +409,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     dashboardCache
       .read(user.id)
       .then(cached => {
-        if (!cancelled && cached) {
+        // A slow disk read must not replace a newer response that arrived first.
+        if (!cancelled && cached && !dashboardDataVisible.current) {
           applyDashboardSnapshot(cached);
           setRefreshing(false);
         }

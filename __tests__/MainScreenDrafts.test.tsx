@@ -18,6 +18,7 @@ import { ApiError, getApiBaseUrl } from '../src/services/api';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 import type { RepeatTransactionRequest } from '../src/utils/repeatTransaction';
 import { recurringBillsService } from '../src/services/recurringBills';
+import { dashboardCache, type DashboardCache } from '../src/services/dashboardCache';
 import { billOccurrences } from '../src/utils/recurringBills';
 
 jest.mock('../src/services/bankNotificationExtraction', () => ({
@@ -262,6 +263,26 @@ beforeEach(async () => {
   await act(async () => {
     tab.props.onPress();
   });
+});
+
+it('keeps the fresh wallet list when a slower offline cache read finishes last', async () => {
+  let finishCache!: (value: DashboardCache) => void;
+  jest.spyOn(dashboardCache, 'read').mockImplementation(
+    () => new Promise(resolve => { finishCache = resolve; }),
+  );
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () => chat().onCreateTransaction!(draft as any));
+  expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
+
+  await act(async () => finishCache({
+    server: getApiBaseUrl(),
+    wallets: [{ id: 99, user_id: 7, name: 'Ví cũ', currency: 'VND', wallet_type: 'CASH', balance: '1', created_at: '2026-01-01T00:00:00.000Z' }],
+    transactions: [], categories: [], tags: [], budgets: [], savingsGoals: [],
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  } as DashboardCache));
+  expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
+  expect(JSON.stringify(tree.toJSON())).not.toContain('Ví cũ');
 });
 
 it('previews speech then fills a draft without saving or choosing a wallet', async () => {
