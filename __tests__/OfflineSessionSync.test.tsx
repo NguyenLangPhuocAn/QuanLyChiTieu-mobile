@@ -28,6 +28,7 @@ jest.mock('../src/native/homeWidget', () => ({
 }));
 jest.mock('../src/services/offlineTransactionQueue', () => ({
   offlineTransactionQueue: {
+    isSyncing: jest.fn(),
     list: jest.fn(),
     sync: jest.fn(),
     discardLocal: jest.fn(),
@@ -43,6 +44,7 @@ jest.mock('../src/services/offlineTransactionChanges', () => ({
     preview: jest.fn(),
     discard: jest.fn(),
     sync: jest.fn(),
+    subscribe: jest.fn(),
   },
 }));
 
@@ -62,6 +64,7 @@ const draft = {
 } as OfflineTransactionDraft;
 let renderer: TestRenderer.ReactTestRenderer | undefined;
 let online: () => void;
+let queueChanged: () => void;
 const choice = (label: string) => {
   const buttons = jest.mocked(Alert.alert).mock.calls.at(-1)?.[2];
   const button = buttons?.find(item => item.text === label);
@@ -93,13 +96,18 @@ beforeEach(() => {
     online = listener;
     return jest.fn();
   });
-  jest.mocked(queue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(queue.subscribe).mockImplementation(listener => {
+    queueChanged = listener;
+    return jest.fn();
+  });
   jest.mocked(queue.list).mockResolvedValue([]);
+  jest.mocked(queue.isSyncing).mockReturnValue(false);
   jest
     .mocked(queue.sync)
     .mockResolvedValue({ synced: 1, pending: 0, needsReview: 0 });
   jest.mocked(queue.discardLocal).mockResolvedValue(1);
   jest.mocked(changes.list).mockResolvedValue([]);
+  jest.mocked(changes.subscribe).mockReturnValue(jest.fn());
   jest.mocked(changes.preview).mockResolvedValue([]);
   jest.mocked(changes.discard).mockResolvedValue(0);
   jest
@@ -221,6 +229,23 @@ it('does not prompt while offline', async () => {
   expect(mockRetry).not.toHaveBeenCalled();
 });
 
+it('reviews a persisted syncing marker after an app restart without auto-sending', async () => {
+  jest
+    .mocked(queue.list)
+    .mockResolvedValue([
+      { ...draft, status: 'SYNCING', attempts: 1 } as OfflineTransactionDraft,
+    ]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Giao dịch mới'),
+  ).toBe(true);
+  expect(queue.sync).not.toHaveBeenCalled();
+});
+
 it('reacts to Android network recovery without writing before confirmation', async () => {
   jest
     .mocked(homeWidget.connected)
@@ -316,6 +341,27 @@ it('does not show a stale choice after a manual sync clears the queue', async ()
   await act(async () => {
     renderer = TestRenderer.create(<OfflineSessionSync />);
   });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Giao dịch mới'),
+  ).toBe(false);
+  expect(queue.sync).not.toHaveBeenCalled();
+});
+
+it('closes an already visible choice when another screen discards its draft', async () => {
+  jest.mocked(queue.list).mockResolvedValue([draft]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Giao dịch mới'),
+  ).toBe(true);
+
+  jest.mocked(queue.list).mockResolvedValue([]);
+  await act(async () => queueChanged());
   expect(
     renderer!.root
       .findAllByType(Text)

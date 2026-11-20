@@ -18,8 +18,12 @@ export type OfflineTransactionDraft = {
   status: OfflineTransactionDraftStatus;
   attempts: number;
   lastError?: string;
+  rejectedByServer?: boolean;
   payload: CreateTransactionPayload & { client_request_id?: string };
 };
+
+export const mayHaveReachedServer = (draft: OfflineTransactionDraft) =>
+  draft.attempts > 0 && draft.rejectedByServer !== true;
 
 export type OfflineQueueSyncResult = {
   synced: number;
@@ -135,6 +139,7 @@ const runSync = async (
     draft.status = 'SYNCING';
     draft.updatedAt = new Date().toISOString();
     draft.attempts += 1;
+    draft.rejectedByServer = false;
     await save(userId, drafts);
 
     try {
@@ -145,6 +150,11 @@ const runSync = async (
     } catch (error) {
       draft.updatedAt = new Date().toISOString();
       draft.lastError = error instanceof Error ? error.message : 'Lỗi đồng bộ';
+      draft.rejectedByServer =
+        error instanceof ApiError &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        ![401, 403, 409].includes(error.status);
       const sessionError =
         error instanceof ApiError &&
         ([401, 403].includes(error.status) || error.code === 'SESSION_CHANGED');
@@ -175,6 +185,9 @@ const runSync = async (
 };
 
 export const offlineTransactionQueue = {
+  isSyncing(userId: number) {
+    return activeSyncByUser.has(userId);
+  },
   subscribe(listener: () => void) {
     listeners.add(listener);
     return () => {
@@ -253,6 +266,15 @@ export const offlineTransactionQueue = {
       const drafts = parseDrafts(
         await AsyncStorage.getItem(storageKey(userId)),
       );
+      const target = drafts.find(
+        item =>
+          item.id === id &&
+          (!item.server || item.server === getApiStorageBaseUrl()),
+      );
+      if (target && mayHaveReachedServer(target))
+        throw Error(
+          'Giao dịch có thể đã được máy chủ ghi. Hãy kết nối và đối chiếu trước khi xóa bản nháp.',
+        );
       await save(
         userId,
         drafts.filter(
@@ -306,6 +328,10 @@ export const offlineTransactionQueue = {
       );
       if (!draft) return null;
       if (draft.server && draft.server !== getApiStorageBaseUrl()) return null;
+      if (mayHaveReachedServer(draft))
+        throw Error(
+          'Giao dịch có thể đã được máy chủ ghi. Hãy kết nối và đối chiếu trước khi sửa bản nháp.',
+        );
       draft.server = getApiStorageBaseUrl();
       const clientRequestId = draft.payload.client_request_id;
       const updatedPayload = {
@@ -324,7 +350,9 @@ export const offlineTransactionQueue = {
       }
       draft.payload = updatedPayload;
       draft.status = 'PENDING';
+      draft.attempts = 0;
       draft.lastError = undefined;
+      draft.rejectedByServer = false;
       draft.updatedAt = new Date().toISOString();
       await save(userId, drafts);
       return draft;

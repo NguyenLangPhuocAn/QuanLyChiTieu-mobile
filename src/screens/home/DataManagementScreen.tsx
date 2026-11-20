@@ -40,6 +40,7 @@ import {
 } from '../../services/dataTransfer';
 import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import {
+  mayHaveReachedServer,
   offlineTransactionQueue,
   type OfflineTransactionDraft,
 } from '../../services/offlineTransactionQueue';
@@ -535,9 +536,16 @@ const DataManagementScreen = () => {
 
   const removeOfflineDraft = (draft: OfflineTransactionDraft) => {
     if (!user?.id) return;
+    if (mayHaveReachedServer(draft)) {
+      Alert.alert(
+        'Cần đối chiếu trước',
+        'Máy chủ có thể đã ghi giao dịch này. Hãy kết nối và xem lại kết quả trước khi xóa.',
+      );
+      return;
+    }
     Alert.alert(
       'Xóa bản nháp?',
-      'Bản nháp chưa làm thay đổi số dư. Sau khi xóa sẽ không thể khôi phục.',
+      'Bản nháp này chưa được máy chủ ghi. Sau khi xóa sẽ không thể khôi phục.',
       [
         { text: 'Giữ lại', style: 'cancel' },
         {
@@ -556,6 +564,13 @@ const DataManagementScreen = () => {
   };
 
   const editOfflineDraft = (draft: OfflineTransactionDraft) => {
+    if (mayHaveReachedServer(draft)) {
+      Alert.alert(
+        'Cần đối chiếu trước',
+        'Máy chủ có thể đã ghi giao dịch này. Hãy kết nối và xem lại kết quả trước khi sửa.',
+      );
+      return;
+    }
     setDraftEditor({
       id: draft.id,
       amount: draft.payload.amount,
@@ -772,7 +787,7 @@ const DataManagementScreen = () => {
             <View style={styles.actionCopy}>
               <Text style={styles.cardTitle}>Bản nháp ngoại tuyến</Text>
               <Text style={styles.cardText}>
-                Chưa làm thay đổi số dư cho đến khi máy chủ xác nhận.
+                Xem lại từng khoản trên máy trước khi đồng bộ.
               </Text>
             </View>
             <TouchableOpacity
@@ -815,7 +830,9 @@ const DataManagementScreen = () => {
                       </Text>
                       <Text style={styles.draftMeta} numberOfLines={2}>
                         {draft.payload.note || 'Giao dịch chưa có ghi chú'} ·{' '}
-                        {draft.status === 'NEEDS_REVIEW'
+                        {mayHaveReachedServer(draft)
+                          ? 'Đã thử gửi · cần đối chiếu máy chủ'
+                          : draft.status === 'NEEDS_REVIEW'
                           ? `Cần kiểm tra: ${
                               draft.lastError || 'dữ liệu chưa hợp lệ'
                             }`

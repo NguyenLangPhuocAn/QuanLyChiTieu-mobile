@@ -211,6 +211,35 @@ describe('offlineTransactionQueue', () => {
     expect(draft.attempts).toBe(1);
   });
 
+  it('keeps an uncertain payment immutable until the server result is reconciled', async () => {
+    const original = await offlineTransactionQueue.enqueue(7, {
+      wallet_id: 2,
+      amount: '2863',
+      type: 'EXPENSE',
+      client_request_id: 'txn_unknown_then_edit_12345',
+    });
+    createTransaction.mockRejectedValueOnce(
+      new ApiError('Mất phản hồi', 0, 'REQUEST_OUTCOME_UNKNOWN'),
+    );
+    await offlineTransactionQueue.sync('token', 7);
+
+    await expect(
+      offlineTransactionQueue.update(7, original.id, { amount: '1247' }),
+    ).rejects.toThrow('đối chiếu trước khi sửa');
+    await expect(
+      offlineTransactionQueue.remove(7, original.id),
+    ).rejects.toThrow('đối chiếu trước khi xóa');
+    const [pending] = await offlineTransactionQueue.list(7);
+    expect(pending.payload).toEqual(original.payload);
+    expect(pending.rejectedByServer).toBe(false);
+
+    createTransaction.mockResolvedValueOnce({ id: 60 });
+    await offlineTransactionQueue.sync('token', 7);
+    expect(createTransaction).toHaveBeenCalledTimes(2);
+    expect(createTransaction.mock.calls[1][1]).toEqual(original.payload);
+    expect(await offlineTransactionQueue.list(7)).toEqual([]);
+  });
+
   it('retries an ambiguous write with the original request id after recovery', async () => {
     await offlineTransactionQueue.enqueue(7, {
       wallet_id: 2,
@@ -319,13 +348,20 @@ describe('offlineTransactionQueue', () => {
 
     expect(updated).toMatchObject({
       status: 'PENDING',
+      attempts: 0,
       lastError: undefined,
+      rejectedByServer: false,
       payload: {
         amount: '125000',
         note: 'Sửa sau khi kiểm tra',
         client_request_id: 'txn_review_then_edit_12345',
       },
     });
+    await expect(
+      offlineTransactionQueue.update(7, 'txn_review_then_edit_12345', {
+        amount: '126000',
+      }),
+    ).resolves.toMatchObject({ attempts: 0 });
   });
 
   it('stops at the first network or auth failure and does not mark drafts as invalid', async () => {

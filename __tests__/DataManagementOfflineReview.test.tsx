@@ -24,6 +24,9 @@ jest.mock('../src/native/homeWidget', () => ({
   homeWidget: { connected: jest.fn() },
 }));
 jest.mock('../src/services/offlineTransactionQueue', () => ({
+  mayHaveReachedServer: jest.requireActual(
+    '../src/services/offlineTransactionQueue',
+  ).mayHaveReachedServer,
   offlineTransactionQueue: {
     list: jest.fn(),
     subscribe: jest.fn(),
@@ -143,4 +146,41 @@ it('requires a second confirmation before discarding the phone copy', async () =
     { id: draft.id, updatedAt: draft.updatedAt },
   ]);
   expect(offlineTransactionQueue.sync).not.toHaveBeenCalled();
+});
+
+it('warns before editing or removing a payment whose server result is unknown', async () => {
+  jest
+    .mocked(offlineTransactionQueue.list)
+    .mockResolvedValue([
+      { ...draft, attempts: 1, rejectedByServer: false } as never,
+    ]);
+  await act(async () => {
+    renderer = TestRenderer.create(<DataManagementScreen />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node =>
+        String(node.props.children).includes(
+          'Đã thử gửi · cần đối chiếu máy chủ',
+        ),
+      ),
+  ).toBe(true);
+  await act(async () =>
+    renderer!.root
+      .findByProps({ accessibilityLabel: 'Sửa bản nháp' })
+      .props.onPress(),
+  );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
+    'Cần đối chiếu trước',
+  );
+  await act(async () =>
+    renderer!.root
+      .findByProps({ accessibilityLabel: 'Xóa bản nháp' })
+      .props.onPress(),
+  );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
+    'Cần đối chiếu trước',
+  );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[2]).toBeUndefined();
 });

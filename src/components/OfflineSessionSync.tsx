@@ -40,6 +40,7 @@ export default function OfflineSessionSync({
     let active = true,
       running = false,
       asking = false,
+      reviewVisible = false,
       shownKey = '';
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const clearRetry = () => {
@@ -80,7 +81,7 @@ export default function OfflineSessionSync({
         const changes = await offlineTransactionChanges.list(userId);
         if (!current()) return;
         retryPending = Boolean(drafts.length || changes.length);
-        if (drafts.some(item => item.status === 'SYNCING')) return;
+        if (offlineTransactionQueue.isSyncing(userId)) return;
         if (!(await homeWidget.connected())) return;
         if (!(await latest.current.retryRestoreSession())) return;
         if (!current() || !latest.current.token) return;
@@ -127,7 +128,7 @@ export default function OfflineSessionSync({
         const latestChanges = await offlineTransactionChanges.preview(userId);
         if (
           !current() ||
-          latestDrafts.some(item => item.status === 'SYNCING') ||
+          offlineTransactionQueue.isSyncing(userId) ||
           JSON.stringify(
             latestDrafts.map(item => ({
               id: item.id,
@@ -139,6 +140,7 @@ export default function OfflineSessionSync({
           return;
         shownKey = key;
         asking = true;
+        reviewVisible = true;
         retryPending = false;
         clearRetry();
         promptedUsers.add(userId);
@@ -229,11 +231,13 @@ export default function OfflineSessionSync({
         choiceRef.current = choice => {
           if (choice === 'later') {
             setReview(null);
+            reviewVisible = false;
             asking = false;
             promptedUsers.delete(userId);
             choiceRef.current = null;
           } else if (choice === 'local') {
             setReview(null);
+            reviewVisible = false;
             choose('local').catch(() => undefined);
           } else {
             Alert.alert(
@@ -248,6 +252,7 @@ export default function OfflineSessionSync({
                   style: 'destructive',
                   onPress: () => {
                     setReview(null);
+                    reviewVisible = false;
                     choose('cloud').catch(() => undefined);
                   },
                 },
@@ -263,6 +268,34 @@ export default function OfflineSessionSync({
         if (retryPending) scheduleRetry();
       }
     };
+    const reviewQueueChanged = () => {
+      if (!reviewVisible) {
+        attempt().catch(() => undefined);
+        return;
+      }
+      Promise.all([
+        offlineTransactionQueue.list(userId),
+        offlineTransactionChanges.preview(userId),
+      ])
+        .then(([drafts, changes]) => {
+          if (!active || !reviewVisible) return;
+          const key = JSON.stringify([
+            drafts
+              .filter(item => item.server === server)
+              .map(item => ({ id: item.id, updatedAt: item.updatedAt })),
+            changes,
+          ]);
+          if (key === shownKey) return;
+          setReview(null);
+          reviewVisible = false;
+          asking = false;
+          shownKey = '';
+          promptedUsers.delete(userId);
+          choiceRef.current = null;
+          attempt().catch(() => undefined);
+        })
+        .catch(() => undefined);
+    };
     const foreground = AppState.addEventListener('change', state => {
       if (state === 'active') attempt().catch(() => undefined);
       else clearRetry();
@@ -270,12 +303,12 @@ export default function OfflineSessionSync({
     const reconnect = homeWidget.subscribe(() => {
       attempt().catch(() => undefined);
     });
-    const queued = offlineTransactionQueue.subscribe(() => {
-      attempt().catch(() => undefined);
-    });
+    const queued = offlineTransactionQueue.subscribe(reviewQueueChanged);
+    const changed = offlineTransactionChanges.subscribe(reviewQueueChanged);
     attempt().catch(() => undefined);
     return () => {
       active = false;
+      reviewVisible = false;
       clearRetry();
       if (asking) promptedUsers.delete(userId);
       choiceRef.current = null;
@@ -283,6 +316,7 @@ export default function OfflineSessionSync({
       foreground.remove();
       reconnect();
       queued();
+      changed();
     };
   }, [user?.id, server, isRestoringSession]);
   return (
