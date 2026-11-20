@@ -545,7 +545,9 @@ const DataManagementScreen = () => {
     }
     Alert.alert(
       'Xóa bản nháp?',
-      'Bản nháp này chưa được máy chủ ghi. Sau khi xóa sẽ không thể khôi phục.',
+      draft.receipt
+        ? 'Bản nháp chưa được máy chủ ghi. Xóa sẽ bỏ cả ảnh hóa đơn đã giữ trên máy.'
+        : 'Bản nháp này chưa được máy chủ ghi. Sau khi xóa sẽ không thể khôi phục.',
       [
         { text: 'Giữ lại', style: 'cancel' },
         {
@@ -830,7 +832,9 @@ const DataManagementScreen = () => {
                       </Text>
                       <Text style={styles.draftMeta} numberOfLines={2}>
                         {draft.payload.note || 'Giao dịch chưa có ghi chú'} ·{' '}
-                        {mayHaveReachedServer(draft)
+                        {draft.confirmedTransactionId && draft.receipt
+                          ? 'Giao dịch đã lưu · ảnh chờ sao lưu'
+                          : mayHaveReachedServer(draft)
                           ? 'Đã thử gửi · cần đối chiếu máy chủ'
                           : draft.status === 'NEEDS_REVIEW'
                           ? `Cần kiểm tra: ${
@@ -838,6 +842,11 @@ const DataManagementScreen = () => {
                             }`
                           : 'Đang chờ đồng bộ'}
                       </Text>
+                      {draft.receipt && !draft.confirmedTransactionId ? (
+                        <Text style={styles.draftMeta}>
+                          Ảnh đã giữ trên máy · chưa sao lưu
+                        </Text>
+                      ) : null}
                     </View>
                     <TouchableOpacity
                       accessibilityRole="button"

@@ -61,8 +61,15 @@ export default function OfflineSyncReviewModal({
                   {item.payload.note || 'Không có ghi chú'}
                 </Text>
                 <Text style={styles.remote}>
-                  Máy chủ: Chưa xác định đã nhận khoản này
+                  {item.confirmedTransactionId
+                    ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
+                    : 'Máy chủ: Chưa xác định đã nhận khoản này'}
                 </Text>
+                {item.receipt ? (
+                  <Text style={styles.remote}>
+                    Ảnh hóa đơn đã giữ trên máy.
+                  </Text>
+                ) : null}
               </View>
             ))}
             {review?.changes.map(item => (

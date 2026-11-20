@@ -4,6 +4,11 @@ import {
   transactionsService,
   type CreateTransactionPayload,
 } from './transactions';
+import {
+  offlineReceiptStore,
+  type PendingReceipt,
+  type ReceiptSource,
+} from './offlineReceiptStore';
 
 export type OfflineTransactionDraftStatus =
   | 'PENDING'
@@ -19,11 +24,14 @@ export type OfflineTransactionDraft = {
   attempts: number;
   lastError?: string;
   rejectedByServer?: boolean;
+  confirmedTransactionId?: number;
+  receipt?: PendingReceipt;
   payload: CreateTransactionPayload & { client_request_id?: string };
 };
 
 export const mayHaveReachedServer = (draft: OfflineTransactionDraft) =>
-  draft.attempts > 0 && draft.rejectedByServer !== true;
+  Boolean(draft.confirmedTransactionId) ||
+  (draft.attempts > 0 && draft.rejectedByServer !== true);
 
 export type OfflineQueueSyncResult = {
   synced: number;
@@ -136,17 +144,50 @@ const runSync = async (
     if (!isCurrent() || getApiStorageBaseUrl() !== server) break;
     if (draft.server !== server) continue;
     if (draft.status === 'NEEDS_REVIEW') continue;
+    if (draft.receipt) {
+      try {
+        await offlineReceiptStore.verify(userId, draft.receipt);
+      } catch (error) {
+        draft.status = 'NEEDS_REVIEW';
+        draft.lastError =
+          error instanceof Error
+            ? error.message
+            : 'Không đọc được ảnh hóa đơn trên máy.';
+        draft.updatedAt = new Date().toISOString();
+        await save(userId, drafts);
+        continue;
+      }
+    }
     draft.status = 'SYNCING';
     draft.updatedAt = new Date().toISOString();
     draft.attempts += 1;
     draft.rejectedByServer = false;
     await save(userId, drafts);
 
+    let completed = false;
     try {
-      await transactionsService.create(token, draft.payload);
-      const index = drafts.indexOf(draft);
-      if (index >= 0) drafts.splice(index, 1);
-      synced += 1;
+      const transactionId =
+        draft.confirmedTransactionId ??
+        (await transactionsService.create(token, draft.payload)).id;
+      if (draft.receipt) {
+        draft.confirmedTransactionId = transactionId;
+        await save(userId, drafts);
+        if (!isCurrent() || getApiStorageBaseUrl() !== server) {
+          draft.status = 'PENDING';
+          await save(userId, drafts);
+          break;
+        }
+        const uploaded = await transactionsService.uploadReceipt(
+          token,
+          transactionId,
+          offlineReceiptStore.uploadFile(draft.receipt),
+        );
+        if (uploaded.id !== transactionId || !uploaded.receipt_image)
+          throw Error(
+            'Máy chủ chưa xác nhận đã lưu ảnh hóa đơn. Ảnh vẫn giữ trên máy.',
+          );
+      }
+      completed = true;
     } catch (error) {
       draft.updatedAt = new Date().toISOString();
       draft.lastError = error instanceof Error ? error.message : 'Lỗi đồng bộ';
@@ -167,7 +208,18 @@ const runSync = async (
         break;
       }
     }
-    await save(userId, drafts);
+    if (completed) {
+      const index = drafts.indexOf(draft);
+      if (index >= 0) drafts.splice(index, 1);
+      await save(userId, drafts);
+      if (draft.receipt)
+        await offlineReceiptStore
+          .remove(userId, draft.receipt)
+          .catch(() => undefined);
+      synced += 1;
+    } else {
+      await save(userId, drafts);
+    }
   }
 
   return {
@@ -212,6 +264,8 @@ export const offlineTransactionQueue = {
   async enqueue(
     userId: number,
     payload: CreateTransactionPayload & { client_request_id?: string },
+    receiptFile?: ReceiptSource | null,
+    confirmedTransactionId?: number,
   ) {
     const server = getApiStorageBaseUrl();
     return withUserLock(userId, async () => {
@@ -242,10 +296,17 @@ export const offlineTransactionQueue = {
             409,
             'OFFLINE_DRAFT_CONFLICT',
           );
+        if (Boolean(existing.receipt) !== Boolean(receiptFile))
+          throw Error(
+            'Bản nháp này đã có trạng thái ảnh khác. Hãy kiểm tra hàng chờ.',
+          );
         return existing;
       }
 
       const now = new Date().toISOString();
+      const receipt = receiptFile
+        ? await offlineReceiptStore.stage(userId, requestId, receiptFile)
+        : undefined;
       const draft: OfflineTransactionDraft = {
         server,
         id: requestId,
@@ -253,10 +314,20 @@ export const offlineTransactionQueue = {
         updatedAt: now,
         status: 'PENDING',
         attempts: 0,
+        ...(receipt ? { receipt } : {}),
+        ...(confirmedTransactionId ? { confirmedTransactionId } : {}),
         payload: nextPayload,
       };
       drafts.push(draft);
-      await save(userId, drafts);
+      try {
+        await save(userId, drafts);
+      } catch (error) {
+        if (receipt)
+          await offlineReceiptStore
+            .remove(userId, receipt)
+            .catch(() => undefined);
+        throw error;
+      }
       return draft;
     });
   },
@@ -283,6 +354,10 @@ export const offlineTransactionQueue = {
             (item.server && item.server !== getApiStorageBaseUrl()),
         ),
       );
+      if (target?.receipt)
+        await offlineReceiptStore
+          .remove(userId, target.receipt)
+          .catch(() => undefined);
     });
   },
 
@@ -308,6 +383,12 @@ export const offlineTransactionQueue = {
         userId,
         drafts.filter(item => item.server !== server),
       );
+      for (const draft of drafts.filter(
+        item => item.server === server && item.receipt,
+      ))
+        await offlineReceiptStore
+          .remove(userId, draft.receipt!)
+          .catch(() => undefined);
       return current.length;
     });
   },

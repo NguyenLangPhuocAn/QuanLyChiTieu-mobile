@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiError, configureAuthSession, getApiStorageBaseUrl } from '../api';
 import { offlineTransactionQueue } from '../offlineTransactionQueue';
 import { transactionsService } from '../transactions';
+import { offlineReceiptStore } from '../offlineReceiptStore';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
@@ -9,7 +10,15 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 jest.mock('../transactions', () => ({
-  transactionsService: { create: jest.fn() },
+  transactionsService: { create: jest.fn(), uploadReceipt: jest.fn() },
+}));
+jest.mock('../offlineReceiptStore', () => ({
+  offlineReceiptStore: {
+    stage: jest.fn(),
+    verify: jest.fn(),
+    uploadFile: jest.fn(),
+    remove: jest.fn(),
+  },
 }));
 
 const storage = new Map<string, string>();
@@ -20,11 +29,31 @@ const setItem = AsyncStorage.setItem as jest.MockedFunction<
   typeof AsyncStorage.setItem
 >;
 const createTransaction = transactionsService.create as jest.Mock;
+const uploadReceipt = transactionsService.uploadReceipt as jest.Mock;
+const receiptStore = offlineReceiptStore as jest.Mocked<
+  typeof offlineReceiptStore
+>;
+const receiptFile = {
+  uri: 'file:///cache/receipt.jpg',
+  name: 'receipt.jpg',
+  type: 'image/jpeg',
+};
+const storedReceipt = {
+  path: '/private/7/receipt.jpg',
+  name: 'receipt.jpg',
+  type: 'image/jpeg',
+  size: 120,
+  sha256: 'abc',
+};
 
 describe('offlineTransactionQueue', () => {
   beforeEach(() => {
     storage.clear();
     jest.clearAllMocks();
+    receiptStore.stage.mockResolvedValue(storedReceipt);
+    receiptStore.verify.mockResolvedValue(undefined);
+    receiptStore.uploadFile.mockReturnValue(receiptFile);
+    receiptStore.remove.mockResolvedValue(undefined);
     getItem.mockImplementation(async key => storage.get(key) ?? null);
     setItem.mockImplementation(async (key, value) => {
       storage.set(key, value);
@@ -209,6 +238,103 @@ describe('offlineTransactionQueue', () => {
     expect(result).toEqual({ synced: 0, pending: 1, needsReview: 0 });
     expect(draft.status).toBe('PENDING');
     expect(draft.attempts).toBe(1);
+  });
+
+  it('keeps a copied receipt after upload failure and retries without creating money twice', async () => {
+    const draft = await offlineTransactionQueue.enqueue(
+      7,
+      {
+        wallet_id: 2,
+        amount: '12500',
+        type: 'EXPENSE',
+        client_request_id: 'txn_photo_retry_1234567',
+      },
+      receiptFile,
+    );
+    expect(draft.receipt).toEqual(storedReceipt);
+    createTransaction.mockResolvedValue({ id: 91 });
+    uploadReceipt.mockRejectedValueOnce(new ApiError('offline', 0));
+    await offlineTransactionQueue.sync('token', 7);
+    expect(await offlineTransactionQueue.list(7)).toEqual([
+      expect.objectContaining({
+        confirmedTransactionId: 91,
+        receipt: storedReceipt,
+        status: 'PENDING',
+      }),
+    ]);
+    expect(receiptStore.remove).not.toHaveBeenCalled();
+
+    uploadReceipt.mockResolvedValueOnce({ id: 91, receipt_image: 'saved.jpg' });
+    await offlineTransactionQueue.sync('token', 7);
+    expect(createTransaction).toHaveBeenCalledTimes(1);
+    expect(uploadReceipt).toHaveBeenCalledTimes(2);
+    expect(await offlineTransactionQueue.list(7)).toEqual([]);
+    expect(receiptStore.remove).toHaveBeenCalledWith(7, storedReceipt);
+  });
+
+  it('does not send money when the staged receipt has vanished', async () => {
+    await offlineTransactionQueue.enqueue(
+      7,
+      {
+        wallet_id: 2,
+        amount: '20000',
+        type: 'EXPENSE',
+        client_request_id: 'txn_photo_missing_123456',
+      },
+      receiptFile,
+    );
+    receiptStore.verify.mockRejectedValueOnce(new Error('Ảnh đã mất'));
+    expect(await offlineTransactionQueue.sync('token', 7)).toMatchObject({
+      synced: 0,
+      needsReview: 1,
+    });
+    expect(createTransaction).not.toHaveBeenCalled();
+    expect((await offlineTransactionQueue.list(7))[0].lastError).toBe(
+      'Ảnh đã mất',
+    );
+  });
+
+  it('queues only the photo when the transaction was already saved', async () => {
+    await offlineTransactionQueue.enqueue(
+      7,
+      {
+        wallet_id: 2,
+        amount: '20000',
+        type: 'EXPENSE',
+        client_request_id: 'txn_photo_after_money_123',
+      },
+      receiptFile,
+      88,
+    );
+    uploadReceipt.mockResolvedValueOnce({ id: 88, receipt_image: 'saved.jpg' });
+    await offlineTransactionQueue.sync('token', 7);
+    expect(createTransaction).not.toHaveBeenCalled();
+    expect(uploadReceipt).toHaveBeenCalledWith('token', 88, receiptFile);
+    expect(await offlineTransactionQueue.list(7)).toEqual([]);
+  });
+
+  it('keeps the photo pending when upload response does not confirm the attachment', async () => {
+    await offlineTransactionQueue.enqueue(
+      7,
+      {
+        wallet_id: 2,
+        amount: '20000',
+        type: 'EXPENSE',
+        client_request_id: 'txn_photo_unconfirmed_123',
+      },
+      receiptFile,
+      88,
+    );
+    uploadReceipt.mockResolvedValueOnce({ id: 88, receipt_image: null });
+    await offlineTransactionQueue.sync('token', 7);
+    expect(await offlineTransactionQueue.list(7)).toEqual([
+      expect.objectContaining({
+        confirmedTransactionId: 88,
+        receipt: storedReceipt,
+        status: 'PENDING',
+      }),
+    ]);
+    expect(receiptStore.remove).not.toHaveBeenCalled();
   });
 
   it('keeps an uncertain payment immutable until the server result is reconciled', async () => {

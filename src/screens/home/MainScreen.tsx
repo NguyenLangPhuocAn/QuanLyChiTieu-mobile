@@ -421,7 +421,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           cancelled ||
           dashboardDataVisible.current ||
           freshReferencesVisible.current
-        ) return;
+        )
+          return;
         if (cached) {
           applyDashboardSnapshot(cached);
           setRefreshing(false);
@@ -458,7 +459,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           if (user?.id) {
             referenceRequest
               .then(([walletData, categoryData]) =>
-                dashboardCache.saveReferences(user.id, walletData, categoryData),
+                dashboardCache.saveReferences(
+                  user.id,
+                  walletData,
+                  categoryData,
+                ),
               )
               .catch(() => undefined);
           }
@@ -503,7 +508,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             ? await dashboardCache.read(requestUserId).catch(() => null)
             : null;
           const references = requestUserId
-            ? await dashboardCache.readReferences(requestUserId).catch(() => null)
+            ? await dashboardCache
+                .readReferences(requestUserId)
+                .catch(() => null)
             : null;
           if (activeUserId.current !== requestUserId) return;
           if (cached && !dashboardDataVisible.current) {
@@ -1690,6 +1697,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           });
           if (!billLive.current || billReviewEpoch.current !== epoch) return;
           let receiptUploadFailed = false;
+          let receiptQueued = false;
           if (receiptFile) {
             try {
               const upload = buildReceiptUploadFile(
@@ -1704,6 +1712,17 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 );
             } catch {
               receiptUploadFailed = true;
+              try {
+                await offlineTransactionQueue.enqueue(
+                  scope.userId,
+                  payload,
+                  receiptFile,
+                  transaction.id,
+                );
+                receiptQueued = true;
+              } catch {
+                // The payment is already saved; keep the user informed below.
+              }
             }
           }
           await fetchDashboardData().catch(() => undefined);
@@ -1725,7 +1744,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               transaction.id
             } và đánh dấu kỳ ${formatShortDate(billPayment.dueDate)} đã trả.${
               receiptUploadFailed
-                ? ' Ảnh hóa đơn chưa tải lên được; hãy thêm lại trong lịch sử.'
+                ? receiptQueued
+                  ? ' Ảnh đã giữ trên máy để tải lên sau khi bạn xác nhận đồng bộ.'
+                  : ' Ảnh chưa giữ được trên máy; hãy thêm lại trong lịch sử.'
                 : ''
             }`,
           );
@@ -1813,13 +1834,6 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
                 repeatDraft?.requestId ?? transactionRequestId.current,
             }),
       };
-      if (isOfflineSession && receiptFile) {
-        Alert.alert(
-          'Ảnh hóa đơn chưa lưu được offline',
-          'Ảnh chưa thể giữ an toàn trên máy để tải lên sau. Hãy bỏ ảnh rồi lưu giao dịch trên máy, hoặc giữ form và lưu cả ảnh khi có mạng.',
-        );
-        return;
-      }
       if (repeatDraft) {
         const fingerprint = JSON.stringify({
           payload: createPayload,
@@ -1875,15 +1889,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
         );
       } catch (error) {
         if (user?.id && isRetryableOfflineTransactionError(error)) {
-          if (receiptFile) {
-            Alert.alert(
-              'Chưa lưu giao dịch',
-              'Mất kết nối khi đang lưu ảnh hóa đơn. Form và ảnh vẫn còn ở đây. Hãy thử lại khi có mạng, hoặc bỏ ảnh rồi lưu giao dịch trên máy.',
-            );
-            return;
-          }
           try {
-            await offlineTransactionQueue.enqueue(user.id, createPayload);
+            await offlineTransactionQueue.enqueue(
+              user.id,
+              createPayload,
+              receiptFile,
+            );
           } catch (storageError) {
             Alert.alert(
               'Chưa lưu được trên máy',
@@ -1906,7 +1917,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           resetTransactionForm();
           Alert.alert(
             'Đã giữ bản nháp ngoại tuyến',
-            'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Bản nháp chưa làm thay đổi số dư.',
+            receiptFile
+              ? 'Giao dịch và ảnh đã lưu trên máy. Khi có mạng, bạn sẽ xem lại và xác nhận đồng bộ cả hai.'
+              : 'Khi có mạng, bạn sẽ xem lại và xác nhận trước khi đồng bộ. Bản nháp chưa làm thay đổi số dư.',
           );
           return;
         }
@@ -1919,6 +1932,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
 
       let receiptUploadFailed = false;
+      let receiptQueued = false;
       if (receiptFile) {
         try {
           const uploadFile = buildReceiptUploadFile(
@@ -1934,7 +1948,28 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           }
         } catch {
           receiptUploadFailed = true;
+          if (user?.id) {
+            try {
+              await offlineTransactionQueue.enqueue(
+                user.id,
+                createPayload,
+                receiptFile,
+                createdTransaction.id,
+              );
+              receiptQueued = true;
+            } catch {
+              // The transaction is already saved; keep the form result visible.
+            }
+          }
         }
+      }
+
+      if (receiptUploadFailed && !receiptQueued) {
+        Alert.alert(
+          'Giao dịch đã lưu, ảnh chưa lưu',
+          'Giao dịch đã có trên máy chủ nhưng ảnh chưa giữ được trên máy. Hãy thử lưu lại với ảnh đang chọn; app sẽ dùng lại mã giao dịch này.',
+        );
+        return;
       }
 
       if (activeBankNotificationEventId && user?.id) {
@@ -1958,7 +1993,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       if (receiptUploadFailed) {
         Alert.alert(
           'Giao dịch đã được lưu',
-          'Giao dịch đã lưu nhưng ảnh chưa tải lên được. Bạn có thể thêm lại ảnh trong lịch sử giao dịch.',
+          receiptQueued
+            ? 'Ảnh đã giữ trên máy và sẽ được tải lên sau khi bạn xác nhận đồng bộ. Giao dịch tiền sẽ không tạo lại.'
+            : 'Ảnh chưa lưu được trên máy. Bạn cần thêm lại ảnh trong lịch sử giao dịch.',
         );
       }
     });

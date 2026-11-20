@@ -209,7 +209,15 @@ export default function OfflineSessionSync({
                     result.needsReview + edits.needsReview
                   } cần xem lại.`,
                 );
-              } else shownKey = '';
+              } else {
+                shownKey = '';
+                const savedCount = result.synced + edits.synced;
+                if (savedCount > 0 && current())
+                  Alert.alert(
+                    'Đã sao lưu dữ liệu thành công',
+                    `${savedCount} thay đổi giao dịch đã được lưu lên máy chủ.`,
+                  );
+              }
             }
             if (current()) await refresh();
           } catch (error) {
