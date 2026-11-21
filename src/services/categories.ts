@@ -1,5 +1,9 @@
 import { apiRequest, apiUploadRequest } from './api';
-import type { ApiCategoryCashFlowGroup, ApiCategoryType, Category } from '../types/category';
+import type {
+  ApiCategoryCashFlowGroup,
+  ApiCategoryType,
+  Category,
+} from '../types/category';
 
 export const categoriesService = {
   getAll(token: string) {
@@ -15,6 +19,7 @@ export const categoriesService = {
       name: string;
       type: ApiCategoryType;
       cash_flow_group?: ApiCategoryCashFlowGroup;
+      client_request_id?: string;
     },
   ) {
     return apiRequest<Category>('/categories', {
@@ -31,6 +36,12 @@ export const categoriesService = {
       name?: string;
       type?: ApiCategoryType;
       cash_flow_group?: ApiCategoryCashFlowGroup;
+      offline_expected?: {
+        name: string;
+        type: ApiCategoryType;
+        cash_flow_group: ApiCategoryCashFlowGroup;
+        icon: string | null;
+      };
     },
   ) {
     return apiRequest<Category>(`/categories/${id}`, {
@@ -40,10 +51,20 @@ export const categoriesService = {
     });
   },
 
-  remove(token: string, id: number) {
+  remove(
+    token: string,
+    id: number,
+    expected?: {
+      name: string;
+      type: ApiCategoryType;
+      cash_flow_group: ApiCategoryCashFlowGroup;
+      icon: string | null;
+    },
+  ) {
     return apiRequest<Category>(`/categories/${id}`, {
       method: 'DELETE',
       token,
+      ...(expected ? { body: { offline_expected: expected } } : {}),
     });
   },
 

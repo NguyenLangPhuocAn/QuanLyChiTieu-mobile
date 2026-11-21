@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,10 +18,17 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ImagePlus, MoreHorizontal, Plus, Search, X } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  ImagePlus,
+  MoreHorizontal,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import CategoryIcon from '../../components/CategoryIcon';
@@ -24,11 +37,19 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import { categoriesService } from '../../services/categories';
 import { dashboardCache } from '../../services/dashboardCache';
+import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
+import { financeRefresh } from '../../services/financeRefresh';
+import { ApiError } from '../../services/api';
+import { homeWidget } from '../../native/homeWidget';
 import { resolveCategoryIconUrl } from '../../utils/categoryIcons';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { filterNormalCashFlowCategories } from '../../utils/transactionClassification';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import type { ApiCategoryCashFlowGroup, ApiCategoryType, Category } from '../../types/category';
+import type {
+  ApiCategoryCashFlowGroup,
+  ApiCategoryType,
+  Category,
+} from '../../types/category';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Categories'>;
 type ModalMode = 'create' | 'edit' | 'delete' | null;
@@ -67,8 +88,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setCategories,
     setSelectedBudgetCategory,
     setSelectedTransactionCategory,
-  } =
-    useFinance();
+  } = useFinance();
   const selectTarget = route.params?.selectTarget ?? 'transaction';
   const isBudgetSelectTarget = selectTarget === 'budget';
   const [activeType, setActiveType] = useState<ApiCategoryType>(
@@ -82,15 +102,26 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
-  const readOnly = isOfflineSession || Boolean(cachedAt);
-  const showOfflineWriteNotice = () =>
-    Alert.alert('Cần kết nối', 'Thêm, sửa và xóa danh mục cần có mạng. Danh mục trên máy vẫn có thể chọn cho giao dịch.');
+  const [usingLocalData, setUsingLocalData] = useState(false);
+  const baseCategories = useRef<Category[]>([]);
+  const displayCategories = useCallback(
+    async (userId: number, base: Category[]) => {
+      baseCategories.current = base;
+      const pending = await offlineCategoryQueue.list(userId);
+      if (activeUserId.current !== userId) return;
+      setCategories(offlineCategoryQueue.apply(base, pending));
+    },
+    [setCategories],
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(
+    null,
+  );
   const [categoryName, setCategoryName] = useState('');
   const [categoryType, setCategoryType] = useState<ApiCategoryType>('EXPENSE');
-  const [categoryCashFlowGroup, setCategoryCashFlowGroup] = useState<ApiCategoryCashFlowGroup>('NORMAL');
+  const [categoryCashFlowGroup, setCategoryCashFlowGroup] =
+    useState<ApiCategoryCashFlowGroup>('NORMAL');
   const [iconFile, setIconFile] = useState<CategoryIconUploadFile | null>(null);
 
   const isSelectMode = Boolean(route.params?.selectMode);
@@ -104,14 +135,23 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     const userId = user.id;
     const current = () => activeUserId.current === userId;
     setIsLoading(true);
-    const cached = await dashboardCache.read(userId).catch(() => null);
+    const [cached, references] = await Promise.all([
+      dashboardCache.read(userId).catch(() => null),
+      dashboardCache.readReferences(userId).catch(() => null),
+    ]);
     if (!current()) return;
-    if (cached) {
-      setCategories(cached.categories);
-      setCachedAt(cached.updatedAt);
+    if (references || cached) {
+      await displayCategories(
+        userId,
+        references?.categories ?? cached!.categories,
+      );
+      setCachedAt(references?.updatedAt ?? cached!.updatedAt);
+      setUsingLocalData(true);
     } else {
+      baseCategories.current = [];
       setCategories([]);
       setCachedAt(null);
+      setUsingLocalData(false);
     }
     if (isOfflineSession) {
       setIsLoading(false);
@@ -120,15 +160,37 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     try {
       const response = await categoriesService.getAll(token);
       if (!current()) return;
-      setCategories(response);
+      await displayCategories(userId, response);
       setCachedAt(null);
+      setUsingLocalData(false);
+      dashboardCache
+        .saveReferences(
+          userId,
+          references?.wallets ?? cached?.wallets ?? [],
+          response,
+        )
+        .catch(() => undefined);
     } catch (error) {
       if (current() && !cached)
-        Alert.alert('Lỗi tải danh mục', getUserFriendlyErrorMessage(error, 'Không thể tải danh mục.'));
+        Alert.alert(
+          'Lỗi tải danh mục',
+          getUserFriendlyErrorMessage(error, 'Không thể tải danh mục.'),
+        );
     } finally {
       if (current()) setIsLoading(false);
     }
-  }, [setCategories, token, user?.id, isOfflineSession]);
+  }, [displayCategories, setCategories, token, user?.id, isOfflineSession]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const unsubscribe = offlineCategoryQueue.subscribe(() => {
+      displayCategories(userId, baseCategories.current).catch(() => undefined);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [displayCategories, user?.id]);
 
   useEffect(() => {
     fetchCategories();
@@ -144,14 +206,16 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     const keyword = searchText.trim().toLowerCase();
 
     return filterNormalCashFlowCategories(categories).filter(category => {
-      const matchedType = category.type === (isBudgetSelectTarget ? 'EXPENSE' : activeType);
-      const matchedKeyword = !keyword || category.name.toLowerCase().includes(keyword);
+      const matchedType =
+        category.type === (isBudgetSelectTarget ? 'EXPENSE' : activeType);
+      const matchedKeyword =
+        !keyword || category.name.toLowerCase().includes(keyword);
       const matchedScope =
         scopeFilter === 'ALL'
           ? true
           : scopeFilter === 'SYSTEM'
-            ? Boolean(category.is_system)
-            : !category.is_system;
+          ? Boolean(category.is_system)
+          : !category.is_system;
 
       return matchedType && matchedKeyword && matchedScope;
     });
@@ -167,9 +231,11 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const openCreateModal = () => {
-    if (readOnly) return showOfflineWriteNotice();
     if (!canCreateCategory) {
-      Alert.alert('Cần Premium', 'Tài khoản hiện tại chưa thể thêm danh mục cá nhân.');
+      Alert.alert(
+        'Cần Premium',
+        'Tài khoản hiện tại chưa thể thêm danh mục cá nhân.',
+      );
       return;
     }
 
@@ -182,7 +248,6 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const openEditModal = (category: Category) => {
-    if (readOnly) return showOfflineWriteNotice();
     if (category.is_system) {
       return;
     }
@@ -196,6 +261,13 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const handlePickIcon = async () => {
+    if (usingLocalData || isOfflineSession) {
+      Alert.alert(
+        'Cần mạng để tải icon',
+        'Danh mục vẫn lưu được trên máy. Bạn có thể thêm icon sau khi có mạng.',
+      );
+      return;
+    }
     let result;
 
     try {
@@ -216,20 +288,29 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     const asset = result.assets?.[0];
 
     if (!asset?.uri) {
-      Alert.alert('Chưa chọn được ảnh', 'Vui lòng chọn ảnh JPG, PNG hoặc WEBP.');
+      Alert.alert(
+        'Chưa chọn được ảnh',
+        'Vui lòng chọn ảnh JPG, PNG hoặc WEBP.',
+      );
       return;
     }
 
     const type = asset.type ?? 'image/jpeg';
 
-    if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
+    if (
+      !['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)
+    ) {
       Alert.alert('Ảnh chưa hợp lệ', 'Icon chỉ hỗ trợ JPG, PNG hoặc WEBP.');
       return;
     }
 
     setIconFile({
       uri: asset.uri,
-      name: asset.fileName ?? `category-icon-${Date.now()}.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`,
+      name:
+        asset.fileName ??
+        `category-icon-${Date.now()}.${
+          type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'
+        }`,
       type,
     });
   };
@@ -248,8 +329,7 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   };
 
   const saveCategory = async () => {
-    if (readOnly) return showOfflineWriteNotice();
-    if (!token) {
+    if (!token || !user?.id) {
       return;
     }
 
@@ -261,51 +341,155 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
     setIsSaving(true);
 
     try {
+      const payload = {
+        name: categoryName.trim(),
+        type: categoryType,
+        cash_flow_group: categoryCashFlowGroup,
+      };
+      const offline = isOfflineSession || !(await homeWidget.connected());
+      const hasPending = selectedCategory
+        ? (await offlineCategoryQueue.list(user.id)).some(
+            item => item.id === selectedCategory.id,
+          )
+        : false;
+      if (offline || hasPending || (selectedCategory?.id ?? 0) < 0) {
+        if (iconFile)
+          throw Error(
+            'Chưa thể giữ icon danh mục khi mất mạng. Bỏ icon rồi lưu lại.',
+          );
+        if (modalMode === 'edit' && selectedCategory)
+          await offlineCategoryQueue.update(user.id, selectedCategory, payload);
+        else await offlineCategoryQueue.create(user.id, payload);
+        await displayCategories(user.id, baseCategories.current);
+        financeRefresh.emit();
+        closeModal();
+        Alert.alert(
+          'Đã lưu trên máy',
+          'Danh mục sẽ được xem trước khi đồng bộ khi có mạng lại.',
+        );
+        return;
+      }
       if (modalMode === 'edit' && selectedCategory) {
-        const updatedCategory = await categoriesService.update(token, selectedCategory.id, {
-          name: categoryName.trim(),
-          type: categoryType,
-          cash_flow_group: categoryCashFlowGroup,
-        });
+        let updatedCategory;
+        try {
+          updatedCategory = await categoriesService.update(
+            token,
+            selectedCategory.id,
+            payload,
+          );
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 0 || iconFile)
+            throw error;
+          await offlineCategoryQueue.update(user.id, selectedCategory, payload);
+          await displayCategories(user.id, baseCategories.current);
+          closeModal();
+          Alert.alert(
+            'Đã lưu trên máy',
+            'Chưa xác nhận được máy chủ đã nhận. Thay đổi sẽ được đối chiếu khi có mạng lại.',
+          );
+          return;
+        }
 
         if (iconFile) {
-          await categoriesService.uploadIcon(token, updatedCategory.id, iconFile);
+          await categoriesService.uploadIcon(
+            token,
+            updatedCategory.id,
+            iconFile,
+          );
         }
       } else {
-        const createdCategory = await categoriesService.create(token, {
-          name: categoryName.trim(),
-          type: categoryType,
-          cash_flow_group: categoryCashFlowGroup,
-        });
+        const requestId = offlineCategoryQueue.createRequestId();
+        let createdCategory;
+        try {
+          createdCategory = await categoriesService.create(token, {
+            ...payload,
+            client_request_id: requestId,
+          });
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 0) throw error;
+          await offlineCategoryQueue.create(user.id, payload, requestId);
+          await displayCategories(user.id, baseCategories.current);
+          closeModal();
+          Alert.alert(
+            'Đã lưu trên máy',
+            'Chưa xác nhận được máy chủ đã nhận. Danh mục sẽ được đối chiếu khi có mạng lại.',
+          );
+          return;
+        }
 
         if (iconFile) {
-          await categoriesService.uploadIcon(token, createdCategory.id, iconFile);
+          await categoriesService.uploadIcon(
+            token,
+            createdCategory.id,
+            iconFile,
+          );
         }
       }
 
       await fetchCategories();
       closeModal();
     } catch (error) {
-      Alert.alert('Lưu danh mục thất bại', getUserFriendlyErrorMessage(error, 'Không thể lưu danh mục.'));
+      Alert.alert(
+        'Lưu danh mục thất bại',
+        getUserFriendlyErrorMessage(error, 'Không thể lưu danh mục.'),
+      );
     } finally {
       setIsSaving(false);
     }
   };
 
   const deleteCategory = async () => {
-    if (readOnly) return showOfflineWriteNotice();
-    if (!token || !selectedCategory || selectedCategory.is_system) {
+    if (
+      !token ||
+      !user?.id ||
+      !selectedCategory ||
+      selectedCategory.is_system
+    ) {
       return;
     }
 
     setIsSaving(true);
 
     try {
-      await categoriesService.remove(token, selectedCategory.id);
+      const hasPending = (await offlineCategoryQueue.list(user.id)).some(
+        item => item.id === selectedCategory.id,
+      );
+      if (
+        isOfflineSession ||
+        !(await homeWidget.connected()) ||
+        selectedCategory.id < 0 ||
+        hasPending
+      ) {
+        await offlineCategoryQueue.remove(user.id, selectedCategory);
+        await displayCategories(user.id, baseCategories.current);
+        financeRefresh.emit();
+        closeModal();
+        Alert.alert(
+          'Đã lưu trên máy',
+          'Thay đổi sẽ được xem trước khi đồng bộ.',
+        );
+        return;
+      }
+      try {
+        await categoriesService.remove(token, selectedCategory.id);
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 0) throw error;
+        await offlineCategoryQueue.remove(user.id, selectedCategory);
+        await displayCategories(user.id, baseCategories.current);
+        closeModal();
+        Alert.alert(
+          'Đã lưu trên máy',
+          'Chưa xác nhận được máy chủ đã xóa. Thay đổi sẽ được đối chiếu khi có mạng lại.',
+        );
+        return;
+      }
       await fetchCategories();
       closeModal();
     } catch (error) {
-      Alert.alert('Xóa danh mục thất bại', getUserFriendlyErrorMessage(error, 'Không thể xóa danh mục.'));
+      Alert.alert(
+        'Xóa danh mục thất bại',
+        getUserFriendlyErrorMessage(error, 'Không thể xóa danh mục.'),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -314,7 +498,10 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Danh mục</Text>
@@ -337,9 +524,18 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
           {(['EXPENSE', 'INCOME'] as ApiCategoryType[]).map(type => (
             <TouchableOpacity
               key={type}
-              style={[styles.segmentButton, activeType === type && styles.segmentButtonActive]}
-              onPress={() => setActiveType(type)}>
-              <Text style={[styles.segmentText, activeType === type && styles.segmentTextActive]}>
+              style={[
+                styles.segmentButton,
+                activeType === type && styles.segmentButtonActive,
+              ]}
+              onPress={() => setActiveType(type)}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  activeType === type && styles.segmentTextActive,
+                ]}
+              >
                 {typeLabels[type]}
               </Text>
             </TouchableOpacity>
@@ -349,23 +545,34 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
 
       {canUseScopeFilter ? (
         <View style={styles.scopeSegment}>
-          {(['ALL', 'SYSTEM', 'PERSONAL'] as CategoryScopeFilter[]).map(scope => (
-            <TouchableOpacity
-              key={scope}
-              style={[styles.scopeButton, scopeFilter === scope && styles.scopeButtonActive]}
-              onPress={() => setScopeFilter(scope)}>
-              <Text style={[styles.scopeText, scopeFilter === scope && styles.scopeTextActive]}>
-                {scopeFilterLabels[scope]}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {(['ALL', 'SYSTEM', 'PERSONAL'] as CategoryScopeFilter[]).map(
+            scope => (
+              <TouchableOpacity
+                key={scope}
+                style={[
+                  styles.scopeButton,
+                  scopeFilter === scope && styles.scopeButtonActive,
+                ]}
+                onPress={() => setScopeFilter(scope)}
+              >
+                <Text
+                  style={[
+                    styles.scopeText,
+                    scopeFilter === scope && styles.scopeTextActive,
+                  ]}
+                >
+                  {scopeFilterLabels[scope]}
+                </Text>
+              </TouchableOpacity>
+            ),
+          )}
         </View>
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
         {cachedAt ? (
           <Text style={styles.cacheNotice}>
-            Dữ liệu danh mục trên máy · chỉ xem · cập nhật{' '}
+            Dữ liệu danh mục trên máy · cập nhật{' '}
             {Number.isFinite(Date.parse(cachedAt))
               ? new Date(cachedAt).toLocaleString('vi-VN')
               : 'trước đó'}
@@ -395,18 +602,29 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
             return (
               <TouchableOpacity
                 key={category.id}
-                style={[styles.categoryCard, isSelected && styles.categoryCardActive]}
+                style={[
+                  styles.categoryCard,
+                  isSelected && styles.categoryCardActive,
+                ]}
                 onPress={() => handleSelectCategory(category)}
-                activeOpacity={isSelectMode ? 0.8 : 1}>
-                <View style={[styles.iconBox, isSelected && styles.iconBoxActive]}>
+                activeOpacity={isSelectMode ? 0.8 : 1}
+              >
+                <View
+                  style={[styles.iconBox, isSelected && styles.iconBoxActive]}
+                >
                   <CategoryIcon icon={category.icon} size={20} />
                 </View>
                 <View style={styles.categoryInfo}>
                   <Text style={styles.categoryName}>{category.name}</Text>
-                  <Text style={styles.categoryMeta}>{category.is_system ? 'Hệ thống' : 'Cá nhân'}</Text>
+                  <Text style={styles.categoryMeta}>
+                    {category.is_system ? 'Hệ thống' : 'Cá nhân'}
+                  </Text>
                 </View>
                 {canEditCategory && (
-                  <TouchableOpacity style={styles.menuButton} onPress={() => openEditModal(category)}>
+                  <TouchableOpacity
+                    style={styles.menuButton}
+                    onPress={() => openEditModal(category)}
+                  >
                     <MoreHorizontal size={20} color="#9C7255" />
                   </TouchableOpacity>
                 )}
@@ -425,107 +643,169 @@ const CategoriesScreen = ({ navigation, route }: Props) => {
       <Modal transparent visible={modalMode !== null} animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalBackdrop}>
+          style={styles.modalBackdrop}
+        >
           <Pressable style={styles.backdropPressable} onPress={closeModal} />
           <Pressable style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {modalMode === 'delete' ? (
-              <>
-                <Text style={styles.modalTitle}>Xóa danh mục</Text>
-                <Text style={styles.modalDescription}>{selectedCategory?.name}</Text>
-                <TouchableOpacity style={styles.dangerButton} onPress={deleteCategory}>
-                  {isSaving ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryButtonText}>Xóa</Text>}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalTitle}>
-                  {modalMode === 'edit' ? 'Sửa danh mục' : 'Thêm danh mục'}
-                </Text>
-                <Text style={styles.inputLabel}>Tên danh mục</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ví dụ: cà phê, đầu tư, thú cưng"
-                  value={categoryName}
-                  onChangeText={setCategoryName}
-                />
-
-                <Text style={styles.inputLabel}>Loại danh mục</Text>
-                <View style={styles.modalSegment}>
-                  {(['EXPENSE', 'INCOME'] as ApiCategoryType[]).map(type => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[styles.modalSegmentButton, categoryType === type && styles.modalSegmentButtonActive]}
-                      onPress={() => setCategoryType(type)}>
-                      <Text style={[styles.modalSegmentText, categoryType === type && styles.modalSegmentTextActive]}>
-                        {typeLabels[type]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={styles.inputLabel}>Nhóm dòng tiền</Text>
-                <View style={styles.modalSegment}>
-                  {(['NORMAL', 'LOAN_DEBT'] as ApiCategoryCashFlowGroup[]).map(group => (
-                    <TouchableOpacity
-                      key={group}
-                      style={[styles.modalSegmentButton, categoryCashFlowGroup === group && styles.modalSegmentButtonActive]}
-                      onPress={() => setCategoryCashFlowGroup(group)}>
-                      <Text style={[styles.modalSegmentText, categoryCashFlowGroup === group && styles.modalSegmentTextActive]}>
-                        {cashFlowGroupLabels[group]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <Text style={styles.inputLabel}>Icon danh mục</Text>
-                <View style={styles.iconPreviewCard}>
-                  <View style={styles.iconPreviewBox}>
-                    {iconFile ? (
-                      <Image source={{ uri: iconFile.uri }} style={styles.iconPreviewImage} />
-                    ) : selectedCategory?.icon ? (
-                      <Image
-                        source={{ uri: resolveCategoryIconUrl(selectedCategory.icon) ?? undefined }}
-                        style={styles.iconPreviewImage}
-                      />
-                    ) : (
-                      <CategoryIcon icon={null} size={28} />
-                    )}
-                  </View>
-                  <View style={styles.iconPreviewInfo}>
-                    <Text style={styles.iconPreviewTitle} numberOfLines={1}>
-                      {iconFile ? iconFile.name : 'Chưa chọn icon mới'}
-                    </Text>
-                    <Text style={styles.iconPreviewText}>JPG, PNG hoặc WEBP.</Text>
-                  </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {modalMode === 'delete' ? (
+                <>
+                  <Text style={styles.modalTitle}>Xóa danh mục</Text>
+                  <Text style={styles.modalDescription}>
+                    {selectedCategory?.name}
+                  </Text>
                   <TouchableOpacity
-                    style={styles.iconActionButton}
-                    onPress={iconFile ? () => setIconFile(null) : handlePickIcon}>
-                    {iconFile ? (
-                      <X size={18} color="#A94F18" />
+                    style={styles.dangerButton}
+                    onPress={deleteCategory}
+                  >
+                    {isSaving ? (
+                      <ActivityIndicator color={Colors.white} />
                     ) : (
-                      <ImagePlus size={18} color={Colors.primary} />
+                      <Text style={styles.primaryButtonText}>Xóa</Text>
                     )}
                   </TouchableOpacity>
-                </View>
-                {!iconFile ? (
-                  <TouchableOpacity style={styles.iconPickerButton} onPress={handlePickIcon}>
-                    <ImagePlus size={18} color={Colors.primary} />
-                    <Text style={styles.iconPickerText}>Chọn icon</Text>
-                  </TouchableOpacity>
-                ) : null}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalTitle}>
+                    {modalMode === 'edit' ? 'Sửa danh mục' : 'Thêm danh mục'}
+                  </Text>
+                  <Text style={styles.inputLabel}>Tên danh mục</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ví dụ: cà phê, đầu tư, thú cưng"
+                    value={categoryName}
+                    onChangeText={setCategoryName}
+                  />
 
-                <View style={styles.modalActions}>
-                  {modalMode === 'edit' && (
-                    <TouchableOpacity style={styles.outlineDangerButton} onPress={() => setModalMode('delete')}>
-                      <Text style={styles.outlineDangerText}>Xóa</Text>
+                  <Text style={styles.inputLabel}>Loại danh mục</Text>
+                  <View style={styles.modalSegment}>
+                    {(['EXPENSE', 'INCOME'] as ApiCategoryType[]).map(type => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[
+                          styles.modalSegmentButton,
+                          categoryType === type &&
+                            styles.modalSegmentButtonActive,
+                        ]}
+                        onPress={() => setCategoryType(type)}
+                      >
+                        <Text
+                          style={[
+                            styles.modalSegmentText,
+                            categoryType === type &&
+                              styles.modalSegmentTextActive,
+                          ]}
+                        >
+                          {typeLabels[type]}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.inputLabel}>Nhóm dòng tiền</Text>
+                  <View style={styles.modalSegment}>
+                    {(
+                      ['NORMAL', 'LOAN_DEBT'] as ApiCategoryCashFlowGroup[]
+                    ).map(group => (
+                      <TouchableOpacity
+                        key={group}
+                        style={[
+                          styles.modalSegmentButton,
+                          categoryCashFlowGroup === group &&
+                            styles.modalSegmentButtonActive,
+                        ]}
+                        onPress={() => setCategoryCashFlowGroup(group)}
+                      >
+                        <Text
+                          style={[
+                            styles.modalSegmentText,
+                            categoryCashFlowGroup === group &&
+                              styles.modalSegmentTextActive,
+                          ]}
+                        >
+                          {cashFlowGroupLabels[group]}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text style={styles.inputLabel}>Icon danh mục</Text>
+                  <View style={styles.iconPreviewCard}>
+                    <View style={styles.iconPreviewBox}>
+                      {iconFile ? (
+                        <Image
+                          source={{ uri: iconFile.uri }}
+                          style={styles.iconPreviewImage}
+                        />
+                      ) : selectedCategory?.icon ? (
+                        <Image
+                          source={{
+                            uri:
+                              resolveCategoryIconUrl(selectedCategory.icon) ??
+                              undefined,
+                          }}
+                          style={styles.iconPreviewImage}
+                        />
+                      ) : (
+                        <CategoryIcon icon={null} size={28} />
+                      )}
+                    </View>
+                    <View style={styles.iconPreviewInfo}>
+                      <Text style={styles.iconPreviewTitle} numberOfLines={1}>
+                        {iconFile ? iconFile.name : 'Chưa chọn icon mới'}
+                      </Text>
+                      <Text style={styles.iconPreviewText}>
+                        JPG, PNG hoặc WEBP.
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.iconActionButton}
+                      onPress={
+                        iconFile ? () => setIconFile(null) : handlePickIcon
+                      }
+                    >
+                      {iconFile ? (
+                        <X size={18} color="#A94F18" />
+                      ) : (
+                        <ImagePlus size={18} color={Colors.primary} />
+                      )}
                     </TouchableOpacity>
-                  )}
-                  <TouchableOpacity style={styles.primaryButton} onPress={saveCategory}>
-                    {isSaving ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+                  </View>
+                  {!iconFile ? (
+                    <TouchableOpacity
+                      style={styles.iconPickerButton}
+                      onPress={handlePickIcon}
+                    >
+                      <ImagePlus size={18} color={Colors.primary} />
+                      <Text style={styles.iconPickerText}>Chọn icon</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <View style={styles.modalActions}>
+                    {modalMode === 'edit' && (
+                      <TouchableOpacity
+                        style={styles.outlineDangerButton}
+                        onPress={() => setModalMode('delete')}
+                      >
+                        <Text style={styles.outlineDangerText}>Xóa</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={styles.primaryButton}
+                      onPress={saveCategory}
+                    >
+                      {isSaving ? (
+                        <ActivityIndicator color={Colors.white} />
+                      ) : (
+                        <Text style={styles.primaryButtonText}>Lưu</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>

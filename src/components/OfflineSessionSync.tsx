@@ -3,6 +3,8 @@ import { Alert, AppState } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { homeWidget } from '../native/homeWidget';
 import { offlineTransactionQueue } from '../services/offlineTransactionQueue';
+import { offlineCategoryQueue } from '../services/offlineCategoryQueue';
+import { categoriesService } from '../services/categories';
 import {
   offlineTransactionChanges,
   snapshotTransaction,
@@ -79,13 +81,16 @@ export default function OfflineSessionSync({
           item => item.server === server,
         );
         const changes = await offlineTransactionChanges.list(userId);
+        const categories = await offlineCategoryQueue.list(userId);
         if (!current()) return;
-        retryPending = Boolean(drafts.length || changes.length);
+        retryPending = Boolean(
+          drafts.length || changes.length || categories.length,
+        );
         if (offlineTransactionQueue.isSyncing(userId)) return;
         if (!(await homeWidget.connected())) return;
         if (!(await latest.current.retryRestoreSession())) return;
         if (!current() || !latest.current.token) return;
-        if (!drafts.length && !changes.length) {
+        if (!drafts.length && !changes.length && !categories.length) {
           shownKey = '';
           clearRetry();
           if (current()) await refresh();
@@ -96,12 +101,29 @@ export default function OfflineSessionSync({
           updatedAt: item.updatedAt,
         }));
         const expectedChanges = await offlineTransactionChanges.preview(userId);
-        const key = JSON.stringify([expected, expectedChanges]);
+        const expectedCategories = await offlineCategoryQueue.preview(userId);
+        const key = JSON.stringify([
+          expected,
+          expectedChanges,
+          expectedCategories,
+        ]);
         if (shownKey === key || !current()) {
           retryPending = false;
           return;
         }
         const remote: OfflineSyncReview['remote'] = {};
+        const remoteCategories: NonNullable<
+          OfflineSyncReview['remoteCategories']
+        > = {};
+        if (categories.some(item => item.action !== 'CREATE')) {
+          const serverCategories = await categoriesService.getAll(
+            latest.current.token,
+          );
+          for (const item of categories)
+            if (item.action !== 'CREATE')
+              remoteCategories[item.id] =
+                serverCategories.find(row => row.id === item.id) ?? null;
+        }
         if (changes.length) {
           for (let offset = 0; offset < changes.length; offset += 100) {
             const batch = changes.slice(offset, offset + 100);
@@ -126,6 +148,7 @@ export default function OfflineSessionSync({
           await offlineTransactionQueue.list(userId)
         ).filter(item => item.server === server);
         const latestChanges = await offlineTransactionChanges.preview(userId);
+        const latestCategories = await offlineCategoryQueue.preview(userId);
         if (
           !current() ||
           offlineTransactionQueue.isSyncing(userId) ||
@@ -135,7 +158,9 @@ export default function OfflineSessionSync({
               updatedAt: item.updatedAt,
             })),
           ) !== JSON.stringify(expected) ||
-          JSON.stringify(latestChanges) !== JSON.stringify(expectedChanges)
+          JSON.stringify(latestChanges) !== JSON.stringify(expectedChanges) ||
+          JSON.stringify(latestCategories) !==
+            JSON.stringify(expectedCategories)
         )
           return;
         shownKey = key;
@@ -160,6 +185,7 @@ export default function OfflineSessionSync({
                 );
               await offlineTransactionQueue.discardLocal(userId, expected);
               await offlineTransactionChanges.discard(userId, expectedChanges);
+              await offlineCategoryQueue.discard(userId, expectedCategories);
               shownKey = '';
             } else {
               const now = (await offlineTransactionQueue.list(userId)).filter(
@@ -181,12 +207,36 @@ export default function OfflineSessionSync({
                 throw Error(
                   'Thay đổi trên máy đã đổi. Hãy xem lại trước khi đồng bộ.',
                 );
-              const result = await offlineTransactionQueue.sync(
+              if (
+                JSON.stringify(await offlineCategoryQueue.preview(userId)) !==
+                JSON.stringify(expectedCategories)
+              )
+                throw Error(
+                  'Danh mục trên máy đã đổi. Hãy xem lại trước khi đồng bộ.',
+                );
+              const rebasedCategories =
+                await offlineCategoryQueue.rebaseReviewed(
+                  latest.current.token,
+                  userId,
+                  expectedCategories,
+                  remoteCategories,
+                );
+              const categoryResult = await offlineCategoryQueue.sync(
                 latest.current.token,
                 userId,
+                rebasedCategories,
                 current,
-                expected,
               );
+              const categoriesReady =
+                !categoryResult.pending && !categoryResult.needsReview;
+              const result = categoriesReady
+                ? await offlineTransactionQueue.sync(
+                    latest.current.token,
+                    userId,
+                    current,
+                    expected,
+                  )
+                : { synced: 0, pending: expected.length, needsReview: 0 };
               const edits = result.pending
                 ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
                 : await offlineTransactionChanges.sync(
@@ -199,23 +249,32 @@ export default function OfflineSessionSync({
                 result.pending ||
                 result.needsReview ||
                 edits.pending ||
-                edits.needsReview
+                edits.needsReview ||
+                categoryResult.pending ||
+                categoryResult.needsReview
               ) {
                 shownKey = '';
-                retryAfterChoice = Boolean(result.pending || edits.pending);
+                retryAfterChoice = Boolean(
+                  result.pending || edits.pending || categoryResult.pending,
+                );
                 Alert.alert(
-                  'Còn giao dịch cần kiểm tra',
-                  `${result.pending + edits.pending} đang chờ · ${
-                    result.needsReview + edits.needsReview
+                  'Còn dữ liệu cần kiểm tra',
+                  `${
+                    result.pending + edits.pending + categoryResult.pending
+                  } đang chờ · ${
+                    result.needsReview +
+                    edits.needsReview +
+                    categoryResult.needsReview
                   } cần xem lại.`,
                 );
               } else {
                 shownKey = '';
-                const savedCount = result.synced + edits.synced;
+                const savedCount =
+                  result.synced + edits.synced + categoryResult.synced;
                 if (savedCount > 0 && current())
                   Alert.alert(
                     'Đã sao lưu dữ liệu thành công',
-                    `${savedCount} thay đổi giao dịch đã được lưu lên máy chủ.`,
+                    `${savedCount} thay đổi đã được lưu lên máy chủ.`,
                   );
               }
             }
@@ -251,7 +310,7 @@ export default function OfflineSessionSync({
             Alert.alert(
               'Bỏ thay đổi trên máy?',
               `${
-                drafts.length + changes.length
+                drafts.length + changes.length + categories.length
               } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
               [
                 { text: 'Quay lại', style: 'cancel' },
@@ -268,7 +327,7 @@ export default function OfflineSessionSync({
             );
           }
         };
-        setReview({ drafts, changes, remote });
+        setReview({ drafts, changes, categories, remote, remoteCategories });
       } catch {
         /* Durable drafts remain; retry only for pending writes in foreground. */
       } finally {
@@ -284,14 +343,16 @@ export default function OfflineSessionSync({
       Promise.all([
         offlineTransactionQueue.list(userId),
         offlineTransactionChanges.preview(userId),
+        offlineCategoryQueue.preview(userId),
       ])
-        .then(([drafts, changes]) => {
+        .then(([drafts, changes, categories]) => {
           if (!active || !reviewVisible) return;
           const key = JSON.stringify([
             drafts
               .filter(item => item.server === server)
               .map(item => ({ id: item.id, updatedAt: item.updatedAt })),
             changes,
+            categories,
           ]);
           if (key === shownKey) return;
           setReview(null);
@@ -313,6 +374,8 @@ export default function OfflineSessionSync({
     });
     const queued = offlineTransactionQueue.subscribe(reviewQueueChanged);
     const changed = offlineTransactionChanges.subscribe(reviewQueueChanged);
+    const changedCategories =
+      offlineCategoryQueue.subscribe(reviewQueueChanged);
     attempt().catch(() => undefined);
     return () => {
       active = false;
@@ -325,6 +388,7 @@ export default function OfflineSessionSync({
       reconnect();
       queued();
       changed();
+      changedCategories();
     };
   }, [user?.id, server, isRestoringSession]);
   return (

@@ -14,9 +14,9 @@ export const widgetLink = (scope: BillScope, url: string): string | null => {
     event.length > 100 ||
     !['FORM', 'VOICE', 'CAMERA', 'CATEGORY'].includes(action) ||
     (category !== null &&
-      (!/^\d+$/.test(category) ||
+      (!/^-?[1-9]\d*$/.test(category) ||
         !Number.isSafeInteger(Number(category)) ||
-        Number(category) <= 0))
+        Number(category) === -1))
   )
     return null;
   return `quanlychitieu://home?widgetType=${type}&widgetEvent=${encodeURIComponent(

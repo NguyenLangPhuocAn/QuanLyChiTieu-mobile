@@ -6,6 +6,7 @@ import { homeWidget } from '../native/homeWidget';
 import { dashboardCache } from '../services/dashboardCache';
 import { categoriesService } from '../services/categories';
 import { offlineTransactionQueue } from '../services/offlineTransactionQueue';
+import { offlineCategoryQueue } from '../services/offlineCategoryQueue';
 import { financeRefresh } from '../services/financeRefresh';
 import { buildWidgetSnapshot, widgetScope } from '../services/widgetSnapshot';
 export default function HomeWidgetSession() {
@@ -23,12 +24,29 @@ export default function HomeWidgetSession() {
       const rev = ++version;
       await homeWidget.activate(scope);
       if (!userId || !scope) return;
-      const [cached, drafts] = await Promise.all([
+      const [cached, drafts, categoryChanges, resolvedIds] = await Promise.all([
         dashboardCache.read(userId),
         offlineTransactionQueue.list(userId),
+        offlineCategoryQueue.list(userId),
+        offlineCategoryQueue.resolvedIds(userId),
       ]);
+      const selectedMappedIds: number[] = [];
+      for (const [fromId, toId] of Object.entries(resolvedIds)) {
+        if (!active || rev !== version) return;
+        if (await homeWidget.remapCategory(scope, Number(fromId), toId))
+          selectedMappedIds.push(toId);
+      }
       let data = cached;
-      if (data && data.wallets.length && !data.categories.length && token && !attemptedCategoryRefresh) {
+      const missingResolvedCategory = selectedMappedIds.some(
+        id => !data?.categories.some(category => category.id === id),
+      );
+      if (
+        data &&
+        ((data.wallets.length > 0 && !data.categories.length) ||
+          missingResolvedCategory) &&
+        token &&
+        !attemptedCategoryRefresh
+      ) {
         attemptedCategoryRefresh = true;
         try {
           const categories = await categoriesService.getAll(token);
@@ -43,7 +61,19 @@ export default function HomeWidgetSession() {
       if (active && rev === version)
         await homeWidget.update(
           scope,
-          buildWidgetSnapshot(data, currency, drafts.length),
+          buildWidgetSnapshot(
+            data
+              ? {
+                  ...data,
+                  categories: offlineCategoryQueue.apply(
+                    data.categories,
+                    categoryChanges,
+                  ),
+                }
+              : null,
+            currency,
+            drafts.length,
+          ),
         );
     };
     const refresh = () => {
@@ -59,6 +89,7 @@ export default function HomeWidgetSession() {
     const a = financeRefresh.subscribe(refresh),
       b = offlineTransactionQueue.subscribe(refresh);
     const c = dashboardCache.subscribe(refresh);
+    const d = offlineCategoryQueue.subscribe(refresh);
     return () => {
       active = false;
       version++;
@@ -66,7 +97,15 @@ export default function HomeWidgetSession() {
       a();
       b();
       c();
+      d();
     };
-  }, [userId, token, currency, server, isRestoringSession, sessionRestoreError]);
+  }, [
+    userId,
+    token,
+    currency,
+    server,
+    isRestoringSession,
+    sessionRestoreError,
+  ]);
   return null;
 }

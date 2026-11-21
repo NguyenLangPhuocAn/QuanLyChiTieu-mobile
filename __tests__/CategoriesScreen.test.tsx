@@ -7,6 +7,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useFinance } from '../src/context/FinanceContext';
 import { categoriesService } from '../src/services/categories';
 import { dashboardCache } from '../src/services/dashboardCache';
+import { offlineCategoryQueue } from '../src/services/offlineCategoryQueue';
 
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: jest.fn(),
@@ -26,13 +27,33 @@ jest.mock('../src/services/categories', () => ({
   },
 }));
 jest.mock('../src/services/dashboardCache', () => ({
-  dashboardCache: { read: jest.fn() },
+  dashboardCache: {
+    read: jest.fn(),
+    readReferences: jest.fn(),
+    saveReferences: jest.fn(),
+  },
+}));
+jest.mock('../src/services/offlineCategoryQueue', () => ({
+  offlineCategoryQueue: {
+    list: jest.fn().mockResolvedValue([]),
+    subscribe: jest.fn().mockReturnValue(() => undefined),
+    apply: jest.fn((base, _changes) => base),
+    create: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
+    createRequestId: jest.fn().mockReturnValue('category_test_request_123'),
+  },
 }));
 
 const mockedUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockedUseFinance = useFinance as jest.MockedFunction<typeof useFinance>;
-const mockedCategoriesService = categoriesService as jest.Mocked<typeof categoriesService>;
+const mockedCategoriesService = categoriesService as jest.Mocked<
+  typeof categoriesService
+>;
 const mockedCache = dashboardCache as jest.Mocked<typeof dashboardCache>;
+const mockedQueue = offlineCategoryQueue as jest.Mocked<
+  typeof offlineCategoryQueue
+>;
 
 const renderCategoriesScreen = async (
   role: 'BASIC' | 'PREMIUM' | 'ADMIN',
@@ -88,6 +109,7 @@ const renderCategoriesScreen = async (
 beforeEach(() => {
   jest.clearAllMocks();
   mockedCache.read.mockResolvedValue(null);
+  mockedCache.readReferences.mockResolvedValue(null);
 });
 
 it('does not render an add category button for Basic users', async () => {
@@ -131,23 +153,30 @@ it('loads saved categories without calling the API during an offline session', a
     expect.objectContaining({ id: 7, name: 'Ăn uống QA' }),
   ]);
   expect(
-    renderer.root.findAllByType(Text).some(node =>
-      String(node.props.children).includes('Dữ liệu danh mục trên máy'),
-    ),
+    renderer.root
+      .findAllByType(Text)
+      .some(node =>
+        String(node.props.children).includes('Dữ liệu danh mục trên máy'),
+      ),
   ).toBe(true);
 });
 
-it('blocks category creation while offline before opening an editor', async () => {
+it('opens category editor while offline for Premium users', async () => {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   const renderer = await renderCategoriesScreen('PREMIUM', {}, true);
   let button = renderer.root.findByType(Plus).parent;
-  while (button && typeof button.props.onPress !== 'function') button = button.parent;
+  while (button && typeof button.props.onPress !== 'function')
+    button = button.parent;
 
   ReactTestRenderer.act(() => {
     button?.props.onPress();
   });
 
-  expect(alert).toHaveBeenCalledWith('Cần kết nối', expect.stringContaining('danh mục cần có mạng'));
+  expect(alert).not.toHaveBeenCalledWith('Cần kết nối', expect.anything());
   expect(mockedCategoriesService.create).not.toHaveBeenCalled();
+  expect(mockedQueue.create).not.toHaveBeenCalled();
+  expect(
+    renderer.root.findAllByProps({ children: 'Tên danh mục' }).length,
+  ).toBeGreaterThan(0);
   alert.mockRestore();
 });

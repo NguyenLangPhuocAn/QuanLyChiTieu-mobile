@@ -3,6 +3,7 @@ import { ApiError, captureApiSession, getApiStorageBaseUrl } from './api';
 import { transactionsService } from './transactions';
 import type { ApiTransaction, ReceiptItem } from '../types/transaction';
 import type { Category } from '../types/category';
+import { offlineCategoryQueue } from './offlineCategoryQueue';
 
 export type TransactionSnapshot = {
   id: number;
@@ -269,6 +270,15 @@ export const offlineTransactionChanges = {
           needsReview++;
           continue;
         }
+        let payload = item.payload;
+        if (payload?.category_id && payload.category_id < 0) {
+          const categoryId = await offlineCategoryQueue.resolveId(
+            userId,
+            payload.category_id,
+          );
+          if (!categoryId) break;
+          payload = { ...payload, category_id: categoryId };
+        }
         try {
           const response = await transactionsService.getLinkedPayments(token, [
             item.transactionId,
@@ -294,8 +304,8 @@ export const offlineTransactionChanges = {
             const actual = snapshotTransaction(remote);
             if (
               item.action === 'UPDATE' &&
-              item.payload &&
-              same(actual, snapshotWithPayload(item.base, item.payload))
+              payload &&
+              same(actual, snapshotWithPayload(item.base, payload))
             ) {
               rows.splice(rows.indexOf(item), 1);
               synced++;
@@ -313,7 +323,7 @@ export const offlineTransactionChanges = {
                 );
               else
                 await transactionsService.update(token, item.transactionId, {
-                  ...item.payload!,
+                  ...payload!,
                   offline_expected: item.base,
                 });
               rows.splice(rows.indexOf(item), 1);

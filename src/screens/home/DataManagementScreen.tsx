@@ -49,6 +49,11 @@ import {
   type OfflineTransactionChange,
 } from '../../services/offlineTransactionChanges';
 import { financeRefresh } from '../../services/financeRefresh';
+import {
+  offlineCategoryQueue,
+  type OfflineCategoryChange,
+} from '../../services/offlineCategoryQueue';
+import { categoriesService } from '../../services/categories';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
@@ -78,6 +83,7 @@ type ManualSyncReview = OfflineSyncReview & {
   token: string;
   expectedDrafts: Array<{ id: string; updatedAt: string }>;
   expectedChanges: Array<{ transactionId: number; revision: number }>;
+  expectedCategories: Array<{ id: number; revision: number }>;
 };
 
 const DataManagementScreen = () => {
@@ -91,6 +97,9 @@ const DataManagementScreen = () => {
   );
   const [offlineChanges, setOfflineChanges] = useState<
     OfflineTransactionChange[]
+  >([]);
+  const [offlineCategories, setOfflineCategories] = useState<
+    OfflineCategoryChange[]
   >([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
@@ -117,10 +126,12 @@ const DataManagementScreen = () => {
       dashboardCache.read(user.id),
       offlineTransactionQueue.list(user.id),
       offlineTransactionChanges.list(user.id),
-    ]).then(([nextCache, drafts, changes]) => {
+      offlineCategoryQueue.list(user.id),
+    ]).then(([nextCache, drafts, changes, categories]) => {
       setCache(nextCache);
       setOfflineDrafts(drafts);
       setOfflineChanges(changes);
+      setOfflineCategories(categories);
     });
     const unsubscribeChanges = offlineTransactionChanges.subscribe(() => {
       offlineTransactionChanges
@@ -134,9 +145,16 @@ const DataManagementScreen = () => {
         .then(setOfflineDrafts)
         .catch(() => undefined);
     });
+    const unsubscribeCategories = offlineCategoryQueue.subscribe(() => {
+      offlineCategoryQueue
+        .list(user.id)
+        .then(setOfflineCategories)
+        .catch(() => undefined);
+    });
     return () => {
       unsubscribeChanges();
       unsubscribeDrafts();
+      unsubscribeCategories();
     };
   }, [user?.id]);
 
@@ -284,6 +302,8 @@ const DataManagementScreen = () => {
   const syncOfflineDrafts = async (
     expectedDrafts: Array<{ id: string; updatedAt: string }>,
     expectedChanges: Array<{ transactionId: number; revision: number }>,
+    expectedCategories: Array<{ id: number; revision: number }>,
+    remoteCategories: NonNullable<OfflineSyncReview['remoteCategories']>,
     scope: { userId: number; server: string; token: string },
   ) => {
     if (isSyncingDrafts) return;
@@ -301,12 +321,27 @@ const DataManagementScreen = () => {
         ) !== JSON.stringify(expectedChanges)
       )
         throw Error('Thay đổi trên máy đã đổi. Hãy xem lại trước khi đồng bộ.');
-      const result = await offlineTransactionQueue.sync(
+      const rebasedCategories = await offlineCategoryQueue.rebaseReviewed(
         scope.token,
         scope.userId,
-        isCurrent,
-        expectedDrafts,
+        expectedCategories,
+        remoteCategories,
       );
+      const categoryResult = await offlineCategoryQueue.sync(
+        scope.token,
+        scope.userId,
+        rebasedCategories,
+        isCurrent,
+      );
+      const result =
+        categoryResult.pending || categoryResult.needsReview
+          ? { synced: 0, pending: expectedDrafts.length, needsReview: 0 }
+          : await offlineTransactionQueue.sync(
+              scope.token,
+              scope.userId,
+              isCurrent,
+              expectedDrafts,
+            );
       const edits = result.pending
         ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
         : await offlineTransactionChanges.sync(
@@ -321,9 +356,13 @@ const DataManagementScreen = () => {
       financeRefresh.emit();
       Alert.alert(
         'Đồng bộ giao dịch',
-        `Đã ghi ${result.synced + edits.synced} · Còn chờ ${
-          result.pending + edits.pending
-        } · Cần kiểm tra ${result.needsReview + edits.needsReview}.`,
+        `Đã ghi ${
+          result.synced + edits.synced + categoryResult.synced
+        } · Còn chờ ${
+          result.pending + edits.pending + categoryResult.pending
+        } · Cần kiểm tra ${
+          result.needsReview + edits.needsReview + categoryResult.needsReview
+        }.`,
       );
     } catch (error) {
       Alert.alert(
@@ -340,16 +379,27 @@ const DataManagementScreen = () => {
     const scope = { userId: user.id, token, server: getApiStorageBaseUrl() };
     try {
       if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
-      const [drafts, changes] = await Promise.all([
+      const [drafts, changes, categories] = await Promise.all([
         offlineTransactionQueue.list(scope.userId),
         offlineTransactionChanges.list(scope.userId),
+        offlineCategoryQueue.list(scope.userId),
       ]);
       const currentDrafts = drafts.filter(item => item.server === scope.server);
-      if (!currentDrafts.length && !changes.length) {
-        Alert.alert('Không có giao dịch đang chờ');
+      if (!currentDrafts.length && !changes.length && !categories.length) {
+        Alert.alert('Không có dữ liệu đang chờ');
         return;
       }
       const remote: OfflineSyncReview['remote'] = {};
+      const remoteCategories: NonNullable<
+        OfflineSyncReview['remoteCategories']
+      > = {};
+      if (categories.some(item => item.action !== 'CREATE')) {
+        const serverCategories = await categoriesService.getAll(token);
+        for (const item of categories)
+          if (item.action !== 'CREATE')
+            remoteCategories[item.id] =
+              serverCategories.find(row => row.id === item.id) ?? null;
+      }
       for (const change of changes) {
         remote[change.transactionId] = await offlineTransactionChanges.inspect(
           token,
@@ -357,6 +407,9 @@ const DataManagementScreen = () => {
         );
       }
       const expectedChanges = await offlineTransactionChanges.preview(
+        scope.userId,
+      );
+      const expectedCategories = await offlineCategoryQueue.preview(
         scope.userId,
       );
       if (
@@ -369,12 +422,15 @@ const DataManagementScreen = () => {
         ...scope,
         drafts: currentDrafts,
         changes,
+        categories,
         remote,
+        remoteCategories,
         expectedDrafts: currentDrafts.map(item => ({
           id: item.id,
           updatedAt: item.updatedAt,
         })),
         expectedChanges,
+        expectedCategories,
       });
     } catch (error) {
       Alert.alert(
@@ -396,6 +452,8 @@ const DataManagementScreen = () => {
       syncOfflineDrafts(
         review.expectedDrafts,
         review.expectedChanges,
+        review.expectedCategories,
+        review.remoteCategories ?? {},
         review,
       ).catch(() => undefined);
       return;
@@ -403,7 +461,9 @@ const DataManagementScreen = () => {
     Alert.alert(
       'Bỏ thay đổi trên máy?',
       `${
-        review.drafts.length + review.changes.length
+        review.drafts.length +
+        review.changes.length +
+        (review.categories?.length ?? 0)
       } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
       [
         { text: 'Quay lại', style: 'cancel' },
@@ -433,6 +493,10 @@ const DataManagementScreen = () => {
               await offlineTransactionChanges.discard(
                 review.userId,
                 review.expectedChanges,
+              );
+              await offlineCategoryQueue.discard(
+                review.userId,
+                review.expectedCategories,
               );
               setManualReview(null);
               setOfflineDrafts(
@@ -587,10 +651,12 @@ const DataManagementScreen = () => {
     if (!user?.id || !draftEditor || !cache) return;
     const amount = parsePositiveMoneyInput(draftEditor.amount);
     const wallet = cache.wallets.find(item => item.id === draftEditor.walletId);
-    const category = cache.categories.find(
-      item =>
-        item.id === draftEditor.categoryId && item.type === draftEditor.type,
-    );
+    const category = offlineCategoryQueue
+      .apply(cache.categories, offlineCategories)
+      .find(
+        item =>
+          item.id === draftEditor.categoryId && item.type === draftEditor.type,
+      );
     if (!amount || !wallet || !category) {
       Alert.alert(
         'Chưa đủ dữ liệu',
@@ -787,19 +853,21 @@ const DataManagementScreen = () => {
               <CloudOff size={22} color={Colors.primary} />
             </View>
             <View style={styles.actionCopy}>
-              <Text style={styles.cardTitle}>Bản nháp ngoại tuyến</Text>
+              <Text style={styles.cardTitle}>Dữ liệu chờ lưu</Text>
               <Text style={styles.cardText}>
-                Xem lại từng khoản trên máy trước khi đồng bộ.
+                Xem lại giao dịch và danh mục trên máy trước khi lưu.
               </Text>
             </View>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Đồng bộ giao dịch ngoại tuyến"
+              accessibilityLabel="Đồng bộ dữ liệu ngoại tuyến"
               style={styles.syncButton}
               onPress={() => prepareManualReview().catch(() => undefined)}
               disabled={
                 isSyncingDrafts ||
-                (offlineDrafts.length === 0 && offlineChanges.length === 0)
+                (offlineDrafts.length === 0 &&
+                  offlineChanges.length === 0 &&
+                  offlineCategories.length === 0)
               }
             >
               {isSyncingDrafts ? (
@@ -809,16 +877,23 @@ const DataManagementScreen = () => {
               )}
             </TouchableOpacity>
           </View>
+          {offlineCategories.length > 0 ? (
+            <Text style={styles.cardText}>
+              {offlineCategories.length} thay đổi danh mục đang chờ đối chiếu.
+            </Text>
+          ) : null}
           {offlineDrafts.length === 0 ? (
             <Text style={styles.emptyDraft}>Không có giao dịch đang chờ.</Text>
           ) : (
             offlineDrafts.map(draft => {
               const isEditing = draftEditor?.id === draft.id;
-              const compatibleCategories = (cache?.categories ?? []).filter(
-                category =>
-                  category.type === draft.payload.type &&
-                  (category.cash_flow_group ?? 'NORMAL') === 'NORMAL',
-              );
+              const compatibleCategories = offlineCategoryQueue
+                .apply(cache?.categories ?? [], offlineCategories)
+                .filter(
+                  category =>
+                    category.type === draft.payload.type &&
+                    (category.cash_flow_group ?? 'NORMAL') === 'NORMAL',
+                );
               return (
                 <View key={draft.id} style={styles.draftItem}>
                   <View style={styles.draftRow}>

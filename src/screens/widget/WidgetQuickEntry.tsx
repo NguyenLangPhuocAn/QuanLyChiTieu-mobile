@@ -28,6 +28,7 @@ import {
   dashboardCache,
   type DashboardCache,
 } from '../../services/dashboardCache';
+import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
 import { widgetScope } from '../../services/widgetSnapshot';
 import { widgetLink } from '../../services/widgetLinking';
 import { createClientRequestId } from '../../services/offlineTransactionQueue';
@@ -182,6 +183,13 @@ function Panel({ entryUrl }: Props) {
       const cached = await dashboardCache.read(user.id);
       if (!cached || (!categoryOnly && !cached.wallets.length))
         throw Error('Mở app có mạng một lần để tải dữ liệu.');
+      const visible = {
+        ...cached,
+        categories: offlineCategoryQueue.apply(
+          cached.categories,
+          await offlineCategoryQueue.list(user.id),
+        ),
+      };
       if (!active) return;
       const params = new URLSearchParams(link.slice(link.indexOf('?') + 1));
       const nextType =
@@ -195,7 +203,7 @@ function Panel({ entryUrl }: Props) {
       if (initializedFor.current !== source) {
         setType(nextType);
         setCategory(
-          cached.categories.some(
+          visible.categories.some(
             c =>
               c.id === nextId &&
               c.type === nextType &&
@@ -209,7 +217,7 @@ function Panel({ entryUrl }: Props) {
         setPhotoOnly(params.get('widgetAction') === 'CAMERA');
         initializedFor.current = source;
       }
-      setData(cached);
+      setData(visible);
       initialized.current = true;
       setReady(true);
       setError('');
@@ -236,30 +244,41 @@ function Panel({ entryUrl }: Props) {
     let active = true;
     const userId = user.id;
     const refresh = () => {
-      dashboardCache
-        .read(userId)
-        .then(cached => {
+      Promise.all([
+        dashboardCache.read(userId),
+        offlineCategoryQueue.list(userId),
+      ])
+        .then(([cached, changes]) => {
           if (
             active &&
             cached &&
             latest.current.userId === userId &&
             latest.current.server === server
           ) {
+            const visible = {
+              ...cached,
+              categories: offlineCategoryQueue.apply(
+                cached.categories,
+                changes,
+              ),
+            };
             if (
               !initialized.current &&
-              cached.wallets.length &&
-              cached.categories.length
+              visible.wallets.length &&
+              visible.categories.length
             )
               setLoadRevision(value => value + 1);
-            else if (initialized.current) setData(cached);
+            else if (initialized.current) setData(visible);
           }
         })
         .catch(() => undefined);
     };
     const unsubscribe = dashboardCache.subscribe(refresh);
+    const unsubscribeCategories = offlineCategoryQueue.subscribe(refresh);
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeCategories();
     };
   }, [user?.id, server]);
 
@@ -408,7 +427,9 @@ function Panel({ entryUrl }: Props) {
   const wallet = data?.wallets.find(w => w.id === walletId);
   const moneyCurrency =
     currency || wallet?.currency || user?.currency_default || 'VND';
-  const availableCategories = filterNormalCashFlowCategories(data?.categories ?? []);
+  const availableCategories = filterNormalCashFlowCategories(
+    data?.categories ?? [],
+  );
   const category = availableCategories.find(
     c => c.id === categoryId && c.type === type,
   );
@@ -899,7 +920,12 @@ function Panel({ entryUrl }: Props) {
                   <Text style={s.label}>Danh mục</Text>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={category?.name || (availableCategories.some(c => c.type === type) ? 'Chọn danh mục' : 'Chưa phân loại')}
+                    accessibilityLabel={
+                      category?.name ||
+                      (availableCategories.some(c => c.type === type)
+                        ? 'Chọn danh mục'
+                        : 'Chưa phân loại')
+                    }
                     disabled={ocrBusy}
                     style={s.categoryCard}
                     onPress={() => setPicker('category')}
@@ -909,7 +935,10 @@ function Panel({ entryUrl }: Props) {
                     </View>
                     <View style={s.categoryCopy}>
                       <Text style={s.categoryName}>
-                        {category?.name || (availableCategories.some(c => c.type === type) ? 'Chọn danh mục' : 'Chưa phân loại')}
+                        {category?.name ||
+                          (availableCategories.some(c => c.type === type)
+                            ? 'Chọn danh mục'
+                            : 'Chưa phân loại')}
                       </Text>
                       <Text style={s.muted}>
                         {type === 'INCOME' ? 'Khoản thu' : 'Khoản chi'}
@@ -1102,23 +1131,33 @@ function Panel({ entryUrl }: Props) {
             onChange={changeDate}
           />
         )}
-        {ready && !categoryOnly && !picker && !voiceOnly && !photoOnly && !voiceVisible && (
-          <View style={s.footer}>
-            {completedResult ? (
-              button('Đóng', close, true, busy)
-            ) : review ? (
-              <>
-                {button('Sửa lại', () => setReview(null), false, busy)}
-                {button(busy ? 'Đang lưu…' : 'Xác nhận lưu', save, true, busy)}
-              </>
-            ) : (
-              <>
-                {button('Hủy', close)}
-                {button('Kiểm tra', prepare, true, ocrBusy)}
-              </>
-            )}
-          </View>
-        )}
+        {ready &&
+          !categoryOnly &&
+          !picker &&
+          !voiceOnly &&
+          !photoOnly &&
+          !voiceVisible && (
+            <View style={s.footer}>
+              {completedResult ? (
+                button('Đóng', close, true, busy)
+              ) : review ? (
+                <>
+                  {button('Sửa lại', () => setReview(null), false, busy)}
+                  {button(
+                    busy ? 'Đang lưu…' : 'Xác nhận lưu',
+                    save,
+                    true,
+                    busy,
+                  )}
+                </>
+              ) : (
+                <>
+                  {button('Hủy', close)}
+                  {button('Kiểm tra', prepare, true, ocrBusy)}
+                </>
+              )}
+            </View>
+          )}
       </View>
     </KeyboardAvoidingView>
   );

@@ -64,7 +64,7 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
           val id = category.optLong("id")
           val name = category.optString("name").trim().take(80)
           val type = category.optString("type")
-          if (id > 0 && name.isNotEmpty() && type in listOf("EXPENSE", "INCOME"))
+          if (id != 0L && name.isNotEmpty() && type in listOf("EXPENSE", "INCOME"))
             categories.put(JSONObject().put("id", id).put("name", name).put("type", type))
         }
         val safe = JSONObject().put("day", value.getString("day")).put("expense", value.getString("expense").take(80))
@@ -109,6 +109,33 @@ class NovaHomeWidgetModule(private val context: ReactApplicationContext) : React
     val saved = edit.commit()
     if (saved) NovaWidgetProvider.render(context)
     promise.resolve(saved)
+  }
+  @ReactMethod fun remapCategory(scope: String, fromId: Double, toId: Double, promise: Promise) {
+    val p = NovaWidgetProvider.prefs(context)
+    val from = fromId.toLong()
+    val to = toId.toLong()
+    if (scope != p.getString("scope", null) || from >= -1 || to <= 0 ||
+      from.toDouble() != fromId || to.toDouble() != toId) {
+      promise.resolve(false)
+      return
+    }
+    val edit = p.edit()
+    var changed = false
+    var selected = false
+    val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(ComponentName(context, NovaWidgetProvider::class.java))
+    for (widgetId in ids) for (type in listOf("EXPENSE", "INCOME")) {
+      val key = "category_${widgetId}_$type"
+      val current = p.getLong(key, -1)
+      if (current == from) {
+        edit.putLong(key, to)
+        changed = true
+        selected = true
+      } else if (current == to) {
+        selected = true
+      }
+    }
+    if (changed && edit.commit()) NovaWidgetProvider.render(context)
+    promise.resolve(selected)
   }
   @ReactMethod fun entryReady(promise: Promise) {
     NovaWidgetEntryActivity.showContent()

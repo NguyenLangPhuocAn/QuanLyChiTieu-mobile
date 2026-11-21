@@ -75,6 +75,7 @@ import {
   isRetryableOfflineTransactionError,
   offlineTransactionQueue,
 } from '../../services/offlineTransactionQueue';
+import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
 import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
@@ -386,13 +387,42 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const freshReferencesVisible = useRef(false);
   const activeUserId = useRef(user?.id);
   activeUserId.current = user?.id;
+  const baseCategoryRef = useRef<Category[]>([]);
+  const categoryRenderRevision = useRef(0);
+  const showCategories = useCallback(
+    (base: Category[]) => {
+      baseCategoryRef.current = base;
+      const revision = ++categoryRenderRevision.current;
+      const userId = activeUserId.current;
+      if (!userId) return;
+      offlineCategoryQueue
+        .list(userId)
+        .then(changes => {
+          if (
+            activeUserId.current === userId &&
+            categoryRenderRevision.current === revision
+          )
+            setCategories(offlineCategoryQueue.apply(base, changes));
+        })
+        .catch(() => setCategories(base));
+    },
+    [setCategories],
+  );
+  useEffect(() => {
+    const unsubscribe = offlineCategoryQueue.subscribe(() => {
+      showCategories(baseCategoryRef.current);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [showCategories]);
   const amountInputRef = useRef<TextInput>(null);
   const transactionFormScrollRef = useRef<ScrollView>(null);
 
   const applyDashboardSnapshot = useCallback(
     (snapshot: DashboardCache) => {
       setWallets(snapshot.wallets);
-      setCategories(snapshot.categories);
+      showCategories(snapshot.categories);
       setTags(snapshot.tags);
       setBudgets(snapshot.budgets);
       setSavingsGoals(snapshot.savingsGoals);
@@ -401,7 +431,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       );
       dashboardDataVisible.current = true;
     },
-    [setBudgets, setCategories, setTags, setTransactions],
+    [setBudgets, showCategories, setTags, setTransactions],
   );
 
   useEffect(() => {
@@ -428,7 +458,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           setRefreshing(false);
         } else if (references) {
           setWallets(references.wallets);
-          setCategories(references.categories);
+          showCategories(references.categories);
         }
       })
       .catch(() => undefined);
@@ -436,7 +466,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     return () => {
       cancelled = true;
     };
-  }, [applyDashboardSnapshot, setCategories, user?.id]);
+  }, [applyDashboardSnapshot, showCategories, user?.id]);
 
   const fetchDashboardData = useCallback(
     (showIndicator = true) => {
@@ -517,12 +547,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             applyDashboardSnapshot(cached);
           } else if (references && !dashboardDataVisible.current) {
             setWallets(references.wallets);
-            setCategories(references.categories);
+            showCategories(references.categories);
           }
           if (freshReferences) {
             freshReferencesVisible.current = true;
             setWallets(freshReferences[0]);
-            setCategories(freshReferences[1]);
+            showCategories(freshReferences[1]);
           }
           if (!cached || showIndicator) {
             Alert.alert(
@@ -551,7 +581,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       dashboardFetchUserId.current = requestUserId;
       return request;
     },
-    [applyDashboardSnapshot, setCategories, token, user?.id],
+    [applyDashboardSnapshot, showCategories, token, user?.id],
   );
 
   useEffect(() => {

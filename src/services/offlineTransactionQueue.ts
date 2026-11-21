@@ -9,6 +9,7 @@ import {
   type PendingReceipt,
   type ReceiptSource,
 } from './offlineReceiptStore';
+import { offlineCategoryQueue } from './offlineCategoryQueue';
 
 export type OfflineTransactionDraftStatus =
   | 'PENDING'
@@ -144,6 +145,15 @@ const runSync = async (
     if (!isCurrent() || getApiStorageBaseUrl() !== server) break;
     if (draft.server !== server) continue;
     if (draft.status === 'NEEDS_REVIEW') continue;
+    let payload = draft.payload;
+    if (payload.category_id && payload.category_id < 0) {
+      const categoryId = await offlineCategoryQueue.resolveId(
+        userId,
+        payload.category_id,
+      );
+      if (!categoryId) break;
+      payload = { ...payload, category_id: categoryId };
+    }
     if (draft.receipt) {
       try {
         await offlineReceiptStore.verify(userId, draft.receipt);
@@ -168,7 +178,7 @@ const runSync = async (
     try {
       const transactionId =
         draft.confirmedTransactionId ??
-        (await transactionsService.create(token, draft.payload)).id;
+        (await transactionsService.create(token, payload)).id;
       if (draft.receipt) {
         draft.confirmedTransactionId = transactionId;
         await save(userId, drafts);

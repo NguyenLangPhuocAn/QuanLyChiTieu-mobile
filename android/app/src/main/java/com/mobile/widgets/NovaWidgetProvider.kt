@@ -59,7 +59,7 @@ open class NovaWidgetProvider : AppWidgetProvider() {
       val array = snapshot(context).optJSONArray("categories") ?: return emptyList()
       return (0 until array.length()).mapNotNull { index ->
         val value = array.optJSONObject(index)
-        if (value != null && value.optString("type") == type && value.optLong("id") > 0)
+        if (value != null && value.optString("type") == type && value.optLong("id") != 0L)
           Choice(value.optLong("id"), value.optString("name")) else null
       }.distinctBy { it.id }
     }

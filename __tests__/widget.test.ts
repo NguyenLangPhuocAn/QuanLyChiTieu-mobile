@@ -58,11 +58,25 @@ it('includes confirmed uncategorized income but not non-cash-flow rows', () => {
   const snapshot = {
     updatedAt: day.toISOString(),
     transactions: [
-      { amount: 12000, currency: 'VND', type: 'INCOME', transaction_date: '2026-11-04', category: null },
-      { amount: 5000, currency: 'VND', type: 'INCOME', transaction_date: '2026-11-04', category: { cash_flow_group: 'TRANSFER' } },
+      {
+        amount: 12000,
+        currency: 'VND',
+        type: 'INCOME',
+        transaction_date: '2026-11-04',
+        category: null,
+      },
+      {
+        amount: 5000,
+        currency: 'VND',
+        type: 'INCOME',
+        transaction_date: '2026-11-04',
+        category: { cash_flow_group: 'TRANSFER' },
+      },
     ],
   } as DashboardCache;
-  expect(buildWidgetSnapshot(snapshot, 'VND', 0, day).income).toBe('12.000 VND');
+  expect(buildWidgetSnapshot(snapshot, 'VND', 0, day).income).toBe(
+    '12.000 VND',
+  );
 });
 
 it('offers only normal income/expense categories and carries a validated category and input action', () => {
@@ -91,6 +105,9 @@ it('offers only normal income/expense categories and carries a validated categor
   );
   expect(widgetLink(scope, base + '&action=CATEGORY&category=4')).toContain(
     'widgetAction=CATEGORY&widgetCategoryId=4',
+  );
+  expect(widgetLink(scope, base + '&category=-2048')).toContain(
+    'widgetCategoryId=-2048',
   );
   for (const suffix of [
     '&action=SAVE',

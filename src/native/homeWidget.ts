@@ -6,7 +6,16 @@ const native = NativeModules.NovaHomeWidget as
       requestPin(kind: 'mini' | 'full'): Promise<boolean>;
       isConnected(): Promise<boolean>;
       validateLink(scope: string, url: string): Promise<boolean>;
-      selectCategory(scope: string, url: string, categoryId: number | null): Promise<boolean>;
+      selectCategory(
+        scope: string,
+        url: string,
+        categoryId: number | null,
+      ): Promise<boolean>;
+      remapCategory(
+        scope: string,
+        fromId: number,
+        toId: number,
+      ): Promise<boolean>;
       closeQuickEntry(result: string): Promise<boolean>;
       entryReady?(): Promise<void>;
       addListener(name: string): void;
@@ -26,6 +35,8 @@ export const homeWidget = {
     native?.validateLink?.(scope, url) ?? Promise.resolve(false),
   selectCategory: (scope: string, url: string, categoryId: number | null) =>
     native?.selectCategory?.(scope, url, categoryId) ?? Promise.resolve(false),
+  remapCategory: (scope: string, fromId: number, toId: number) =>
+    native?.remapCategory?.(scope, fromId, toId) ?? Promise.resolve(false),
   closeQuickEntry: (result = 'CANCEL') =>
     native?.closeQuickEntry?.(result) ?? Promise.resolve(false),
   entryReady: () => native?.entryReady?.() ?? Promise.resolve(),

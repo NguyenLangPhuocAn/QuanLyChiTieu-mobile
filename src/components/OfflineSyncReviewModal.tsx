@@ -8,6 +8,8 @@ import {
   View,
 } from 'react-native';
 import type { OfflineTransactionDraft } from '../services/offlineTransactionQueue';
+import type { OfflineCategoryChange } from '../services/offlineCategoryQueue';
+import type { Category } from '../types/category';
 import type {
   OfflineTransactionChange,
   TransactionSnapshot,
@@ -16,6 +18,8 @@ import type {
 export type OfflineSyncReview = {
   drafts: OfflineTransactionDraft[];
   changes: OfflineTransactionChange[];
+  categories?: OfflineCategoryChange[];
+  remoteCategories?: Record<number, Category | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -52,6 +56,39 @@ export default function OfflineSyncReviewModal({
             style={styles.list}
             contentContainerStyle={styles.listContent}
           >
+            {review?.categories?.map(item => (
+              <View key={`category-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>
+                  {item.action === 'CREATE'
+                    ? 'Danh mục mới'
+                    : item.action === 'UPDATE'
+                    ? 'Sửa danh mục'
+                    : 'Xóa danh mục'}
+                </Text>
+                <Text style={styles.local}>
+                  Trên máy:{' '}
+                  {item.action === 'DELETE'
+                    ? item.base?.name
+                    : item.payload?.name}{' '}
+                  ·{' '}
+                  {item.action === 'DELETE'
+                    ? item.base?.type
+                    : item.payload?.type}
+                </Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {item.action === 'CREATE'
+                    ? 'Chưa xác định đã nhận'
+                    : review.remoteCategories?.[item.id]?.name ??
+                      'Không còn danh mục'}
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
             {review?.drafts.map(item => (
               <View key={item.id} style={styles.row}>
                 <Text style={styles.rowTitle}>Giao dịch mới</Text>

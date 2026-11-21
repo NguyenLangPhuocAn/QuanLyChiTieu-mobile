@@ -38,7 +38,7 @@ export const buildWidgetSnapshot = (
       .filter(
         c =>
           Number.isSafeInteger(c.id) &&
-          c.id > 0 &&
+          c.id !== 0 &&
           c.name.trim() &&
           ['EXPENSE', 'INCOME'].includes(c.type) &&
           (!c.cash_flow_group || c.cash_flow_group === 'NORMAL'),
