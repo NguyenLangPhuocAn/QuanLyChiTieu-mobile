@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -86,7 +92,10 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const readOnly = isOfflineSession || Boolean(cachedAt);
   const showOfflineWriteNotice = () =>
-    Alert.alert('Cần kết nối', 'Thêm, sửa, xóa ví và chuyển tiền cần có mạng. Dữ liệu ví trên máy chỉ để xem.');
+    Alert.alert(
+      'Cần kết nối',
+      'Thêm, sửa, xóa ví và chuyển tiền cần có mạng. Dữ liệu ví trên máy chỉ để xem.',
+    );
   const [isSavingWallet, setIsSavingWallet] = useState(false);
   const { run: runWalletMutation } = useSingleFlight();
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
@@ -129,13 +138,17 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       setIsLoading(false);
       return;
     }
+    // Budget data is optional on this screen; a budget API failure must not
+    // hide a fresh wallet list or keep wallet actions disabled.
+    const budgetRequest = budgetsService.getAll(token).catch(() => null);
     try {
       const response = await walletsService.getAll(token);
-      const nextBudgets = await budgetsService.getAll(token);
       if (!current()) return;
       setWallets(response);
-      setBudgets(nextBudgets);
       setCachedAt(null);
+      setIsLoading(false);
+      const nextBudgets = await budgetRequest;
+      if (current() && nextBudgets) setBudgets(nextBudgets);
     } catch (error) {
       if (current() && !cached) {
         const message = getUserFriendlyErrorMessage(
@@ -211,10 +224,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
         editingWallet ? Number(editingWallet.balance ?? 0) : undefined,
       );
       if (balance === null) {
-        Alert.alert(
-          'Số dư chưa hợp lệ',
-          'Nhập số dư hợp lệ từ 0 trở lên.',
-        );
+        Alert.alert('Số dư chưa hợp lệ', 'Nhập số dư hợp lệ từ 0 trở lên.');
         return;
       }
       setIsSavingWallet(true);
@@ -369,19 +379,23 @@ const WalletsScreen = ({ navigation, route }: Props) => {
         ) : regularWallets.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>
-              {isOfflineSession ? 'Chưa có dữ liệu ví trên máy' : 'Bạn chưa có ví nào'}
+              {isOfflineSession
+                ? 'Chưa có dữ liệu ví trên máy'
+                : 'Bạn chưa có ví nào'}
             </Text>
             <Text style={styles.emptyText}>
               {isOfflineSession
                 ? 'Kết nối mạng và mở danh sách ví một lần để tải dữ liệu.'
                 : 'Tạo ví đầu tiên để bắt đầu theo dõi số dư, ngân sách và giao dịch.'}
             </Text>
-            {!isOfflineSession ? <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={openCreateWalletModal}
-            >
-              <Text style={styles.primaryButtonText}>Tạo ví đầu tiên</Text>
-            </TouchableOpacity> : null}
+            {!isOfflineSession ? (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={openCreateWalletModal}
+              >
+                <Text style={styles.primaryButtonText}>Tạo ví đầu tiên</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           regularWallets.map(wallet => {
