@@ -1,3 +1,5 @@
+import type { LoanDebt, LoanDebtStatus, LoanDebtType } from '../types/loanDebt';
+
 export type LoanDebtPeriodFilter = 'CURRENT' | 'PREVIOUS_MONTH' | 'PREVIOUS_QUARTER' | 'PREVIOUS_YEAR' | 'CUSTOM_RANGE' | 'ALL';
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -55,3 +57,24 @@ export const filterLoanDebtsByPeriod = <T extends {
     return date >= start && date <= end;
   });
 };
+
+export const filterLoanDebts = (
+  records: LoanDebt[],
+  filters: {
+    type?: LoanDebtType;
+    status?: LoanDebtStatus;
+    period: LoanDebtPeriodFilter;
+    customStart?: string;
+    customEnd?: string;
+  },
+  now = new Date(),
+) => filterLoanDebtsByPeriod(
+  records.filter(record =>
+    (!filters.type || record.type === filters.type) &&
+    (!filters.status || record.status === filters.status),
+  ),
+  filters.period,
+  now,
+  filters.customStart,
+  filters.customEnd,
+);

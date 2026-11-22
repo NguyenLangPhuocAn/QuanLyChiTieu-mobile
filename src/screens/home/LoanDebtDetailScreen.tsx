@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
+import { loanDebtsCache } from '../../services/loanDebtsCache';
 import { walletsService } from '../../services/wallets';
 import type { LoanDebt } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
@@ -51,7 +52,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'LoanDebtDetail'>;
 
 const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
   const { run: runLoanMutation } = useSingleFlight();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const activeUserId = React.useRef(user?.id);
+  activeUserId.current = user?.id;
   const [record, setRecord] = useState<LoanDebt | null>(null);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
@@ -62,20 +65,42 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
   const [paymentDate, setPaymentDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const lastLoadedAt = React.useRef<string | null>(null);
   const loadRevision = React.useRef(0);
+
+  useEffect(() => {
+    loadRevision.current += 1;
+    setRecord(null);
+    setWallets([]);
+    setWalletId(null);
+    setCachedAt(null);
+    lastLoadedAt.current = null;
+    setModalVisible(false);
+  }, [user?.id]);
 
   const load = useCallback(async () => {
     const revision = ++loadRevision.current;
-    if (!token) return;
+    const requestUserId = user?.id;
+    if (!token || !requestUserId) return;
     setLoadError(null);
     try {
+      const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      const savedRecord = saved?.records.find(item => item.id === route.params.loanDebtId);
+      if (savedRecord && saved) {
+        setRecord(savedRecord);
+        setCachedAt(saved.updatedAt);
+      }
       const [nextRecord, nextWallets] = await Promise.all([
         loanDebtsService.getOne(token, route.params.loanDebtId),
         walletsService.getAll(token),
       ]);
-      if (revision !== loadRevision.current) return;
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
       setRecord(nextRecord);
       setWallets(nextWallets);
+      setCachedAt(null);
+      lastLoadedAt.current = new Date().toISOString();
       setWalletId(
         current =>
           nextWallets.find(
@@ -86,15 +111,22 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           null,
       );
     } catch (error) {
-      if (revision !== loadRevision.current) return;
-      setLoadError(
-        getLoanDebtErrorMessage(
-          error,
-          'Không tải được khoản vay/nợ. Vui lòng thử lại.',
-        ),
-      );
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      const savedRecord = saved?.records.find(item => item.id === route.params.loanDebtId);
+      if (savedRecord && saved) {
+        setRecord(savedRecord);
+        setWallets([]);
+        setWalletId(null);
+        setCachedAt(saved.updatedAt);
+        setModalVisible(false);
+      } else {
+        setCachedAt(lastLoadedAt.current);
+        setLoadError(lastLoadedAt.current ? null : getLoanDebtErrorMessage(error, 'Không tải được khoản vay/nợ. Vui lòng thử lại.'));
+      }
     }
-  }, [route.params.loanDebtId, token]);
+  }, [route.params.loanDebtId, token, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -136,6 +168,10 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
 
   const pay = () =>
     runLoanMutation(async () => {
+      if (cachedAt) {
+        Alert.alert('Đang xem dữ liệu đã lưu', 'Kết nối mạng để ghi thanh toán.');
+        return;
+      }
       const normalizedAmount = parsePositiveMoneyInput(amount);
       const error = validateLoanDebtPayment(amount, record.remaining_amount);
       if (error || !normalizedAmount) {
@@ -198,6 +234,7 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
   };
 
   const remove = () =>
+    !cachedAt &&
     Alert.alert(
       'Xóa khoản vay/nợ',
       'Số dư ví và các giao dịch liên kết sẽ được hoàn lại.',
@@ -233,7 +270,7 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Chi tiết vay/nợ</Text>
-        <View style={styles.actions}>
+        {!cachedAt ? <View style={styles.actions}>
           <TouchableOpacity
             onPress={() =>
               navigation.navigate('LoanDebtForm', { loanDebtId: record.id })
@@ -244,9 +281,18 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           <TouchableOpacity onPress={remove}>
             <Trash2 size={20} color="#D04432" />
           </TouchableOpacity>
-        </View>
+        </View> : null}
       </View>
       <ScrollView contentContainerStyle={styles.content}>
+        {cachedAt ? (
+          <View style={styles.cacheNotice}>
+            <Text style={styles.cacheNoticeTitle}>Dữ liệu đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
+            <Text style={styles.cacheNoticeText}>Số còn lại và lịch sử có thể đã thay đổi. Kết nối mạng để ghi hoặc xóa thanh toán.</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={load}>
+              <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {loadError ? (
           <TouchableOpacity
             accessibilityRole="button"
@@ -298,7 +344,7 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
         </View>
-        {record.status !== 'PAID' ? (
+        {!cachedAt && record.status !== 'PAID' ? (
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Ghi nhận thanh toán vay nợ"
@@ -324,11 +370,11 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
                   {payment.payment_date.slice(0, 10)}
                   {payment.note ? ` · ${payment.note}` : ''}
                 </Text>
-                <Text style={styles.paymentWallet}>
+                {!cachedAt ? <Text style={styles.paymentWallet}>
                   {walletName(payment.wallet_id)}
-                </Text>
+                </Text> : null}
               </View>
-              <TouchableOpacity
+              {!cachedAt ? <TouchableOpacity
                 onPress={() =>
                   Alert.alert(
                     'Xóa lần thanh toán',
@@ -362,7 +408,7 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
                 }
               >
                 <Trash2 size={18} color="#D04432" />
-              </TouchableOpacity>
+              </TouchableOpacity> : null}
             </View>
           ))
         )}
@@ -511,6 +557,10 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4 },
+  cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
+  cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
+  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
   loadErrorText: {
     color: '#9A342B',
     fontSize: 14,

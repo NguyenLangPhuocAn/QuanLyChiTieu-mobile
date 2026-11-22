@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -15,6 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
+import { loanDebtsCache } from '../../services/loanDebtsCache';
 import type {
   LoanDebt,
   LoanDebtStatus,
@@ -26,15 +27,18 @@ import {
   getLoanDebtStatusLabel,
   getLoanDebtTypeLabel,
 } from '../../utils/loanDebt';
-import { filterLoanDebtsByPeriod, toLoanDebtDateKey, type LoanDebtPeriodFilter } from '../../utils/loanDebtPeriodFilter';
+import { filterLoanDebts, toLoanDebtDateKey, type LoanDebtPeriodFilter } from '../../utils/loanDebtPeriodFilter';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LoanDebts'>;
 
 const LoanDebtsScreen = ({ navigation }: Props) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const activeUserId = useRef(user?.id);
+  activeUserId.current = user?.id;
   const [records, setRecords] = useState<LoanDebt[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
   const loadRevision = useRef(0);
   const [type, setType] = useState<LoanDebtType>();
   const [status, setStatus] = useState<LoanDebtStatus>();
@@ -42,7 +46,20 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   const [filterStartDate, setFilterStartDate] = useState(toLoanDebtDateKey(new Date()));
   const [filterEndDate, setFilterEndDate] = useState(toLoanDebtDateKey(new Date()));
   const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end' | null>(null);
-  const filteredRecords = filterLoanDebtsByPeriod(records, periodFilter, new Date(), filterStartDate, filterEndDate);
+  const filteredRecords = filterLoanDebts(records, {
+    type,
+    status,
+    period: periodFilter,
+    customStart: filterStartDate,
+    customEnd: filterEndDate,
+  });
+
+  useEffect(() => {
+    loadRevision.current += 1;
+    setRecords([]);
+    setCachedAt(null);
+    setLoadError(null);
+  }, [user?.id]);
 
   const onFilterDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
     const target = datePickerTarget;
@@ -53,20 +70,45 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
     else setFilterEndDate(value);
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     const revision = ++loadRevision.current;
-    if (!token) return;
+    const requestUserId = user?.id;
+    if (!token || !requestUserId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
-      const nextRecords = await loanDebtsService.getAll(token, { type, status });
-      if (revision === loadRevision.current) setRecords(nextRecords);
+      if (!refresh) {
+        const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        if (saved) {
+          setRecords(saved.records);
+          setCachedAt(saved.updatedAt);
+          setLoading(false);
+        }
+      }
+      const nextRecords = await loanDebtsService.getAll(token);
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      setRecords(nextRecords);
+      setCachedAt(null);
+      await loanDebtsCache.save(requestUserId, nextRecords).catch(() => undefined);
     } catch (error) {
-      if (revision === loadRevision.current) setLoadError(getLoanDebtErrorMessage(error, 'Không tải được danh sách vay/nợ. Vui lòng thử lại.'));
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
+      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      if (saved) {
+        setRecords(saved.records);
+        setCachedAt(saved.updatedAt);
+        setLoadError(null);
+      } else {
+        setLoadError(getLoanDebtErrorMessage(error, 'Không tải được danh sách vay/nợ. Vui lòng thử lại.'));
+      }
     } finally {
-      if (revision === loadRevision.current) setLoading(false);
+      if (revision === loadRevision.current && activeUserId.current === requestUserId) setLoading(false);
     }
-  }, [status, token, type]);
+  }, [token, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -86,11 +128,21 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         <Text style={styles.title}>Vay/Nợ</Text>
         <TouchableOpacity
           style={styles.icon}
+          disabled={Boolean(cachedAt)}
           onPress={() => navigation.navigate('LoanDebtForm')}>
-          <Plus size={22} color="#593420" />
+          <Plus size={22} color={cachedAt ? '#B7A294' : '#593420'} />
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
+        {cachedAt ? (
+          <View style={styles.cacheNotice}>
+            <Text style={styles.cacheNoticeTitle}>Vay/Nợ đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
+            <Text style={styles.cacheNoticeText}>Số còn lại và trạng thái có thể đã thay đổi. Kết nối mạng để ghi thanh toán hoặc sửa khoản vay/nợ.</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={() => load(true)}>
+              <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <Text style={styles.filterTitle}>Loại</Text>
         <ScrollView
           horizontal
@@ -177,7 +229,7 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         ) : loadError ? (
           <View>
             <Text style={styles.empty}>{loadError}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại danh sách vay nợ" style={styles.retryButton} onPress={load}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại danh sách vay nợ" style={styles.retryButton} onPress={() => load(true)}>
               <Text>Thử lại</Text>
             </TouchableOpacity>
           </View>
@@ -236,6 +288,10 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4, marginBottom: 12 },
+  cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
+  cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
+  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
   retryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   container: { flex: 1, backgroundColor: '#FFF8F1' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
