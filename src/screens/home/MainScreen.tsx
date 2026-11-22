@@ -76,6 +76,7 @@ import {
   offlineTransactionQueue,
 } from '../../services/offlineTransactionQueue';
 import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
+import { offlineWalletQueue } from '../../services/offlineWalletQueue';
 import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
@@ -388,6 +389,31 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const activeUserId = useRef(user?.id);
   activeUserId.current = user?.id;
   const baseCategoryRef = useRef<Category[]>([]);
+  const baseWalletRef = useRef<Wallet[]>([]);
+  const walletRenderRevision = useRef(0);
+  const showWallets = useCallback(
+    (base: Wallet[]) => {
+      baseWalletRef.current = base;
+      const revision = ++walletRenderRevision.current;
+      const userId = activeUserId.current;
+      if (!userId) return;
+      offlineWalletQueue
+        .list(userId)
+        .then(changes => {
+          if (
+            activeUserId.current === userId &&
+            walletRenderRevision.current === revision
+          )
+            setWallets(
+              offlineWalletQueue
+                .apply(base, changes)
+                .filter(item => item.id > 0),
+            );
+        })
+        .catch(() => setWallets(base));
+    },
+    [setWallets],
+  );
   const categoryRenderRevision = useRef(0);
   const showCategories = useCallback(
     (base: Category[]) => {
@@ -412,16 +438,20 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     const unsubscribe = offlineCategoryQueue.subscribe(() => {
       showCategories(baseCategoryRef.current);
     });
+    const walletUnsubscribe = offlineWalletQueue.subscribe(() => {
+      showWallets(baseWalletRef.current);
+    });
     return () => {
       unsubscribe();
+      walletUnsubscribe();
     };
-  }, [showCategories]);
+  }, [showCategories, showWallets]);
   const amountInputRef = useRef<TextInput>(null);
   const transactionFormScrollRef = useRef<ScrollView>(null);
 
   const applyDashboardSnapshot = useCallback(
     (snapshot: DashboardCache) => {
-      setWallets(snapshot.wallets);
+      showWallets(snapshot.wallets);
       showCategories(snapshot.categories);
       setTags(snapshot.tags);
       setBudgets(snapshot.budgets);
@@ -431,7 +461,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       );
       dashboardDataVisible.current = true;
     },
-    [setBudgets, showCategories, setTags, setTransactions],
+    [setBudgets, showCategories, showWallets, setTags, setTransactions],
   );
 
   useEffect(() => {
@@ -457,7 +487,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           applyDashboardSnapshot(cached);
           setRefreshing(false);
         } else if (references) {
-          setWallets(references.wallets);
+          showWallets(references.wallets);
           showCategories(references.categories);
         }
       })
@@ -466,7 +496,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     return () => {
       cancelled = true;
     };
-  }, [applyDashboardSnapshot, showCategories, user?.id]);
+  }, [applyDashboardSnapshot, showCategories, showWallets, user?.id]);
 
   const fetchDashboardData = useCallback(
     (showIndicator = true) => {
@@ -546,12 +576,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           if (cached && !dashboardDataVisible.current) {
             applyDashboardSnapshot(cached);
           } else if (references && !dashboardDataVisible.current) {
-            setWallets(references.wallets);
+            showWallets(references.wallets);
             showCategories(references.categories);
           }
           if (freshReferences) {
             freshReferencesVisible.current = true;
-            setWallets(freshReferences[0]);
+            showWallets(freshReferences[0]);
             showCategories(freshReferences[1]);
           }
           if (!cached || showIndicator) {
@@ -581,7 +611,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       dashboardFetchUserId.current = requestUserId;
       return request;
     },
-    [applyDashboardSnapshot, showCategories, token, user?.id],
+    [applyDashboardSnapshot, showCategories, showWallets, token, user?.id],
   );
 
   useEffect(() => {

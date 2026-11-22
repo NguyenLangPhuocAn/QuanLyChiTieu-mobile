@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import type { OfflineTransactionDraft } from '../services/offlineTransactionQueue';
 import type { OfflineCategoryChange } from '../services/offlineCategoryQueue';
+import type { OfflineWalletChange } from '../services/offlineWalletQueue';
+import type { Wallet } from '../types/wallet';
 import type { Category } from '../types/category';
 import type {
   OfflineTransactionChange,
@@ -20,6 +22,8 @@ export type OfflineSyncReview = {
   changes: OfflineTransactionChange[];
   categories?: OfflineCategoryChange[];
   remoteCategories?: Record<number, Category | null>;
+  wallets?: OfflineWalletChange[];
+  remoteWallets?: Record<number, Wallet | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -56,6 +60,42 @@ export default function OfflineSyncReviewModal({
             style={styles.list}
             contentContainerStyle={styles.listContent}
           >
+            {review?.wallets?.map(item => (
+              <View key={`wallet-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>
+                  {item.action === 'CREATE'
+                    ? 'Ví mới'
+                    : item.action === 'UPDATE'
+                    ? 'Sửa ví'
+                    : 'Xóa ví'}
+                </Text>
+                <Text style={styles.local}>
+                  Trên máy:{' '}
+                  {item.action === 'DELETE'
+                    ? item.base?.name
+                    : item.payload?.name}{' '}
+                  ·{' '}
+                  {item.action === 'DELETE'
+                    ? item.base?.currency
+                    : item.payload?.currency}
+                </Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {item.action === 'CREATE'
+                    ? 'Chưa xác định đã nhận'
+                    : review.remoteWallets?.[item.id]
+                    ? `${review.remoteWallets[item.id]?.name} · ${Number(
+                        review.remoteWallets[item.id]?.balance,
+                      ).toLocaleString('vi-VN')}`
+                    : 'Không còn ví'}
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
             {review?.categories?.map(item => (
               <View key={`category-${item.id}`} style={styles.row}>
                 <Text style={styles.rowTitle}>

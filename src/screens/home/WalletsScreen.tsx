@@ -42,6 +42,10 @@ import {
 } from '../../constants/walletTypes';
 import { useAuth } from '../../context/AuthContext';
 import { walletsService } from '../../services/wallets';
+import { offlineWalletQueue } from '../../services/offlineWalletQueue';
+import { homeWidget } from '../../native/homeWidget';
+import { ApiError } from '../../services/api';
+import { financeRefresh } from '../../services/financeRefresh';
 import { budgetsService } from '../../services/budgets';
 import { dashboardCache } from '../../services/dashboardCache';
 import type { Wallet } from '../../types/wallet';
@@ -94,8 +98,15 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   const showOfflineWriteNotice = () =>
     Alert.alert(
       'Cần kết nối',
-      'Thêm, sửa, xóa ví và chuyển tiền cần có mạng. Dữ liệu ví trên máy chỉ để xem.',
+      'Chuyển tiền cần có mạng. Thêm, sửa thông tin và xóa ví có thể lưu trên máy để đối chiếu sau.',
     );
+  const baseWallets = useRef<Wallet[]>([]);
+  const displayWallets = useCallback(async (userId: number, base: Wallet[]) => {
+    baseWallets.current = base;
+    const pending = await offlineWalletQueue.list(userId);
+    if (activeUserId.current === userId)
+      setWallets(offlineWalletQueue.apply(base, pending));
+  }, []);
   const [isSavingWallet, setIsSavingWallet] = useState(false);
   const { run: runWalletMutation } = useSingleFlight();
   const [isWalletModalVisible, setIsWalletModalVisible] = useState(false);
@@ -123,13 +134,18 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     const userId = user.id;
     const current = () => activeUserId.current === userId;
     setIsLoading(true);
-    const cached = await dashboardCache.read(userId).catch(() => null);
+    const [cached, references] = await Promise.all([
+      dashboardCache.read(userId).catch(() => null),
+      dashboardCache.readReferences(userId).catch(() => null),
+    ]);
     if (!current()) return;
-    if (cached) {
-      setWallets(cached.wallets);
-      setBudgets(cached.budgets);
-      setCachedAt(cached.updatedAt);
+    if (references || cached) {
+      await displayWallets(userId, references?.wallets ?? cached!.wallets);
+      setBudgets(cached?.budgets ?? []);
+      setCachedAt(references?.updatedAt ?? cached!.updatedAt);
+      setIsLoading(false);
     } else {
+      baseWallets.current = [];
       setWallets([]);
       setBudgets([]);
       setCachedAt(null);
@@ -144,13 +160,20 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     try {
       const response = await walletsService.getAll(token);
       if (!current()) return;
-      setWallets(response);
+      await displayWallets(userId, response);
       setCachedAt(null);
       setIsLoading(false);
+      dashboardCache
+        .saveReferences(
+          userId,
+          response,
+          references?.categories ?? cached?.categories ?? [],
+        )
+        .catch(() => undefined);
       const nextBudgets = await budgetRequest;
       if (current() && nextBudgets) setBudgets(nextBudgets);
     } catch (error) {
-      if (current() && !cached) {
+      if (current() && !cached && !references) {
         const message = getUserFriendlyErrorMessage(
           error,
           'Không thể tải danh sách ví.',
@@ -160,7 +183,15 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     } finally {
       if (current()) setIsLoading(false);
     }
-  }, [token, user?.id, isOfflineSession]);
+  }, [token, user?.id, isOfflineSession, displayWallets]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    return offlineWalletQueue.subscribe(() => {
+      displayWallets(userId, baseWallets.current).catch(() => undefined);
+    });
+  }, [displayWallets, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -188,7 +219,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   );
 
   const openCreateWalletModal = () => {
-    if (readOnly) return showOfflineWriteNotice();
     setEditingWallet(null);
     setWalletName('');
     setWalletBalance('');
@@ -198,7 +228,6 @@ const WalletsScreen = ({ navigation, route }: Props) => {
   };
 
   const openEditWalletModal = (wallet: Wallet) => {
-    if (readOnly) return showOfflineWriteNotice();
     setEditingWallet(wallet);
     setWalletName(wallet.name);
     setWalletBalance(String(wallet.balance ?? 0));
@@ -207,60 +236,160 @@ const WalletsScreen = ({ navigation, route }: Props) => {
     setIsWalletModalVisible(true);
   };
 
-  const handleSaveWallet = () =>
-    runWalletMutation(async () => {
-      if (readOnly) return showOfflineWriteNotice();
-      if (!token) {
-        return;
-      }
-
-      if (!walletName.trim()) {
-        Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên ví.');
-        return;
-      }
-
-      const balance = getWalletBalanceChange(
-        walletBalance,
-        editingWallet ? Number(editingWallet.balance ?? 0) : undefined,
-      );
-      if (balance === null) {
-        Alert.alert('Số dư chưa hợp lệ', 'Nhập số dư hợp lệ từ 0 trở lên.');
-        return;
-      }
-      setIsSavingWallet(true);
-
-      try {
-        if (editingWallet) {
-          await walletsService.update(token, editingWallet.id, {
-            name: walletName.trim(),
-            ...(balance !== undefined ? { balance } : {}),
-            currency: walletCurrency,
-            wallet_type: walletType,
-          });
-        } else {
-          await walletsService.create(token, {
-            name: walletName.trim(),
-            balance: balance ?? '0',
-            currency: walletCurrency,
-            wallet_type: walletType,
-          });
-        }
-
-        await fetchWallets();
-        setIsWalletModalVisible(false);
-      } catch (error) {
-        const message = getUserFriendlyErrorMessage(error, 'Không thể lưu ví.');
-        Alert.alert('Lưu ví thất bại', message);
-      } finally {
-        setIsSavingWallet(false);
-      }
-    });
-
-  const handleDeleteWallet = () => {
-    if (readOnly) return showOfflineWriteNotice();
-    if (!token || !editingWallet) {
+  const handleSaveWallet = () => {
+    if (!token || !user?.id) {
       return;
     }
+
+    if (!walletName.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên ví.');
+      return;
+    }
+
+    const balance = getWalletBalanceChange(
+      walletBalance,
+      editingWallet ? Number(editingWallet.balance ?? 0) : undefined,
+    );
+    if (balance === null) {
+      Alert.alert('Số dư chưa hợp lệ', 'Nhập số dư hợp lệ từ 0 trở lên.');
+      return;
+    }
+    const userId = user.id;
+    const name = walletName.trim();
+    const wallet = editingWallet;
+    const payload = {
+      name,
+      currency: walletCurrency,
+      wallet_type: walletType,
+    };
+    Alert.alert(
+      wallet ? 'Kiểm tra sửa ví' : 'Kiểm tra tạo ví',
+      `${name} · ${walletCurrency}\n${
+        wallet
+          ? balance === undefined
+            ? 'Số dư giữ nguyên'
+            : `Số dư mới: ${formatCurrency(Number(balance), walletCurrency)}`
+          : `Số dư ban đầu: ${formatCurrency(
+              Number(balance ?? 0),
+              walletCurrency,
+            )}`
+      }\n\n${
+        readOnly
+          ? 'Thay đổi sẽ lưu trên máy và hỏi lại khi có mạng.'
+          : 'Xác nhận lưu ví.'
+      }`,
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Lưu ví',
+          onPress: () =>
+            runWalletMutation(async () => {
+              setIsSavingWallet(true);
+
+              try {
+                const pending = wallet
+                  ? (await offlineWalletQueue.list(userId)).some(
+                      item => item.id === wallet.id,
+                    )
+                  : false;
+                const offline =
+                  isOfflineSession ||
+                  readOnly ||
+                  !(await homeWidget.connected()) ||
+                  pending ||
+                  (wallet?.id ?? 0) < 0;
+                if (offline && wallet && balance !== undefined)
+                  throw Error(
+                    'Sửa số dư cần có mạng để ghi giao dịch điều chỉnh. Hãy giữ số dư cũ hoặc thử lại khi có mạng.',
+                  );
+                if (offline) {
+                  if (wallet)
+                    await offlineWalletQueue.update(userId, wallet, payload);
+                  else
+                    await offlineWalletQueue.create(userId, {
+                      ...payload,
+                      balance: balance ?? '0',
+                    });
+                  await displayWallets(userId, baseWallets.current);
+                  financeRefresh.emit();
+                  setIsWalletModalVisible(false);
+                  Alert.alert(
+                    'Đã lưu trên máy',
+                    'Thay đổi ví sẽ được xem trước khi đồng bộ. Ví mới chỉ dùng cho giao dịch sau khi đồng bộ.',
+                  );
+                  return;
+                }
+                if (wallet) {
+                  try {
+                    await walletsService.update(token, wallet.id, {
+                      ...payload,
+                      ...(balance !== undefined ? { balance } : {}),
+                    });
+                  } catch (error) {
+                    if (
+                      !(error instanceof ApiError) ||
+                      error.status !== 0 ||
+                      balance !== undefined
+                    )
+                      throw error;
+                    await offlineWalletQueue.update(userId, wallet, payload);
+                    await displayWallets(userId, baseWallets.current);
+                    setIsWalletModalVisible(false);
+                    Alert.alert(
+                      'Đã lưu trên máy',
+                      'Chưa xác nhận máy chủ đã nhận. Thay đổi sẽ được đối chiếu khi có mạng lại.',
+                    );
+                    return;
+                  }
+                } else {
+                  const id = offlineWalletQueue.createRequestId();
+                  try {
+                    await walletsService.create(token, {
+                      ...payload,
+                      balance: balance ?? '0',
+                      client_request_id: id,
+                    });
+                  } catch (error) {
+                    if (!(error instanceof ApiError) || error.status !== 0)
+                      throw error;
+                    await offlineWalletQueue.create(
+                      userId,
+                      { ...payload, balance: balance ?? '0' },
+                      id,
+                    );
+                    await displayWallets(userId, baseWallets.current);
+                    setIsWalletModalVisible(false);
+                    Alert.alert(
+                      'Đã lưu trên máy',
+                      'Chưa xác nhận máy chủ đã nhận. Ví sẽ được đối chiếu khi có mạng lại.',
+                    );
+                    return;
+                  }
+                }
+
+                await fetchWallets();
+                setIsWalletModalVisible(false);
+              } catch (error) {
+                const message = getUserFriendlyErrorMessage(
+                  error,
+                  'Không thể lưu ví.',
+                );
+                Alert.alert('Lưu ví thất bại', message);
+              } finally {
+                setIsSavingWallet(false);
+              }
+            }),
+        },
+      ],
+    );
+  };
+
+  const handleDeleteWallet = () => {
+    if (!token || !user?.id || !editingWallet) {
+      return;
+    }
+    const wallet = editingWallet;
+    const userId = user.id;
 
     Alert.alert(
       'Xóa ví',
@@ -275,7 +404,41 @@ const WalletsScreen = ({ navigation, route }: Props) => {
               setIsSavingWallet(true);
 
               try {
-                await walletsService.remove(token, editingWallet.id);
+                const pending = (await offlineWalletQueue.list(userId)).some(
+                  item => item.id === wallet.id,
+                );
+                if (
+                  isOfflineSession ||
+                  readOnly ||
+                  !(await homeWidget.connected()) ||
+                  pending ||
+                  wallet.id < 0
+                ) {
+                  await offlineWalletQueue.remove(userId, wallet);
+                  await displayWallets(userId, baseWallets.current);
+                  financeRefresh.emit();
+                  setIsWalletModalVisible(false);
+                  setEditingWallet(null);
+                  Alert.alert(
+                    'Đã lưu trên máy',
+                    'Xóa ví sẽ được xem trước khi đồng bộ.',
+                  );
+                  return;
+                }
+                try {
+                  await walletsService.remove(token, wallet.id);
+                } catch (error) {
+                  if (!(error instanceof ApiError) || error.status !== 0)
+                    throw error;
+                  await offlineWalletQueue.remove(userId, wallet);
+                  await displayWallets(userId, baseWallets.current);
+                  setIsWalletModalVisible(false);
+                  Alert.alert(
+                    'Đã lưu trên máy',
+                    'Chưa xác nhận máy chủ đã xóa. Hãy đối chiếu khi có mạng lại.',
+                  );
+                  return;
+                }
                 await fetchWallets();
                 setIsWalletModalVisible(false);
                 setEditingWallet(null);
@@ -326,7 +489,7 @@ const WalletsScreen = ({ navigation, route }: Props) => {
       <ScrollView contentContainerStyle={styles.content}>
         {cachedAt ? (
           <Text style={styles.cacheNotice}>
-            Dữ liệu ví trên máy · chỉ xem · cập nhật{' '}
+            Dữ liệu ví trên máy · thay đổi chờ đồng bộ · cập nhật{' '}
             {Number.isFinite(Date.parse(cachedAt))
               ? new Date(cachedAt).toLocaleString('vi-VN')
               : 'trước đó'}

@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { homeWidget } from '../native/homeWidget';
 import { offlineTransactionQueue } from '../services/offlineTransactionQueue';
 import { offlineCategoryQueue } from '../services/offlineCategoryQueue';
+import { offlineWalletQueue } from '../services/offlineWalletQueue';
+import { walletsService } from '../services/wallets';
 import { categoriesService } from '../services/categories';
 import {
   offlineTransactionChanges,
@@ -82,15 +84,24 @@ export default function OfflineSessionSync({
         );
         const changes = await offlineTransactionChanges.list(userId);
         const categories = await offlineCategoryQueue.list(userId);
+        const wallets = await offlineWalletQueue.list(userId);
         if (!current()) return;
         retryPending = Boolean(
-          drafts.length || changes.length || categories.length,
+          drafts.length ||
+            changes.length ||
+            categories.length ||
+            wallets.length,
         );
         if (offlineTransactionQueue.isSyncing(userId)) return;
         if (!(await homeWidget.connected())) return;
         if (!(await latest.current.retryRestoreSession())) return;
         if (!current() || !latest.current.token) return;
-        if (!drafts.length && !changes.length && !categories.length) {
+        if (
+          !drafts.length &&
+          !changes.length &&
+          !categories.length &&
+          !wallets.length
+        ) {
           shownKey = '';
           clearRetry();
           if (current()) await refresh();
@@ -102,10 +113,12 @@ export default function OfflineSessionSync({
         }));
         const expectedChanges = await offlineTransactionChanges.preview(userId);
         const expectedCategories = await offlineCategoryQueue.preview(userId);
+        const expectedWallets = await offlineWalletQueue.preview(userId);
         const key = JSON.stringify([
           expected,
           expectedChanges,
           expectedCategories,
+          expectedWallets,
         ]);
         if (shownKey === key || !current()) {
           retryPending = false;
@@ -115,6 +128,17 @@ export default function OfflineSessionSync({
         const remoteCategories: NonNullable<
           OfflineSyncReview['remoteCategories']
         > = {};
+        const remoteWallets: NonNullable<OfflineSyncReview['remoteWallets']> =
+          {};
+        if (wallets.some(item => item.action !== 'CREATE')) {
+          const serverWallets = await walletsService.getAll(
+            latest.current.token,
+          );
+          for (const item of wallets)
+            if (item.action !== 'CREATE')
+              remoteWallets[item.id] =
+                serverWallets.find(row => row.id === item.id) ?? null;
+        }
         if (categories.some(item => item.action !== 'CREATE')) {
           const serverCategories = await categoriesService.getAll(
             latest.current.token,
@@ -149,6 +173,7 @@ export default function OfflineSessionSync({
         ).filter(item => item.server === server);
         const latestChanges = await offlineTransactionChanges.preview(userId);
         const latestCategories = await offlineCategoryQueue.preview(userId);
+        const latestWallets = await offlineWalletQueue.preview(userId);
         if (
           !current() ||
           offlineTransactionQueue.isSyncing(userId) ||
@@ -160,7 +185,8 @@ export default function OfflineSessionSync({
           ) !== JSON.stringify(expected) ||
           JSON.stringify(latestChanges) !== JSON.stringify(expectedChanges) ||
           JSON.stringify(latestCategories) !==
-            JSON.stringify(expectedCategories)
+            JSON.stringify(expectedCategories) ||
+          JSON.stringify(latestWallets) !== JSON.stringify(expectedWallets)
         )
           return;
         shownKey = key;
@@ -186,6 +212,7 @@ export default function OfflineSessionSync({
               await offlineTransactionQueue.discardLocal(userId, expected);
               await offlineTransactionChanges.discard(userId, expectedChanges);
               await offlineCategoryQueue.discard(userId, expectedCategories);
+              await offlineWalletQueue.discard(userId, expectedWallets);
               shownKey = '';
             } else {
               const now = (await offlineTransactionQueue.list(userId)).filter(
@@ -214,6 +241,25 @@ export default function OfflineSessionSync({
                 throw Error(
                   'Danh mục trên máy đã đổi. Hãy xem lại trước khi đồng bộ.',
                 );
+              if (
+                JSON.stringify(await offlineWalletQueue.preview(userId)) !==
+                JSON.stringify(expectedWallets)
+              )
+                throw Error(
+                  'Ví trên máy đã đổi. Hãy xem lại trước khi đồng bộ.',
+                );
+              const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
+                latest.current.token,
+                userId,
+                expectedWallets,
+                remoteWallets,
+              );
+              const walletResult = await offlineWalletQueue.sync(
+                latest.current.token,
+                userId,
+                rebasedWallets,
+                current,
+              );
               const rebasedCategories =
                 await offlineCategoryQueue.rebaseReviewed(
                   latest.current.token,
@@ -228,7 +274,10 @@ export default function OfflineSessionSync({
                 current,
               );
               const categoriesReady =
-                !categoryResult.pending && !categoryResult.needsReview;
+                !categoryResult.pending &&
+                !categoryResult.needsReview &&
+                !walletResult.pending &&
+                !walletResult.needsReview;
               const result = categoriesReady
                 ? await offlineTransactionQueue.sync(
                     latest.current.token,
@@ -237,40 +286,57 @@ export default function OfflineSessionSync({
                     expected,
                   )
                 : { synced: 0, pending: expected.length, needsReview: 0 };
-              const edits = result.pending
-                ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
-                : await offlineTransactionChanges.sync(
-                    latest.current.token,
-                    userId,
-                    expectedChanges,
-                    current,
-                  );
+              const edits =
+                !categoriesReady || result.pending || result.needsReview
+                  ? {
+                      synced: 0,
+                      pending: expectedChanges.length,
+                      needsReview: 0,
+                    }
+                  : await offlineTransactionChanges.sync(
+                      latest.current.token,
+                      userId,
+                      expectedChanges,
+                      current,
+                    );
               if (
                 result.pending ||
                 result.needsReview ||
                 edits.pending ||
                 edits.needsReview ||
                 categoryResult.pending ||
-                categoryResult.needsReview
+                categoryResult.needsReview ||
+                walletResult.pending ||
+                walletResult.needsReview
               ) {
                 shownKey = '';
                 retryAfterChoice = Boolean(
-                  result.pending || edits.pending || categoryResult.pending,
+                  result.pending ||
+                    edits.pending ||
+                    categoryResult.pending ||
+                    walletResult.pending,
                 );
                 Alert.alert(
                   'Còn dữ liệu cần kiểm tra',
                   `${
-                    result.pending + edits.pending + categoryResult.pending
+                    result.pending +
+                    edits.pending +
+                    categoryResult.pending +
+                    walletResult.pending
                   } đang chờ · ${
                     result.needsReview +
                     edits.needsReview +
-                    categoryResult.needsReview
+                    categoryResult.needsReview +
+                    walletResult.needsReview
                   } cần xem lại.`,
                 );
               } else {
                 shownKey = '';
                 const savedCount =
-                  result.synced + edits.synced + categoryResult.synced;
+                  result.synced +
+                  edits.synced +
+                  categoryResult.synced +
+                  walletResult.synced;
                 if (savedCount > 0 && current())
                   Alert.alert(
                     'Đã sao lưu dữ liệu thành công',
@@ -310,7 +376,10 @@ export default function OfflineSessionSync({
             Alert.alert(
               'Bỏ thay đổi trên máy?',
               `${
-                drafts.length + changes.length + categories.length
+                drafts.length +
+                changes.length +
+                categories.length +
+                wallets.length
               } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
               [
                 { text: 'Quay lại', style: 'cancel' },
@@ -327,7 +396,15 @@ export default function OfflineSessionSync({
             );
           }
         };
-        setReview({ drafts, changes, categories, remote, remoteCategories });
+        setReview({
+          drafts,
+          changes,
+          categories,
+          wallets,
+          remote,
+          remoteCategories,
+          remoteWallets,
+        });
       } catch {
         /* Durable drafts remain; retry only for pending writes in foreground. */
       } finally {
@@ -344,8 +421,9 @@ export default function OfflineSessionSync({
         offlineTransactionQueue.list(userId),
         offlineTransactionChanges.preview(userId),
         offlineCategoryQueue.preview(userId),
+        offlineWalletQueue.preview(userId),
       ])
-        .then(([drafts, changes, categories]) => {
+        .then(([drafts, changes, categories, wallets]) => {
           if (!active || !reviewVisible) return;
           const key = JSON.stringify([
             drafts
@@ -353,6 +431,7 @@ export default function OfflineSessionSync({
               .map(item => ({ id: item.id, updatedAt: item.updatedAt })),
             changes,
             categories,
+            wallets,
           ]);
           if (key === shownKey) return;
           setReview(null);
@@ -376,6 +455,7 @@ export default function OfflineSessionSync({
     const changed = offlineTransactionChanges.subscribe(reviewQueueChanged);
     const changedCategories =
       offlineCategoryQueue.subscribe(reviewQueueChanged);
+    const changedWallets = offlineWalletQueue.subscribe(reviewQueueChanged);
     attempt().catch(() => undefined);
     return () => {
       active = false;
@@ -389,6 +469,7 @@ export default function OfflineSessionSync({
       queued();
       changed();
       changedCategories();
+      changedWallets();
     };
   }, [user?.id, server, isRestoringSession]);
   return (

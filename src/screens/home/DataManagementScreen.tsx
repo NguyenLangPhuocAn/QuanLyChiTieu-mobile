@@ -54,6 +54,11 @@ import {
   type OfflineCategoryChange,
 } from '../../services/offlineCategoryQueue';
 import { categoriesService } from '../../services/categories';
+import {
+  offlineWalletQueue,
+  type OfflineWalletChange,
+} from '../../services/offlineWalletQueue';
+import { walletsService } from '../../services/wallets';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
@@ -84,6 +89,7 @@ type ManualSyncReview = OfflineSyncReview & {
   expectedDrafts: Array<{ id: string; updatedAt: string }>;
   expectedChanges: Array<{ transactionId: number; revision: number }>;
   expectedCategories: Array<{ id: number; revision: number }>;
+  expectedWallets: Array<{ id: number; revision: number }>;
 };
 
 const DataManagementScreen = () => {
@@ -101,6 +107,9 @@ const DataManagementScreen = () => {
   const [offlineCategories, setOfflineCategories] = useState<
     OfflineCategoryChange[]
   >([]);
+  const [offlineWallets, setOfflineWallets] = useState<OfflineWalletChange[]>(
+    [],
+  );
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
   const [draftEditor, setDraftEditor] = useState<OfflineDraftEditor | null>(
@@ -127,11 +136,13 @@ const DataManagementScreen = () => {
       offlineTransactionQueue.list(user.id),
       offlineTransactionChanges.list(user.id),
       offlineCategoryQueue.list(user.id),
-    ]).then(([nextCache, drafts, changes, categories]) => {
+      offlineWalletQueue.list(user.id),
+    ]).then(([nextCache, drafts, changes, categories, wallets]) => {
       setCache(nextCache);
       setOfflineDrafts(drafts);
       setOfflineChanges(changes);
       setOfflineCategories(categories);
+      setOfflineWallets(wallets);
     });
     const unsubscribeChanges = offlineTransactionChanges.subscribe(() => {
       offlineTransactionChanges
@@ -151,10 +162,17 @@ const DataManagementScreen = () => {
         .then(setOfflineCategories)
         .catch(() => undefined);
     });
+    const unsubscribeWallets = offlineWalletQueue.subscribe(() => {
+      offlineWalletQueue
+        .list(user.id)
+        .then(setOfflineWallets)
+        .catch(() => undefined);
+    });
     return () => {
       unsubscribeChanges();
       unsubscribeDrafts();
       unsubscribeCategories();
+      unsubscribeWallets();
     };
   }, [user?.id]);
 
@@ -304,6 +322,8 @@ const DataManagementScreen = () => {
     expectedChanges: Array<{ transactionId: number; revision: number }>,
     expectedCategories: Array<{ id: number; revision: number }>,
     remoteCategories: NonNullable<OfflineSyncReview['remoteCategories']>,
+    expectedWallets: Array<{ id: number; revision: number }>,
+    remoteWallets: NonNullable<OfflineSyncReview['remoteWallets']>,
     scope: { userId: number; server: string; token: string },
   ) => {
     if (isSyncingDrafts) return;
@@ -321,6 +341,23 @@ const DataManagementScreen = () => {
         ) !== JSON.stringify(expectedChanges)
       )
         throw Error('Thay đổi trên máy đã đổi. Hãy xem lại trước khi đồng bộ.');
+      if (
+        JSON.stringify(await offlineWalletQueue.preview(scope.userId)) !==
+        JSON.stringify(expectedWallets)
+      )
+        throw Error('Ví trên máy đã đổi. Hãy xem lại.');
+      const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
+        scope.token,
+        scope.userId,
+        expectedWallets,
+        remoteWallets,
+      );
+      const walletResult = await offlineWalletQueue.sync(
+        scope.token,
+        scope.userId,
+        rebasedWallets,
+        isCurrent,
+      );
       const rebasedCategories = await offlineCategoryQueue.rebaseReviewed(
         scope.token,
         scope.userId,
@@ -334,7 +371,10 @@ const DataManagementScreen = () => {
         isCurrent,
       );
       const result =
-        categoryResult.pending || categoryResult.needsReview
+        categoryResult.pending ||
+        categoryResult.needsReview ||
+        walletResult.pending ||
+        walletResult.needsReview
           ? { synced: 0, pending: expectedDrafts.length, needsReview: 0 }
           : await offlineTransactionQueue.sync(
               scope.token,
@@ -342,14 +382,20 @@ const DataManagementScreen = () => {
               isCurrent,
               expectedDrafts,
             );
-      const edits = result.pending
-        ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
-        : await offlineTransactionChanges.sync(
-            scope.token,
-            scope.userId,
-            expectedChanges,
-            isCurrent,
-          );
+      const edits =
+        walletResult.pending ||
+        walletResult.needsReview ||
+        categoryResult.pending ||
+        categoryResult.needsReview ||
+        result.pending ||
+        result.needsReview
+          ? { synced: 0, pending: expectedChanges.length, needsReview: 0 }
+          : await offlineTransactionChanges.sync(
+              scope.token,
+              scope.userId,
+              expectedChanges,
+              isCurrent,
+            );
       if (!isCurrent()) return;
       setOfflineDrafts(await offlineTransactionQueue.list(scope.userId));
       setOfflineChanges(await offlineTransactionChanges.list(scope.userId));
@@ -357,11 +403,20 @@ const DataManagementScreen = () => {
       Alert.alert(
         'Đồng bộ giao dịch',
         `Đã ghi ${
-          result.synced + edits.synced + categoryResult.synced
+          result.synced +
+          edits.synced +
+          categoryResult.synced +
+          walletResult.synced
         } · Còn chờ ${
-          result.pending + edits.pending + categoryResult.pending
+          result.pending +
+          edits.pending +
+          categoryResult.pending +
+          walletResult.pending
         } · Cần kiểm tra ${
-          result.needsReview + edits.needsReview + categoryResult.needsReview
+          result.needsReview +
+          edits.needsReview +
+          categoryResult.needsReview +
+          walletResult.needsReview
         }.`,
       );
     } catch (error) {
@@ -379,13 +434,19 @@ const DataManagementScreen = () => {
     const scope = { userId: user.id, token, server: getApiStorageBaseUrl() };
     try {
       if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
-      const [drafts, changes, categories] = await Promise.all([
+      const [drafts, changes, categories, wallets] = await Promise.all([
         offlineTransactionQueue.list(scope.userId),
         offlineTransactionChanges.list(scope.userId),
         offlineCategoryQueue.list(scope.userId),
+        offlineWalletQueue.list(scope.userId),
       ]);
       const currentDrafts = drafts.filter(item => item.server === scope.server);
-      if (!currentDrafts.length && !changes.length && !categories.length) {
+      if (
+        !currentDrafts.length &&
+        !changes.length &&
+        !categories.length &&
+        !wallets.length
+      ) {
         Alert.alert('Không có dữ liệu đang chờ');
         return;
       }
@@ -393,6 +454,14 @@ const DataManagementScreen = () => {
       const remoteCategories: NonNullable<
         OfflineSyncReview['remoteCategories']
       > = {};
+      const remoteWallets: NonNullable<OfflineSyncReview['remoteWallets']> = {};
+      if (wallets.some(item => item.action !== 'CREATE')) {
+        const serverWallets = await walletsService.getAll(token);
+        for (const item of wallets)
+          if (item.action !== 'CREATE')
+            remoteWallets[item.id] =
+              serverWallets.find(row => row.id === item.id) ?? null;
+      }
       if (categories.some(item => item.action !== 'CREATE')) {
         const serverCategories = await categoriesService.getAll(token);
         for (const item of categories)
@@ -412,6 +481,7 @@ const DataManagementScreen = () => {
       const expectedCategories = await offlineCategoryQueue.preview(
         scope.userId,
       );
+      const expectedWallets = await offlineWalletQueue.preview(scope.userId);
       if (
         currentScope.current.userId !== scope.userId ||
         currentScope.current.token !== scope.token ||
@@ -423,14 +493,17 @@ const DataManagementScreen = () => {
         drafts: currentDrafts,
         changes,
         categories,
+        wallets,
         remote,
         remoteCategories,
+        remoteWallets,
         expectedDrafts: currentDrafts.map(item => ({
           id: item.id,
           updatedAt: item.updatedAt,
         })),
         expectedChanges,
         expectedCategories,
+        expectedWallets,
       });
     } catch (error) {
       Alert.alert(
@@ -454,6 +527,8 @@ const DataManagementScreen = () => {
         review.expectedChanges,
         review.expectedCategories,
         review.remoteCategories ?? {},
+        review.expectedWallets,
+        review.remoteWallets ?? {},
         review,
       ).catch(() => undefined);
       return;
@@ -463,7 +538,8 @@ const DataManagementScreen = () => {
       `${
         review.drafts.length +
         review.changes.length +
-        (review.categories?.length ?? 0)
+        (review.categories?.length ?? 0) +
+        (review.wallets?.length ?? 0)
       } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
       [
         { text: 'Quay lại', style: 'cancel' },
@@ -497,6 +573,10 @@ const DataManagementScreen = () => {
               await offlineCategoryQueue.discard(
                 review.userId,
                 review.expectedCategories,
+              );
+              await offlineWalletQueue.discard(
+                review.userId,
+                review.expectedWallets,
               );
               setManualReview(null);
               setOfflineDrafts(
@@ -855,7 +935,7 @@ const DataManagementScreen = () => {
             <View style={styles.actionCopy}>
               <Text style={styles.cardTitle}>Dữ liệu chờ lưu</Text>
               <Text style={styles.cardText}>
-                Xem lại giao dịch và danh mục trên máy trước khi lưu.
+                Xem lại giao dịch, danh mục và ví trên máy trước khi lưu.
               </Text>
             </View>
             <TouchableOpacity
@@ -867,7 +947,8 @@ const DataManagementScreen = () => {
                 isSyncingDrafts ||
                 (offlineDrafts.length === 0 &&
                   offlineChanges.length === 0 &&
-                  offlineCategories.length === 0)
+                  offlineCategories.length === 0 &&
+                  offlineWallets.length === 0)
               }
             >
               {isSyncingDrafts ? (
@@ -880,6 +961,11 @@ const DataManagementScreen = () => {
           {offlineCategories.length > 0 ? (
             <Text style={styles.cardText}>
               {offlineCategories.length} thay đổi danh mục đang chờ đối chiếu.
+            </Text>
+          ) : null}
+          {offlineWallets.length > 0 ? (
+            <Text style={styles.cardText}>
+              {offlineWallets.length} thay đổi ví đang chờ đối chiếu.
             </Text>
           ) : null}
           {offlineDrafts.length === 0 ? (

@@ -17,6 +17,7 @@ export const walletsService = {
       balance?: string;
       currency?: string;
       wallet_type?: WalletType;
+      client_request_id?: string;
     },
   ) {
     return apiRequest<Wallet>('/wallets', {
@@ -34,6 +35,12 @@ export const walletsService = {
       balance?: string;
       currency?: string;
       wallet_type?: WalletType;
+      offline_expected?: {
+        name: string;
+        wallet_type: WalletType;
+        currency: string;
+        balance: string;
+      };
     },
   ) {
     return apiRequest<Wallet>(`/wallets/${id}`, {
@@ -43,10 +50,20 @@ export const walletsService = {
     });
   },
 
-  remove(token: string, id: number) {
+  remove(
+    token: string,
+    id: number,
+    offline_expected?: {
+      name: string;
+      wallet_type: WalletType;
+      currency: string;
+      balance: string;
+    },
+  ) {
     return apiRequest<Wallet>(`/wallets/${id}`, {
       method: 'DELETE',
       token,
+      ...(offline_expected ? { body: { offline_expected } } : {}),
     });
   },
 };

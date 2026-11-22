@@ -10,6 +10,7 @@ import {
   type ReceiptSource,
 } from './offlineReceiptStore';
 import { offlineCategoryQueue } from './offlineCategoryQueue';
+import { offlineWalletQueue } from './offlineWalletQueue';
 
 export type OfflineTransactionDraftStatus =
   | 'PENDING'
@@ -312,6 +313,15 @@ export const offlineTransactionQueue = {
           );
         return existing;
       }
+      if (
+        (await offlineWalletQueue.list(userId)).some(
+          change =>
+            change.id === payload.wallet_id && change.action === 'DELETE',
+        )
+      )
+        throw Error(
+          'Ví này đang chờ xóa. Chọn ví khác hoặc đối chiếu dữ liệu trước.',
+        );
 
       const now = new Date().toISOString();
       const receipt = receiptFile

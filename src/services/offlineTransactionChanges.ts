@@ -4,6 +4,7 @@ import { transactionsService } from './transactions';
 import type { ApiTransaction, ReceiptItem } from '../types/transaction';
 import type { Category } from '../types/category';
 import { offlineCategoryQueue } from './offlineCategoryQueue';
+import { offlineWalletQueue } from './offlineWalletQueue';
 
 export type TransactionSnapshot = {
   id: number;
@@ -166,6 +167,16 @@ export const offlineTransactionChanges = {
     payload?: TransactionChangePayload,
   ) {
     return withLock(userId, async () => {
+      if (
+        (await offlineWalletQueue.list(userId)).some(
+          change =>
+            change.action === 'DELETE' &&
+            (change.id === base.wallet_id || change.id === payload?.wallet_id),
+        )
+      )
+        throw Error(
+          'Ví này đang chờ xóa. Hãy đối chiếu dữ liệu trước khi sửa giao dịch.',
+        );
       const rows = await read(userId);
       const existing = rows.find(item => item.transactionId === base.id);
       const baseline = existing?.base ?? snapshotTransaction(base);

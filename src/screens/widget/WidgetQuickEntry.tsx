@@ -29,6 +29,7 @@ import {
   type DashboardCache,
 } from '../../services/dashboardCache';
 import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
+import { offlineWalletQueue } from '../../services/offlineWalletQueue';
 import { widgetScope } from '../../services/widgetSnapshot';
 import { widgetLink } from '../../services/widgetLinking';
 import { createClientRequestId } from '../../services/offlineTransactionQueue';
@@ -185,6 +186,9 @@ function Panel({ entryUrl }: Props) {
         throw Error('Mở app có mạng một lần để tải dữ liệu.');
       const visible = {
         ...cached,
+        wallets: offlineWalletQueue
+          .apply(cached.wallets, await offlineWalletQueue.list(user.id))
+          .filter(item => item.id > 0),
         categories: offlineCategoryQueue.apply(
           cached.categories,
           await offlineCategoryQueue.list(user.id),
@@ -247,8 +251,9 @@ function Panel({ entryUrl }: Props) {
       Promise.all([
         dashboardCache.read(userId),
         offlineCategoryQueue.list(userId),
+        offlineWalletQueue.list(userId),
       ])
-        .then(([cached, changes]) => {
+        .then(([cached, changes, walletChanges]) => {
           if (
             active &&
             cached &&
@@ -257,6 +262,9 @@ function Panel({ entryUrl }: Props) {
           ) {
             const visible = {
               ...cached,
+              wallets: offlineWalletQueue
+                .apply(cached.wallets, walletChanges)
+                .filter(item => item.id > 0),
               categories: offlineCategoryQueue.apply(
                 cached.categories,
                 changes,
@@ -275,10 +283,12 @@ function Panel({ entryUrl }: Props) {
     };
     const unsubscribe = dashboardCache.subscribe(refresh);
     const unsubscribeCategories = offlineCategoryQueue.subscribe(refresh);
+    const unsubscribeWallets = offlineWalletQueue.subscribe(refresh);
     return () => {
       active = false;
       unsubscribe();
       unsubscribeCategories();
+      unsubscribeWallets();
     };
   }, [user?.id, server]);
 

@@ -7,6 +7,7 @@ import { dashboardCache } from '../services/dashboardCache';
 import { categoriesService } from '../services/categories';
 import { offlineTransactionQueue } from '../services/offlineTransactionQueue';
 import { offlineCategoryQueue } from '../services/offlineCategoryQueue';
+import { offlineWalletQueue } from '../services/offlineWalletQueue';
 import { financeRefresh } from '../services/financeRefresh';
 import { buildWidgetSnapshot, widgetScope } from '../services/widgetSnapshot';
 export default function HomeWidgetSession() {
@@ -24,12 +25,14 @@ export default function HomeWidgetSession() {
       const rev = ++version;
       await homeWidget.activate(scope);
       if (!userId || !scope) return;
-      const [cached, drafts, categoryChanges, resolvedIds] = await Promise.all([
-        dashboardCache.read(userId),
-        offlineTransactionQueue.list(userId),
-        offlineCategoryQueue.list(userId),
-        offlineCategoryQueue.resolvedIds(userId),
-      ]);
+      const [cached, drafts, categoryChanges, resolvedIds, walletChanges] =
+        await Promise.all([
+          dashboardCache.read(userId),
+          offlineTransactionQueue.list(userId),
+          offlineCategoryQueue.list(userId),
+          offlineCategoryQueue.resolvedIds(userId),
+          offlineWalletQueue.list(userId),
+        ]);
       const selectedMappedIds: number[] = [];
       for (const [fromId, toId] of Object.entries(resolvedIds)) {
         if (!active || rev !== version) return;
@@ -65,6 +68,9 @@ export default function HomeWidgetSession() {
             data
               ? {
                   ...data,
+                  wallets: offlineWalletQueue
+                    .apply(data.wallets, walletChanges)
+                    .filter(item => item.id > 0),
                   categories: offlineCategoryQueue.apply(
                     data.categories,
                     categoryChanges,
@@ -90,6 +96,7 @@ export default function HomeWidgetSession() {
       b = offlineTransactionQueue.subscribe(refresh);
     const c = dashboardCache.subscribe(refresh);
     const d = offlineCategoryQueue.subscribe(refresh);
+    const e = offlineWalletQueue.subscribe(refresh);
     return () => {
       active = false;
       version++;
@@ -98,6 +105,7 @@ export default function HomeWidgetSession() {
       b();
       c();
       d();
+      e();
     };
   }, [
     userId,
