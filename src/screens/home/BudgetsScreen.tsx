@@ -36,6 +36,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { budgetsService } from '../../services/budgets';
+import { budgetCache, type BudgetCacheSnapshot } from '../../services/budgetCache';
 import { categoriesService } from '../../services/categories';
 import { walletsService } from '../../services/wallets';
 import type {
@@ -68,6 +69,7 @@ import {
   shouldShowBudgetRenewal,
 } from '../../utils/budgetRenewal';
 import {
+  filterBudgets,
   getBudgetExpenseCategories,
   type BudgetPeriodFilter,
 } from '../../utils/budgetFilters';
@@ -164,7 +166,9 @@ const getBudgetLimit = (budget: Budget) =>
 const isExpiredFixedBudget = (budget: Budget) =>
   new Date(budget.end_date).getTime() < Date.now();
 const BudgetsScreen = ({ navigation, route }: Props) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const activeUserId = React.useRef(user?.id);
+  activeUserId.current = user?.id;
   const { selectedBudgetCategory, setSelectedBudgetCategory } = useFinance();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -173,6 +177,8 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [cachedSnapshot, setCachedSnapshot] = useState<BudgetCacheSnapshot | null>(null);
   const loadRevision = React.useRef(0);
   const [isSaving, setIsSaving] = useState(false);
   const { run: runBudgetMutation } = useSingleFlight();
@@ -234,10 +240,49 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       selectedBudgetCategory,
     [categories, selectedBudgetCategory, selectedCategoryId],
   );
+  const applyCachedBudgets = useCallback(
+    (snapshot: BudgetCacheSnapshot) => {
+      const filtered = filterBudgets(snapshot.budgets, {
+        query: debouncedQuery,
+        period: periodFilter,
+        customStartDate: filterStartDate,
+        customEndDate: filterEndDate,
+        currentDate: currentBudgetDate,
+      });
+      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+      setWallets(snapshot.wallets);
+      setCategories(snapshot.categories);
+      setAllBudgets(snapshot.budgets);
+      setLocalBudgets(
+        filtered.slice((Math.min(page, totalPages) - 1) * PAGE_SIZE, Math.min(page, totalPages) * PAGE_SIZE),
+      );
+      setPageMeta({ total: filtered.length, totalPages });
+      setCachedAt(snapshot.updatedAt);
+      setLoadError(null);
+      if (page > totalPages) setPage(totalPages);
+    },
+    [currentBudgetDate, debouncedQuery, filterEndDate, filterStartDate, page, periodFilter],
+  );
+
+  useEffect(() => {
+    loadRevision.current += 1;
+    setWallets([]);
+    setCategories([]);
+    setAllBudgets([]);
+    setLocalBudgets([]);
+    setCachedAt(null);
+    setCachedSnapshot(null);
+  }, [user?.id]);
   const fetchData = useCallback(
     async (refreshing = false) => {
       const revision = ++loadRevision.current;
-      if (!token) {
+      const requestUserId = user?.id;
+      if (!token || !requestUserId) {
+        setIsLoading(false);
+        return;
+      }
+      if (!refreshing && cachedSnapshot?.userId === requestUserId) {
+        applyCachedBudgets(cachedSnapshot);
         setIsLoading(false);
         return;
       }
@@ -249,6 +294,14 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       }
 
       try {
+        if (!refreshing) {
+          const saved = await budgetCache.read(requestUserId).catch(() => null);
+          if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+          if (saved) {
+            applyCachedBudgets(saved);
+            setIsLoading(false);
+          }
+        }
         const [nextWallets, budgetPage, nextCategories, nextAllBudgets] =
           await Promise.all([
             walletsService.getAll(token),
@@ -266,7 +319,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
             categoriesService.getAll(token),
             budgetsService.getAll(token),
           ]);
-        if (revision !== loadRevision.current) return;
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
         if (page > Math.max(1, budgetPage.meta.totalPages)) {
           setPage(Math.max(1, budgetPage.meta.totalPages));
           return;
@@ -279,9 +332,19 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
         });
         setCategories(nextCategories);
         setAllBudgets(nextAllBudgets);
+        setCachedAt(null);
+        setCachedSnapshot(null);
         setLoadError(null);
+        await budgetCache.save(requestUserId, nextAllBudgets, nextWallets, nextCategories).catch(() => undefined);
       } catch (error) {
-        if (revision !== loadRevision.current) return;
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        const cached = await budgetCache.read(requestUserId).catch(() => null);
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        if (cached) {
+          setCachedSnapshot(cached);
+          applyCachedBudgets(cached);
+          return;
+        }
         const message = getUserFriendlyErrorMessage(
           error,
           'Không thể tải ngân sách.',
@@ -302,6 +365,9 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       periodFilter,
       debouncedQuery,
       token,
+      user?.id,
+      applyCachedBudgets,
+      cachedSnapshot,
     ],
   );
 
@@ -522,6 +588,10 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
 
   const handleSaveBudget = () =>
     runBudgetMutation(async () => {
+      if (cachedAt) {
+        Alert.alert('Đang xem dữ liệu đã lưu', 'Cần có kết nối để tạo hoặc sửa ngân sách.');
+        return;
+      }
       if (!token) {
         return;
       }
@@ -614,7 +684,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
     });
 
   const handleDeleteBudget = () => {
-    if (!token || !editingBudget) {
+    if (!token || !editingBudget || cachedAt) {
       return;
     }
 
@@ -652,6 +722,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       if (
         !token ||
         renewingBudgetId !== null ||
+        cachedAt ||
         hasMatchingNextPeriodBudget(budget, allBudgets)
       ) {
         return;
@@ -711,9 +782,10 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
         <Text style={styles.headerTitle}>Ngân sách</Text>
         <TouchableOpacity
           style={styles.headerButton}
+          disabled={Boolean(cachedAt)}
           onPress={() => resetForm()}
         >
-          <Plus size={22} color="#593420" />
+          <Plus size={22} color={cachedAt ? '#B7A294' : '#593420'} />
         </TouchableOpacity>
       </View>
 
@@ -727,6 +799,17 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
           />
         }
       >
+        {cachedAt ? (
+          <View style={styles.cacheNotice}>
+            <Text style={styles.cacheNoticeTitle}>Dữ liệu ngân sách đã lưu</Text>
+            <Text style={styles.cacheNoticeText}>
+              Cập nhật lúc {new Date(cachedAt).toLocaleString('vi-VN')}. Số đã chi và còn lại có thể đã thay đổi. Kết nối mạng để xem mới nhất hoặc sửa ngân sách.
+            </Text>
+            <TouchableOpacity accessibilityRole="button" onPress={() => fetchData(true)}>
+              <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <View style={styles.statRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{pageMeta.total}</Text>
@@ -846,6 +929,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, styles.emptyCreateButton]}
+              disabled={Boolean(cachedAt)}
               onPress={() => resetForm()}
             >
               <Text style={styles.primaryButtonText}>Tạo ngân sách</Text>
@@ -954,6 +1038,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                   </Text>
                   <TouchableOpacity
                     style={styles.editHint}
+                    disabled={Boolean(cachedAt)}
                     onPress={() => resetForm(budget)}
                     accessibilityRole="button"
                     accessibilityLabel={`Sửa ngân sách ${budget.name}`}
@@ -963,7 +1048,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                   </TouchableOpacity>
                 </View>
 
-                {budget.period !== 'CUSTOM' &&
+                {!cachedAt && budget.period !== 'CUSTOM' &&
                 shouldShowBudgetRenewal(
                   periodFilter,
                   isExpiredFixedBudget(budget),
@@ -1348,6 +1433,17 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#4A2B1A', fontSize: 20, fontWeight: '900' },
   content: { padding: 16, paddingBottom: 44, gap: 14 },
+  cacheNotice: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EAC69F',
+    backgroundColor: '#FFF0DE',
+    padding: 12,
+    gap: 4,
+  },
+  cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
+  cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
+  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
   statRow: { flexDirection: 'row', gap: 10 },
   statItem: {
     flex: 1,

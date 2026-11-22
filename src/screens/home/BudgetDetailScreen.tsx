@@ -21,6 +21,7 @@ import { Colors } from '../../constants/Colors';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { budgetsService } from '../../services/budgets';
+import { budgetCache } from '../../services/budgetCache';
 import type { Budget, BudgetTransaction } from '../../types/budget';
 import { buildBudgetForecastView } from '../../utils/budgetForecast';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
@@ -39,17 +40,24 @@ const periodLabels = {
 } as const;
 
 const BudgetDetailScreen = ({ navigation, route }: Props) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const activeUserId = React.useRef(user?.id);
+  activeUserId.current = user?.id;
+  const loadRevision = React.useRef(0);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [transactions, setTransactions] = useState<BudgetTransaction[]>([]);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
   const fetchDetail = useCallback(
     async (refreshing = false) => {
-      if (!token) {
+      const requestUserId = user?.id;
+      const revision = ++loadRevision.current;
+      if (!token || !requestUserId) {
+        setIsLoading(false);
         return;
       }
 
@@ -64,27 +72,49 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
             PAGE_SIZE,
           ),
         ]);
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
         setBudget(nextBudget);
         setTransactions(transactionPage.data);
         setMeta({
           total: transactionPage.meta.total,
           totalPages: transactionPage.meta.totalPages,
         });
+        setCachedAt(null);
       } catch (error) {
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        const snapshot = await budgetCache.read(requestUserId).catch(() => null);
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        const savedBudget = snapshot?.budgets.find(item => item.id === route.params.budgetId);
+        if (savedBudget && snapshot) {
+          setBudget(savedBudget);
+          setTransactions([]);
+          setMeta({ total: 0, totalPages: 1 });
+          setCachedAt(snapshot.updatedAt);
+          return;
+        }
         Alert.alert(
           'Không tải được chi tiết ngân sách',
           getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
         );
       } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
+        if (revision === loadRevision.current && activeUserId.current === requestUserId) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
-    [page, route.params.budgetId, token],
+    [page, route.params.budgetId, token, user?.id],
   );
 
   useEffect(() => {
+    setBudget(null);
+    setTransactions([]);
+    setCachedAt(null);
+  }, [user?.id]);
+
+  useEffect(() => {
     fetchDetail();
+    return () => { loadRevision.current += 1; };
   }, [fetchDetail]);
 
   const forecastView = useMemo(() => {
@@ -146,6 +176,12 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
             />
           }
         >
+          {cachedAt ? (
+            <View style={styles.cacheNotice}>
+              <Text style={styles.cacheNoticeTitle}>Dữ liệu đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
+              <Text style={styles.cacheNoticeText}>Số đã chi, dự báo và số còn lại có thể đã thay đổi. Danh sách giao dịch cần kết nối mạng.</Text>
+            </View>
+          ) : null}
           <View style={styles.heroCard}>
             <Text style={styles.heroName}>{budget.name}</Text>
             <Text style={styles.heroMeta}>
@@ -210,7 +246,7 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
             </View>
           </View>
 
-          {forecastView && budget.forecast ? (
+          {!cachedAt && forecastView && budget.forecast ? (
             <View style={styles.infoCard}>
               <View style={styles.sectionTitleRow}>
                 <TrendingUp
@@ -242,7 +278,7 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
             </View>
           ) : null}
 
-          <View style={styles.infoCard}>
+          {!cachedAt ? <View style={styles.infoCard}>
             <Text style={styles.sectionTitle}>
               Giao dịch được tính ({meta.total})
             </Text>
@@ -274,9 +310,9 @@ const BudgetDetailScreen = ({ navigation, route }: Props) => {
                 </TouchableOpacity>
               ))
             )}
-          </View>
+          </View> : null}
 
-          {meta.total > PAGE_SIZE ? (
+          {!cachedAt && meta.total > PAGE_SIZE ? (
             <View style={styles.paginationRow}>
               <TouchableOpacity
                 style={[
@@ -347,6 +383,9 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 42, height: 42 },
   headerTitle: { color: '#4A2B1A', fontSize: 19, fontWeight: '900' },
   content: { padding: 16, paddingBottom: 44, gap: 14 },
+  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4 },
+  cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
+  cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
   loadingBlock: {
     flex: 1,
     alignItems: 'center',
