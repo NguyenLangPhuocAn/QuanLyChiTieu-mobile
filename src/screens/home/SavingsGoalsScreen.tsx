@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -41,6 +41,7 @@ import { getWalletTypeMeta } from '../../constants/walletTypes';
 import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { savingsService } from '../../services/savings';
+import { savingsGoalsCache } from '../../services/savingsGoalsCache';
 import { walletsService } from '../../services/wallets';
 import type { SavingsGoal } from '../../types/savings';
 import type { Wallet } from '../../types/wallet';
@@ -71,12 +72,15 @@ const toDateInput = (value: Date) => {
 };
 
 const SavingsGoalsScreen = ({ navigation }: Props) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const activeUserId = useRef(user?.id);
+  activeUserId.current = user?.id;
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [goalModalVisible, setGoalModalVisible] = useState(false);
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
   const [goalName, setGoalName] = useState('');
@@ -98,6 +102,18 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   const { run: runSavingsMutation } = useSingleFlight();
   const [showTargetDatePicker, setShowTargetDatePicker] = useState(false);
   const loadRevision = useRef(0);
+
+  useEffect(() => {
+    loadRevision.current += 1;
+    setGoals([]);
+    setWallets([]);
+    setCachedAt(null);
+    setLoadError(null);
+    setGoalModalVisible(false);
+    setEntryGoal(null);
+    setCompletionGoal(null);
+    setEditingGoal(null);
+  }, [user?.id]);
 
   const regularWallets = useMemo(
     () =>
@@ -123,33 +139,53 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   const loadData = useCallback(
     async (refresh = false) => {
       const revision = ++loadRevision.current;
-      if (!token) {
+      const requestUserId = user?.id;
+      if (!token || !requestUserId) {
         setLoading(false);
         return;
       }
       refresh ? setRefreshing(true) : setLoading(true);
       try {
+        if (!refresh) {
+          const saved = await savingsGoalsCache.read(requestUserId).catch(() => null);
+          if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+          if (saved) {
+            setGoals(saved.goals);
+            setWallets(saved.wallets);
+            setCachedAt(saved.updatedAt);
+            setLoading(false);
+          }
+        }
         const [nextGoals, nextWallets] = await Promise.all([
           savingsService.getAll(token),
           walletsService.getAll(token),
         ]);
-        if (revision !== loadRevision.current) return;
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
         setGoals(nextGoals);
         setWallets(nextWallets);
+        setCachedAt(null);
         setLoadError(null);
+        await savingsGoalsCache.save(requestUserId, nextGoals, nextWallets).catch(() => undefined);
       } catch (error) {
-        if (revision !== loadRevision.current) return;
-        setLoadError(
-          getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'),
-        );
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        const saved = await savingsGoalsCache.read(requestUserId).catch(() => null);
+        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        if (saved) {
+          setGoals(saved.goals);
+          setWallets(saved.wallets);
+          setCachedAt(saved.updatedAt);
+          setLoadError(null);
+        } else {
+          setLoadError(getUserFriendlyErrorMessage(error, 'Vui lòng thử lại sau.'));
+        }
       } finally {
-        if (revision === loadRevision.current) {
+        if (revision === loadRevision.current && activeUserId.current === requestUserId) {
           setLoading(false);
           setRefreshing(false);
         }
       }
     },
-    [token],
+    [token, user?.id],
   );
 
   useFocusEffect(
@@ -200,11 +236,13 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   };
 
   const openCreate = () => {
+    if (cachedAt) return;
     resetGoalForm();
     setGoalModalVisible(true);
   };
 
   const openEdit = (goal: SavingsGoal) => {
+    if (cachedAt) return;
     setEditingGoal(goal);
     setGoalName(goal.name);
     setTargetAmount(String(goal.target_amount));
@@ -217,6 +255,10 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
 
   const saveGoal = () =>
     runSavingsMutation(async () => {
+      if (cachedAt) {
+        Alert.alert('Đang xem dữ liệu đã lưu', 'Kết nối mạng để lưu mục tiêu tiết kiệm.');
+        return;
+      }
       const normalizedTarget = parsePositiveMoneyInput(targetAmount);
       const normalizedInitial = parseNonNegativeMoneyInput(
         initialAmount.trim() || '0',
@@ -308,6 +350,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
     });
 
   const openEntry = (goal: SavingsGoal, mode: EntryMode) => {
+    if (cachedAt) return;
     const compatibleWallets = regularWallets.filter(
       wallet => wallet.currency === goal.wallet_currency,
     );
@@ -327,6 +370,10 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
 
   const saveEntry = () =>
     runSavingsMutation(async () => {
+      if (cachedAt) {
+        Alert.alert('Đang xem dữ liệu đã lưu', 'Kết nối mạng để góp hoặc rút tiền.');
+        return;
+      }
       const normalizedEntry = parsePositiveMoneyInput(entryAmount);
       if (!token || !entryGoal || !entryWalletId || !normalizedEntry) {
         Alert.alert('Thiếu thông tin', 'Vui lòng chọn ví và nhập số tiền.');
@@ -399,6 +446,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
     });
 
   const removeGoal = (goal: SavingsGoal) => {
+    if (cachedAt) return;
     Alert.alert(
       'Xóa mục tiêu?',
       goal.current_amount > 0
@@ -513,11 +561,12 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
         </View>
         <TouchableOpacity
           style={styles.headerAdd}
+          disabled={Boolean(cachedAt)}
           onPress={openCreate}
           accessibilityRole="button"
           accessibilityLabel="Tạo mục tiêu tiết kiệm"
         >
-          <Plus size={22} color={Colors.white} />
+          <Plus size={22} color={cachedAt ? '#D4C2B2' : Colors.white} />
         </TouchableOpacity>
       </View>
 
@@ -552,6 +601,15 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
           }
           contentContainerStyle={styles.content}
         >
+          {cachedAt ? (
+            <View style={styles.cacheNotice}>
+              <Text style={styles.cacheNoticeTitle}>Mục tiêu đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
+              <Text style={styles.cacheNoticeText}>Số tiền và tiến độ có thể đã thay đổi. Kết nối mạng để góp, rút hoặc sửa mục tiêu.</Text>
+              <TouchableOpacity accessibilityRole="button" onPress={() => loadData(true)}>
+                <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {loadError ? (
             <TouchableOpacity
               style={styles.inlineError}
@@ -650,6 +708,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
               </Text>
               <TouchableOpacity
                 style={styles.primaryButton}
+                disabled={Boolean(cachedAt)}
                 onPress={openCreate}
               >
                 <Plus size={18} color={Colors.white} />
@@ -696,18 +755,18 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                     <Text style={styles.goalName}>{goal.name}</Text>
                     <Text style={styles.goalMeta}>{goal.wallet_name}</Text>
                   </View>
-                  <TouchableOpacity
+                  {!cachedAt ? <TouchableOpacity
                     style={styles.iconButton}
                     onPress={() => openEdit(goal)}
                   >
                     <Pencil size={17} color="#8B5D3B" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </TouchableOpacity> : null}
+                  {!cachedAt ? <TouchableOpacity
                     style={styles.iconButton}
                     onPress={() => removeGoal(goal)}
                   >
                     <Trash2 size={17} color="#B84A3A" />
-                  </TouchableOpacity>
+                  </TouchableOpacity> : null}
                 </View>
 
                 <View style={styles.amountRow}>
@@ -771,12 +830,12 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                   ) : null}
                 </View>
 
-                <SavingsRoadmapDetails
+                {!cachedAt ? <SavingsRoadmapDetails
                   roadmap={goal.roadmap}
                   currency={goal.wallet_currency}
-                />
+                /> : null}
 
-                <View style={styles.actions}>
+                {!cachedAt ? <View style={styles.actions}>
                   {goal.status === 'COMPLETED' ? (
                     <>
                       <TouchableOpacity
@@ -820,7 +879,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                       </TouchableOpacity>
                     </>
                   )}
-                </View>
+                </View> : null}
 
                 {goal.entries.length > 0 ? (
                   <View style={styles.entryList}>
@@ -1166,6 +1225,10 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4 },
+  cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
+  cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
+  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
   affordabilityLink: {
     flexDirection: 'row',
     alignItems: 'center',
