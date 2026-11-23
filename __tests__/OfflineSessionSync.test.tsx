@@ -9,6 +9,7 @@ import {
 } from '../src/services/offlineTransactionQueue';
 import { financeRefresh } from '../src/services/financeRefresh';
 import { offlineTransactionChanges as changes } from '../src/services/offlineTransactionChanges';
+import { offlineBudgetQueue as budgetQueue } from '../src/services/offlineBudgetQueue';
 
 const mockRetry = jest.fn();
 let mockUserId = 9;
@@ -45,6 +46,16 @@ jest.mock('../src/services/offlineTransactionChanges', () => ({
     discard: jest.fn(),
     sync: jest.fn(),
     subscribe: jest.fn(),
+  },
+}));
+jest.mock('../src/services/offlineBudgetQueue', () => ({
+  offlineBudgetQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    sync: jest.fn(),
+    discard: jest.fn(),
   },
 }));
 
@@ -113,6 +124,14 @@ beforeEach(() => {
   jest
     .mocked(changes.sync)
     .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(budgetQueue.list).mockResolvedValue([]);
+  jest.mocked(budgetQueue.preview).mockResolvedValue([]);
+  jest.mocked(budgetQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(budgetQueue.rebaseReviewed).mockResolvedValue([]);
+  jest
+    .mocked(budgetQueue.sync)
+    .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(budgetQueue.discard).mockResolvedValue(undefined);
   mockRetry.mockResolvedValue(true);
 });
 afterEach(async () => {
@@ -132,6 +151,48 @@ it('refreshes server data when no offline writes are pending', async () => {
   expect(refreshed.mock.invocationCallOrder[0]).toBeLessThan(
     jest.mocked(financeRefresh.emit).mock.invocationCallOrder[0],
   );
+});
+
+it('shows a pending budget and waits for the user before syncing it', async () => {
+  const pending = {
+    id: -12,
+    action: 'CREATE' as const,
+    status: 'PENDING' as const,
+    payload: {
+      name: 'Ăn uống gia đình',
+      scope: 'WALLET' as const,
+      wallet_id: 2,
+      category_id: null,
+      limit_amount: '1500000',
+      period: 'CUSTOM' as const,
+      start_date: '2026-11-01',
+      end_date: '2026-11-30',
+    },
+    requestId: 'budget_november_2026',
+    attempts: 0,
+    revision: 1,
+    updatedAt: '2026-11-23T08:00:00.000Z',
+  };
+  jest.mocked(budgetQueue.list).mockResolvedValue([pending]);
+  jest
+    .mocked(budgetQueue.preview)
+    .mockResolvedValue([{ id: -12, revision: 1 }]);
+  jest
+    .mocked(budgetQueue.rebaseReviewed)
+    .mockResolvedValue([{ id: -12, revision: 1 }]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Ngân sách mới'),
+  ).toBe(true);
+  expect(budgetQueue.sync).not.toHaveBeenCalled();
+  await act(async () => {
+    pressReview('Dùng thay đổi trên máy');
+  });
+  expect(budgetQueue.sync).toHaveBeenCalledTimes(1);
 });
 
 it('waits for an explicit local choice before sending any money to the server', async () => {

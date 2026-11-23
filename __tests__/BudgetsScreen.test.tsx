@@ -4,6 +4,9 @@ import BudgetsScreen from '../src/screens/home/BudgetsScreen';
 import { budgetsService } from '../src/services/budgets';
 import { categoriesService } from '../src/services/categories';
 import { walletsService } from '../src/services/wallets';
+import { offlineBudgetQueue } from '../src/services/offlineBudgetQueue';
+import { homeWidget } from '../src/native/homeWidget';
+import { budgetCache } from '../src/services/budgetCache';
 import type { Budget } from '../src/types/budget';
 
 jest.mock('@react-navigation/native', () => ({
@@ -13,7 +16,27 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-token' }),
+  useAuth: () => ({ token: 'test-token', user: { id: 7 } }),
+}));
+jest.mock('../src/services/offlineBudgetQueue', () => ({
+  offlineBudgetQueue: {
+    list: jest.fn().mockResolvedValue([]),
+    subscribe: () => () => undefined,
+    apply: (budgets: Budget[]) => budgets,
+    createRequestId: () => 'budget_request_20261123',
+    create: jest.fn().mockResolvedValue({ id: -1 }),
+    update: jest.fn(),
+    remove: jest.fn(),
+  },
+}));
+jest.mock('../src/services/budgetCache', () => ({
+  budgetCache: {
+    read: jest.fn().mockResolvedValue(null),
+    save: jest.fn().mockResolvedValue(null),
+  },
+}));
+jest.mock('../src/native/homeWidget', () => ({
+  homeWidget: { connected: jest.fn().mockResolvedValue(true) },
 }));
 jest.mock('../src/context/FinanceContext', () => ({
   useFinance: () => ({
@@ -52,8 +75,19 @@ const budget: Budget = {
   wallet_currency: 'USD',
   limit_amount: 12.5,
   period: 'MONTH',
-  start_date: '2026-09-01',
-  end_date: '2026-09-30',
+  start_date: new Date(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    1,
+  ).toISOString(),
+  end_date: new Date(
+    new Date().getFullYear(),
+    new Date().getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+  ).toISOString(),
   spent: 0,
   remaining: 12.5,
   percent: 0,
@@ -66,6 +100,8 @@ const page = {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(homeWidget.connected).mockResolvedValue(true);
+  jest.mocked(budgetCache.read).mockResolvedValue(null);
   service.getPage.mockResolvedValue(page);
   service.getAll.mockResolvedValue([budget]);
   jest.mocked(categoriesService.getAll).mockResolvedValue([]);
@@ -74,6 +110,55 @@ beforeEach(() => {
     .mockResolvedValue([
       { id: 2, name: 'Ví USD', currency: 'USD', wallet_type: 'BANK' },
     ] as never);
+});
+
+it('shows the saved list without repeatedly requesting a failed API', async () => {
+  jest.mocked(budgetCache.read).mockResolvedValue({
+    server: 'https://example.com',
+    userId: 7,
+    updatedAt: '2026-11-23T08:00:00.000Z',
+    budgets: [budget],
+    wallets: [
+      { id: 2, name: 'Ví USD', currency: 'USD', wallet_type: 'BANK' } as never,
+    ],
+    categories: [],
+  });
+  service.getAll.mockRejectedValue(new Error('Connection unavailable'));
+  const renderer = await mount();
+  expect(
+    renderer.root.findAllByProps({ accessibilityLabel: 'Sửa ngân sách Đi lại' })
+      .length,
+  ).toBeGreaterThan(0);
+  expect(service.getAll).toHaveBeenCalledTimes(1);
+  await act(async () => renderer.unmount());
+});
+
+it('keeps a new budget on the device while disconnected', async () => {
+  jest.mocked(homeWidget.connected).mockResolvedValue(false);
+  jest
+    .mocked(categoriesService.getAll)
+    .mockResolvedValue([
+      { id: 7, name: 'Mua sắm', type: 'EXPENSE', cash_flow_group: 'NORMAL' },
+    ] as never);
+  const renderer = await mount({
+    categoryId: 7,
+    categoryName: 'Mua sắm',
+    currency: 'USD',
+    monthlyLimit: 900.25,
+  });
+  await act(async () => {
+    await renderer.root
+      .findByProps({ accessibilityLabel: 'Lưu ngân sách' })
+      .props.onPress();
+  });
+  expect(offlineBudgetQueue.create).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ name: 'Chi Mua sắm', limit_amount: '900.25' }),
+    undefined,
+    false,
+  );
+  expect(service.create).not.toHaveBeenCalled();
+  await act(async () => renderer.unmount());
 });
 const mount = async (draft?: {
   categoryId: number;
@@ -211,11 +296,9 @@ it('keeps cents while editing and sends only one update for two immediate save t
   await act(async () => renderer.unmount());
 });
 it('distinguishes a filtered empty result from having no budgets', async () => {
-  service.getPage.mockResolvedValue({
-    ...page,
-    data: [],
-    meta: { ...page.meta, total: 0 },
-  });
+  service.getAll.mockResolvedValue([
+    { ...budget, start_date: '2025-09-01', end_date: '2025-09-30' },
+  ]);
   const renderer = await mount();
   expect(
     renderer.root.findAllByProps({ children: 'Không tìm thấy ngân sách' })
@@ -227,7 +310,7 @@ it('distinguishes a filtered empty result from having no budgets', async () => {
   await act(async () => renderer.unmount());
 });
 it('offers retry after a loading error without claiming the list is empty', async () => {
-  service.getPage.mockRejectedValueOnce(new Error('Network unavailable'));
+  service.getAll.mockRejectedValueOnce(new Error('Network unavailable'));
   const renderer = await mount();
   expect(
     renderer.root.findAllByProps({ children: 'Chưa có ngân sách' }),

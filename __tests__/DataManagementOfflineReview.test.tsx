@@ -6,6 +6,7 @@ import OfflineSyncReviewModal from '../src/components/OfflineSyncReviewModal';
 import { homeWidget } from '../src/native/homeWidget';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 import { offlineTransactionChanges } from '../src/services/offlineTransactionChanges';
+import { offlineBudgetQueue } from '../src/services/offlineBudgetQueue';
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn() }),
@@ -43,6 +44,16 @@ jest.mock('../src/services/offlineTransactionChanges', () => ({
     discard: jest.fn(),
   },
 }));
+jest.mock('../src/services/offlineBudgetQueue', () => ({
+  offlineBudgetQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    sync: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    discard: jest.fn(),
+  },
+}));
 jest.mock('../src/services/financeRefresh', () => ({
   financeRefresh: { emit: jest.fn() },
 }));
@@ -67,7 +78,7 @@ let renderer: TestRenderer.ReactTestRenderer | undefined;
 const review = () => renderer!.root.findByType(OfflineSyncReviewModal);
 const openReview = async () => {
   const button = renderer!.root.find(
-    node => node.props.accessibilityLabel === 'Đồng bộ giao dịch ngoại tuyến',
+    node => node.props.accessibilityLabel === 'Đồng bộ dữ liệu ngoại tuyến',
   );
   await act(async () => button.props.onPress());
 };
@@ -93,6 +104,44 @@ beforeEach(() => {
   });
   jest.mocked(offlineTransactionQueue.discardLocal).mockResolvedValue(1);
   jest.mocked(offlineTransactionChanges.discard).mockResolvedValue(0);
+  jest.mocked(offlineBudgetQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineBudgetQueue.preview).mockResolvedValue([]);
+  jest.mocked(offlineBudgetQueue.subscribe).mockReturnValue(jest.fn());
+});
+
+it('lets the user review a budget even when no transaction is waiting', async () => {
+  const pending = {
+    id: -12,
+    action: 'CREATE' as const,
+    status: 'PENDING' as const,
+    payload: {
+      name: 'Ăn uống gia đình',
+      scope: 'WALLET' as const,
+      wallet_id: 2,
+      category_id: null,
+      limit_amount: '1500000',
+      period: 'CUSTOM' as const,
+      start_date: '2026-11-01',
+      end_date: '2026-11-30',
+    },
+    requestId: 'budget_november_2026',
+    attempts: 0,
+    revision: 1,
+    updatedAt: '2026-11-23T08:00:00.000Z',
+  };
+  jest.mocked(offlineTransactionQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineBudgetQueue.list).mockResolvedValue([pending]);
+  jest
+    .mocked(offlineBudgetQueue.preview)
+    .mockResolvedValue([{ id: -12, revision: 1 }]);
+  await act(async () => {
+    renderer = TestRenderer.create(<DataManagementScreen />);
+  });
+  await openReview();
+  expect(review().props.review.budgets).toEqual([pending]);
+  await act(async () => {
+    review().props.onChoose('later');
+  });
 });
 afterEach(async () => {
   if (renderer) await act(() => renderer!.unmount());

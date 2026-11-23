@@ -12,6 +12,8 @@ import type { OfflineCategoryChange } from '../services/offlineCategoryQueue';
 import type { OfflineWalletChange } from '../services/offlineWalletQueue';
 import type { Wallet } from '../types/wallet';
 import type { Category } from '../types/category';
+import type { Budget } from '../types/budget';
+import type { OfflineBudgetChange } from '../services/offlineBudgetQueue';
 import type {
   OfflineTransactionChange,
   TransactionSnapshot,
@@ -24,6 +26,8 @@ export type OfflineSyncReview = {
   remoteCategories?: Record<number, Category | null>;
   wallets?: OfflineWalletChange[];
   remoteWallets?: Record<number, Wallet | null>;
+  budgets?: OfflineBudgetChange[];
+  remoteBudgets?: Record<number, Budget | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -60,6 +64,44 @@ export default function OfflineSyncReviewModal({
             style={styles.list}
             contentContainerStyle={styles.listContent}
           >
+            {review?.budgets?.map(item => (
+              <View key={`budget-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>
+                  {item.action === 'CREATE'
+                    ? 'Ngân sách mới'
+                    : item.action === 'UPDATE'
+                    ? 'Sửa ngân sách'
+                    : 'Xóa ngân sách'}
+                </Text>
+                <Text style={styles.local}>
+                  Trên máy:{' '}
+                  {item.action === 'DELETE'
+                    ? item.base?.name
+                    : item.payload?.name}
+                  {' · '}
+                  {Number(
+                    item.action === 'DELETE'
+                      ? item.base?.limit_amount
+                      : item.payload?.limit_amount,
+                  ).toLocaleString('vi-VN')}
+                </Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {item.action === 'CREATE'
+                    ? 'Chưa xác định đã nhận'
+                    : review.remoteBudgets?.[item.id]
+                    ? `${review.remoteBudgets[item.id]?.name} · ${Number(
+                        review.remoteBudgets[item.id]?.limit_amount,
+                      ).toLocaleString('vi-VN')}`
+                    : 'Không còn ngân sách'}
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
             {review?.wallets?.map(item => (
               <View key={`wallet-${item.id}`} style={styles.row}>
                 <Text style={styles.rowTitle}>

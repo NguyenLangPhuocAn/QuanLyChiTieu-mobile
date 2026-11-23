@@ -18,7 +18,10 @@ export type BudgetPayload = {
   period: BudgetPeriod;
   start_date: string;
   end_date: string;
+  client_request_id?: string;
 };
+
+export type BudgetExpected = Omit<BudgetPayload, 'client_request_id'>;
 
 export type BudgetPageQuery = {
   page: number;
@@ -81,7 +84,11 @@ export const budgetsService = {
     });
   },
 
-  update(token: string, id: number, payload: Partial<BudgetPayload>) {
+  update(
+    token: string,
+    id: number,
+    payload: Partial<BudgetPayload> & { offline_expected?: BudgetExpected },
+  ) {
     return apiRequest<Budget>(`/budgets/${id}`, {
       method: 'PUT',
       token,
@@ -89,10 +96,11 @@ export const budgetsService = {
     });
   },
 
-  remove(token: string, id: number) {
+  remove(token: string, id: number, expected?: BudgetExpected) {
     return apiRequest<Budget>(`/budgets/${id}`, {
       method: 'DELETE',
       token,
+      body: expected ? { offline_expected: expected } : undefined,
     });
   },
 

@@ -36,7 +36,16 @@ import { useAuth } from '../../context/AuthContext';
 import { useFinance } from '../../context/FinanceContext';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { budgetsService } from '../../services/budgets';
-import { budgetCache, type BudgetCacheSnapshot } from '../../services/budgetCache';
+import {
+  budgetCache,
+  type BudgetCacheSnapshot,
+} from '../../services/budgetCache';
+import {
+  offlineBudgetQueue,
+  type OfflineBudgetChange,
+} from '../../services/offlineBudgetQueue';
+import { ApiError } from '../../services/api';
+import { homeWidget } from '../../native/homeWidget';
 import { categoriesService } from '../../services/categories';
 import { walletsService } from '../../services/wallets';
 import type {
@@ -172,13 +181,14 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
   const { selectedBudgetCategory, setSelectedBudgetCategory } = useFinance();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [localBudgets, setLocalBudgets] = useState<Budget[]>([]);
   const [allBudgets, setAllBudgets] = useState<Budget[]>([]);
+  const [pendingBudgets, setPendingBudgets] = useState<OfflineBudgetChange[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
-  const [cachedSnapshot, setCachedSnapshot] = useState<BudgetCacheSnapshot | null>(null);
   const loadRevision = React.useRef(0);
   const [isSaving, setIsSaving] = useState(false);
   const { run: runBudgetMutation } = useSingleFlight();
@@ -210,13 +220,49 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
   const [datePickerTarget, setDatePickerTarget] =
     useState<DatePickerTarget | null>(null);
   const [page, setPage] = useState(1);
-  const [pageMeta, setPageMeta] = useState({ total: 0, totalPages: 1 });
   const shouldReopenBudgetForm = React.useRef(false);
   const currentBudgetDate = toDateKey(new Date());
 
   const expenseCategories = useMemo(
     () => getBudgetExpenseCategories(categories),
     [categories],
+  );
+  const projectedBudgets = useMemo(
+    () =>
+      offlineBudgetQueue.apply(
+        allBudgets,
+        pendingBudgets,
+        wallets,
+        categories,
+        user?.id ?? 0,
+      ),
+    [allBudgets, pendingBudgets, wallets, categories, user?.id],
+  );
+  const filteredBudgets = useMemo(
+    () =>
+      filterBudgets(projectedBudgets, {
+        query: debouncedQuery,
+        period: periodFilter,
+        customStartDate: filterStartDate,
+        customEndDate: filterEndDate,
+        currentDate: currentBudgetDate,
+      }),
+    [
+      projectedBudgets,
+      debouncedQuery,
+      periodFilter,
+      filterStartDate,
+      filterEndDate,
+      currentBudgetDate,
+    ],
+  );
+  const pageMeta = {
+    total: filteredBudgets.length,
+    totalPages: Math.max(1, Math.ceil(filteredBudgets.length / PAGE_SIZE)),
+  };
+  const localBudgets = filteredBudgets.slice(
+    (Math.min(page, pageMeta.totalPages) - 1) * PAGE_SIZE,
+    Math.min(page, pageMeta.totalPages) * PAGE_SIZE,
   );
   const warningCount = localBudgets.filter(
     item => item.status === 'WARNING',
@@ -240,38 +286,21 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       selectedBudgetCategory,
     [categories, selectedBudgetCategory, selectedCategoryId],
   );
-  const applyCachedBudgets = useCallback(
-    (snapshot: BudgetCacheSnapshot) => {
-      const filtered = filterBudgets(snapshot.budgets, {
-        query: debouncedQuery,
-        period: periodFilter,
-        customStartDate: filterStartDate,
-        customEndDate: filterEndDate,
-        currentDate: currentBudgetDate,
-      });
-      const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-      setWallets(snapshot.wallets);
-      setCategories(snapshot.categories);
-      setAllBudgets(snapshot.budgets);
-      setLocalBudgets(
-        filtered.slice((Math.min(page, totalPages) - 1) * PAGE_SIZE, Math.min(page, totalPages) * PAGE_SIZE),
-      );
-      setPageMeta({ total: filtered.length, totalPages });
-      setCachedAt(snapshot.updatedAt);
-      setLoadError(null);
-      if (page > totalPages) setPage(totalPages);
-    },
-    [currentBudgetDate, debouncedQuery, filterEndDate, filterStartDate, page, periodFilter],
-  );
+  const applyCachedBudgets = useCallback((snapshot: BudgetCacheSnapshot) => {
+    setWallets(snapshot.wallets);
+    setCategories(snapshot.categories);
+    setAllBudgets(snapshot.budgets);
+    setCachedAt(snapshot.updatedAt);
+    setLoadError(null);
+  }, []);
 
   useEffect(() => {
     loadRevision.current += 1;
     setWallets([]);
     setCategories([]);
     setAllBudgets([]);
-    setLocalBudgets([]);
+    setPendingBudgets([]);
     setCachedAt(null);
-    setCachedSnapshot(null);
   }, [user?.id]);
   const fetchData = useCallback(
     async (refreshing = false) => {
@@ -281,12 +310,6 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
         setIsLoading(false);
         return;
       }
-      if (!refreshing && cachedSnapshot?.userId === requestUserId) {
-        applyCachedBudgets(cachedSnapshot);
-        setIsLoading(false);
-        return;
-      }
-
       if (refreshing) {
         setIsRefreshing(true);
       } else {
@@ -296,52 +319,49 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       try {
         if (!refreshing) {
           const saved = await budgetCache.read(requestUserId).catch(() => null);
-          if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+          if (
+            revision !== loadRevision.current ||
+            activeUserId.current !== requestUserId
+          )
+            return;
           if (saved) {
             applyCachedBudgets(saved);
             setIsLoading(false);
           }
         }
-        const [nextWallets, budgetPage, nextCategories, nextAllBudgets] =
-          await Promise.all([
+        const [nextWallets, nextCategories, nextAllBudgets] = await Promise.all(
+          [
             walletsService.getAll(token),
-            budgetsService.getPage(token, {
-              page,
-              limit: PAGE_SIZE,
-              q: debouncedQuery || undefined,
-              period_filter: periodFilter,
-              custom_start_date:
-                periodFilter === 'CUSTOM_RANGE' ? filterStartDate : undefined,
-              custom_end_date:
-                periodFilter === 'CUSTOM_RANGE' ? filterEndDate : undefined,
-              current_date: currentBudgetDate,
-            }),
             categoriesService.getAll(token),
             budgetsService.getAll(token),
-          ]);
-        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-        if (page > Math.max(1, budgetPage.meta.totalPages)) {
-          setPage(Math.max(1, budgetPage.meta.totalPages));
+          ],
+        );
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
           return;
-        }
         setWallets(nextWallets);
-        setLocalBudgets(budgetPage.data);
-        setPageMeta({
-          total: budgetPage.meta.total,
-          totalPages: budgetPage.meta.totalPages,
-        });
         setCategories(nextCategories);
         setAllBudgets(nextAllBudgets);
         setCachedAt(null);
-        setCachedSnapshot(null);
         setLoadError(null);
-        await budgetCache.save(requestUserId, nextAllBudgets, nextWallets, nextCategories).catch(() => undefined);
+        await budgetCache
+          .save(requestUserId, nextAllBudgets, nextWallets, nextCategories)
+          .catch(() => undefined);
       } catch (error) {
-        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
+          return;
         const cached = await budgetCache.read(requestUserId).catch(() => null);
-        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
+          return;
         if (cached) {
-          setCachedSnapshot(cached);
           applyCachedBudgets(cached);
           return;
         }
@@ -357,23 +377,31 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
         }
       }
     },
-    [
-      currentBudgetDate,
-      filterEndDate,
-      filterStartDate,
-      page,
-      periodFilter,
-      debouncedQuery,
-      token,
-      user?.id,
-      applyCachedBudgets,
-      cachedSnapshot,
-    ],
+    [token, user?.id, applyCachedBudgets],
   );
 
   useEffect(() => {
     setPage(1);
   }, [filterEndDate, filterStartDate, periodFilter, debouncedQuery]);
+
+  useEffect(() => {
+    if (page > pageMeta.totalPages) setPage(pageMeta.totalPages);
+  }, [page, pageMeta.totalPages]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const refresh = () => {
+      offlineBudgetQueue
+        .list(userId)
+        .then(changes => {
+          if (activeUserId.current === userId) setPendingBudgets(changes);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    return offlineBudgetQueue.subscribe(refresh);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -588,11 +616,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
 
   const handleSaveBudget = () =>
     runBudgetMutation(async () => {
-      if (cachedAt) {
-        Alert.alert('Đang xem dữ liệu đã lưu', 'Cần có kết nối để tạo hoặc sửa ngân sách.');
-        return;
-      }
-      if (!token) {
+      if (!token || !user?.id) {
         return;
       }
 
@@ -622,10 +646,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       }
 
       if (!normalizedAmount) {
-        Alert.alert(
-          'Hạn mức chưa hợp lệ',
-          'Nhập số tiền hợp lệ lớn hơn 0.',
-        );
+        Alert.alert('Hạn mức chưa hợp lệ', 'Nhập số tiền hợp lệ lớn hơn 0.');
         return;
       }
 
@@ -656,9 +677,70 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
           start_date: saveRange.start,
           end_date: saveRange.end,
         };
-        const saved = editingBudget
-          ? await budgetsService.update(token, editingBudget.id, payload)
-          : await budgetsService.create(token, payload);
+        if (
+          selectedWalletId < 0 ||
+          (scope === 'CATEGORY' && (selectedCategoryId ?? 0) < 0)
+        )
+          throw Error(
+            'Hãy đồng bộ Ví và Danh mục mới trước khi dùng cho Ngân sách.',
+          );
+        const userId = user.id;
+        const pending = editingBudget
+          ? pendingBudgets.some(item => item.id === editingBudget.id)
+          : false;
+        const offline =
+          Boolean(cachedAt) ||
+          !(await homeWidget.connected()) ||
+          pending ||
+          (editingBudget?.id ?? 0) < 0;
+        const saveLocal = async (requestId?: string, uncertain = false) => {
+          if (editingBudget)
+            await offlineBudgetQueue.update(
+              userId,
+              editingBudget,
+              payload,
+              uncertain,
+            );
+          else
+            await offlineBudgetQueue.create(
+              userId,
+              payload,
+              requestId,
+              uncertain,
+            );
+          setPeriodFilter('ALL');
+          setSearchQuery('');
+          setPage(1);
+          setModalVisible(false);
+          Alert.alert(
+            'Đã lưu trên máy',
+            'Ngân sách sẽ được đối chiếu trước khi đồng bộ.',
+          );
+        };
+        if (offline) {
+          await saveLocal();
+          return;
+        }
+        const idempotencyKey = editingBudget
+          ? undefined
+          : offlineBudgetQueue.createRequestId();
+        let saved: Budget;
+        try {
+          saved = editingBudget
+            ? await budgetsService.update(token, editingBudget.id, payload)
+            : await budgetsService.create(token, {
+                ...payload,
+                client_request_id: idempotencyKey,
+              });
+        } catch (error) {
+          if (
+            !(error instanceof ApiError) ||
+            error.code !== 'REQUEST_OUTCOME_UNKNOWN'
+          )
+            throw error;
+          await saveLocal(idempotencyKey, true);
+          return;
+        }
 
         if (saved.warning?.message) {
           Alert.alert(
@@ -684,7 +766,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
     });
 
   const handleDeleteBudget = () => {
-    if (!token || !editingBudget || cachedAt) {
+    if (!token || !user?.id || !editingBudget) {
       return;
     }
 
@@ -697,7 +779,40 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
           runBudgetMutation(async () => {
             try {
               setIsSaving(true);
-              await budgetsService.remove(token, editingBudget.id);
+              const userId = user.id;
+              const pending = pendingBudgets.some(
+                item => item.id === editingBudget.id,
+              );
+              const offline =
+                Boolean(cachedAt) ||
+                !(await homeWidget.connected()) ||
+                pending ||
+                editingBudget.id < 0;
+              if (offline) {
+                await offlineBudgetQueue.remove(userId, editingBudget);
+                setModalVisible(false);
+                Alert.alert(
+                  'Đã lưu trên máy',
+                  'Xóa Ngân sách sẽ được đối chiếu trước khi đồng bộ.',
+                );
+                return;
+              }
+              try {
+                await budgetsService.remove(token, editingBudget.id);
+              } catch (error) {
+                if (
+                  !(error instanceof ApiError) ||
+                  error.code !== 'REQUEST_OUTCOME_UNKNOWN'
+                )
+                  throw error;
+                await offlineBudgetQueue.remove(userId, editingBudget, true);
+                setModalVisible(false);
+                Alert.alert(
+                  'Đã lưu trên máy',
+                  'Chưa xác nhận máy chủ đã xóa. Hãy đối chiếu khi có mạng lại.',
+                );
+                return;
+              }
               await fetchData(true);
               setModalVisible(false);
             } catch (error) {
@@ -785,7 +900,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
           disabled={Boolean(cachedAt)}
           onPress={() => resetForm()}
         >
-          <Plus size={22} color={cachedAt ? '#B7A294' : '#593420'} />
+          <Plus size={22} color="#593420" />
         </TouchableOpacity>
       </View>
 
@@ -801,11 +916,18 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
       >
         {cachedAt ? (
           <View style={styles.cacheNotice}>
-            <Text style={styles.cacheNoticeTitle}>Dữ liệu ngân sách đã lưu</Text>
-            <Text style={styles.cacheNoticeText}>
-              Cập nhật lúc {new Date(cachedAt).toLocaleString('vi-VN')}. Số đã chi và còn lại có thể đã thay đổi. Kết nối mạng để xem mới nhất hoặc sửa ngân sách.
+            <Text style={styles.cacheNoticeTitle}>
+              Dữ liệu ngân sách đã lưu
             </Text>
-            <TouchableOpacity accessibilityRole="button" onPress={() => fetchData(true)}>
+            <Text style={styles.cacheNoticeText}>
+              Cập nhật lúc {new Date(cachedAt).toLocaleString('vi-VN')}. Số đã
+              chi và còn lại có thể đã thay đổi. Thay đổi mới sẽ lưu trên máy và
+              được đối chiếu khi có mạng.
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => fetchData(true)}
+            >
               <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
             </TouchableOpacity>
           </View>
@@ -919,7 +1041,7 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
               <Text style={styles.primaryButtonText}>Thử lại</Text>
             </TouchableOpacity>
           </View>
-        ) : localBudgets.length === 0 && allBudgets.length === 0 ? (
+        ) : localBudgets.length === 0 && projectedBudgets.length === 0 ? (
           <View style={styles.emptyState}>
             <WalletCards size={28} color="#D87219" />
             <Text style={styles.emptyTitle}>Chưa có ngân sách</Text>
@@ -929,7 +1051,6 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, styles.emptyCreateButton]}
-              disabled={Boolean(cachedAt)}
               onPress={() => resetForm()}
             >
               <Text style={styles.primaryButtonText}>Tạo ngân sách</Text>
@@ -946,6 +1067,9 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
         ) : (
           localBudgets.map(budget => {
             const meta = statusMeta[budget.status];
+            const pendingChange = pendingBudgets.find(
+              item => item.id === budget.id,
+            );
             const wallet = wallets.find(item => item.id === budget.wallet_id);
             const currency = wallet?.currency ?? budget.wallet_currency;
             const carryOver = Number(budget.carry_over_overspent ?? 0);
@@ -975,12 +1099,21 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                 key={budget.id}
                 style={styles.budgetCard}
                 onPress={() =>
-                  navigation.navigate('BudgetDetail', { budgetId: budget.id })
+                  pendingChange
+                    ? resetForm(budget)
+                    : navigation.navigate('BudgetDetail', {
+                        budgetId: budget.id,
+                      })
                 }
               >
                 <View style={styles.cardHeader}>
                   <View style={styles.cardTitleGroup}>
                     <Text style={styles.walletName}>{budget.name}</Text>
+                    {pendingChange ? (
+                      <Text style={styles.periodText}>
+                        Đang lưu trên máy · Chờ đối chiếu
+                      </Text>
+                    ) : null}
                     <Text style={styles.periodText}>
                       {budget.scope === 'WALLET'
                         ? wallet?.name ?? budget.wallet_name
@@ -997,23 +1130,45 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: meta.background },
+                      pendingChange
+                        ? styles.pendingStatusBadge
+                        : { backgroundColor: meta.background },
                     ]}
                   >
-                    <Text style={[styles.statusText, { color: meta.color }]}>
-                      {meta.label}
+                    <Text
+                      style={[
+                        styles.statusText,
+                        pendingChange
+                          ? styles.pendingStatusText
+                          : { color: meta.color },
+                      ]}
+                    >
+                      {pendingChange ? 'Chờ lưu' : meta.label}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.amountRow}>
-                  <Text style={styles.spentText}>
-                    {formatCurrency(budget.spent, currency)}
-                  </Text>
-                  <Text style={styles.amountText}>
-                    / {formatCurrency(availableLimit, currency)}
-                  </Text>
+                  {budget.id < 0 ? (
+                    <Text style={styles.spentText}>
+                      Hạn mức {formatCurrency(limit, currency)}
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={styles.spentText}>
+                        {formatCurrency(budget.spent, currency)}
+                      </Text>
+                      <Text style={styles.amountText}>
+                        / {formatCurrency(availableLimit, currency)}
+                      </Text>
+                    </>
+                  )}
                 </View>
+                {pendingChange && budget.id > 0 ? (
+                  <Text style={styles.periodText}>
+                    Số đã chi từ lần tải gần nhất.
+                  </Text>
+                ) : null}
                 {carryOver > 0 ? (
                   <Text style={styles.periodText}>
                     Hạn mức {formatCurrency(limit, currency)} − vượt kỳ trước{' '}
@@ -1021,24 +1176,29 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                   </Text>
                 ) : null}
 
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      budget.status === 'WARNING' && styles.progressWarning,
-                      budget.status === 'EXCEEDED' && styles.progressDanger,
-                      { width: `${Math.max(0, percentage)}%` },
-                    ]}
-                  />
-                </View>
+                {budget.id > 0 ? (
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        budget.status === 'WARNING' && styles.progressWarning,
+                        budget.status === 'EXCEEDED' && styles.progressDanger,
+                        { width: `${Math.max(0, percentage)}%` },
+                      ]}
+                    />
+                  </View>
+                ) : null}
 
                 <View style={styles.cardFooter}>
-                  <Text style={styles.remainingText}>
-                    Còn lại {formatCurrency(remaining, currency)}
-                  </Text>
+                  {budget.id > 0 ? (
+                    <Text style={styles.remainingText}>
+                      Còn lại {formatCurrency(remaining, currency)}
+                    </Text>
+                  ) : (
+                    <View />
+                  )}
                   <TouchableOpacity
                     style={styles.editHint}
-                    disabled={Boolean(cachedAt)}
                     onPress={() => resetForm(budget)}
                     accessibilityRole="button"
                     accessibilityLabel={`Sửa ngân sách ${budget.name}`}
@@ -1048,7 +1208,9 @@ const BudgetsScreen = ({ navigation, route }: Props) => {
                   </TouchableOpacity>
                 </View>
 
-                {!cachedAt && budget.period !== 'CUSTOM' &&
+                {!cachedAt &&
+                !pendingChange &&
+                budget.period !== 'CUSTOM' &&
                 shouldShowBudgetRenewal(
                   periodFilter,
                   isExpiredFixedBudget(budget),
@@ -1443,7 +1605,12 @@ const styles = StyleSheet.create({
   },
   cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
   cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
-  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
+  cacheRefresh: {
+    color: '#B45C13',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   statRow: { flexDirection: 'row', gap: 10 },
   statItem: {
     flex: 1,
@@ -1594,6 +1761,8 @@ const styles = StyleSheet.create({
   },
   statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   statusText: { fontSize: 11, fontWeight: '900' },
+  pendingStatusBadge: { backgroundColor: '#FFF0DC' },
+  pendingStatusText: { color: '#9A5A25' },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 16 },
   spentText: { color: '#4A2B1A', fontSize: 20, fontWeight: '900' },
   amountText: {
