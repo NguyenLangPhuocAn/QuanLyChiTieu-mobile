@@ -18,6 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
+import { createClientRequestId } from '../../services/offlineTransactionQueue';
 import { walletsService } from '../../services/wallets';
 import type { LoanDebtType } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
@@ -52,6 +53,9 @@ const parseDateKey = (value: string) => {
 const LoanDebtFormScreen = ({ navigation, route }: Props) => {
   const { token } = useAuth();
   const { run: runLoanMutation } = useSingleFlight();
+  const createRequestId = useRef(createClientRequestId());
+  const firstCreateAttempt = useRef<string | null>(null);
+  const reviewOpen = useRef(false);
   const loanDebtId = route.params?.loanDebtId;
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [type, setType] = useState<LoanDebtType>('BORROWED');
@@ -66,8 +70,19 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
   const [isSaving, setIsSaving] = useState(false);
   const [openingLocked, setOpeningLocked] = useState(false);
   const [showDueDatePicker, setShowDueDatePicker] = useState(false);
-  const selectedWallet =
-    wallets.find(wallet => wallet.id === walletId) ?? null;
+  const selectedWallet = wallets.find(wallet => wallet.id === walletId) ?? null;
+  const formSnapshot = JSON.stringify({
+    token,
+    loanDebtId,
+    type,
+    personName,
+    amount,
+    walletId,
+    dueDate,
+    note,
+  });
+  const formSnapshotRef = useRef(formSnapshot);
+  formSnapshotRef.current = formSnapshot;
 
   const load = useCallback(async () => {
     const revision = ++loadRevision.current;
@@ -125,64 +140,121 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
     };
   }, [load]);
 
-  const save = () =>
-    runLoanMutation(async () => {
-      if (isLoading || loadError) return;
-      const normalizedAmount = plainAmount(amount);
-      if (!token || !walletId || !personName.trim() || !normalizedAmount) {
-        Alert.alert(
-          'Thiếu thông tin',
-          'Vui lòng nhập tên người, số tiền và chọn ví.',
-        );
-        return;
-      }
-      if (!openingLocked && !wallets.some(wallet => wallet.id === walletId)) {
-        Alert.alert(
-          'Chọn lại ví',
-          'Chọn ví đang hoạt động, cùng tiền tệ với khoản vay/nợ.',
-        );
-        return;
-      }
-      setIsSaving(true);
-      try {
-        if (loanDebtId) {
-          await loanDebtsService.update(
-            token,
-            loanDebtId,
-            buildLoanDebtUpdatePayload(
-              {
-                person_name: personName.trim(),
-                principal_amount: normalizedAmount,
-                wallet_id: walletId,
-                due_date: dueDate || null,
-                note: note.trim(),
-              },
-              openingLocked,
-            ),
-          );
-        } else {
-          await loanDebtsService.create(token, {
-            person_name: personName.trim(),
-            type,
-            principal_amount: normalizedAmount,
-            wallet_id: walletId,
-            due_date: dueDate || null,
-            note: note.trim() || undefined,
-          });
-        }
-        navigation.goBack();
-      } catch (error) {
-        Alert.alert(
-          'Không thể lưu khoản vay/nợ',
-          getLoanDebtErrorMessage(
-            error,
-            'Không thể lưu khoản vay/nợ. Vui lòng thử lại.',
-          ),
-        );
-      } finally {
-        setIsSaving(false);
-      }
-    });
+  const save = () => {
+    if (reviewOpen.current || isSaving) return;
+    if (isLoading || loadError) return;
+    const normalizedAmount = plainAmount(amount);
+    if (!token || !walletId || !personName.trim() || !normalizedAmount) {
+      Alert.alert(
+        'Thiếu thông tin',
+        'Vui lòng nhập tên người, số tiền và chọn ví.',
+      );
+      return;
+    }
+    if (!openingLocked && !wallets.some(wallet => wallet.id === walletId)) {
+      Alert.alert(
+        'Chọn lại ví',
+        'Chọn ví đang hoạt động, cùng tiền tệ với khoản vay/nợ.',
+      );
+      return;
+    }
+    const snapshot = formSnapshotRef.current;
+    const payload = {
+      person_name: personName.trim(),
+      type,
+      principal_amount: normalizedAmount,
+      wallet_id: walletId,
+      due_date: dueDate || null,
+      note: note.trim() || undefined,
+    };
+    if (
+      !loanDebtId &&
+      firstCreateAttempt.current &&
+      firstCreateAttempt.current !== JSON.stringify(payload)
+    ) {
+      Alert.alert(
+        'Khoản trước có thể đã lưu',
+        'Hãy kiểm tra danh sách Vay/Nợ trước khi tạo khoản khác.',
+      );
+      return;
+    }
+    reviewOpen.current = true;
+    Alert.alert(
+      loanDebtId ? 'Kiểm tra khoản Vay/Nợ' : 'Tạo khoản Vay/Nợ',
+      `${type === 'BORROWED' ? 'Vay từ' : 'Cho vay'} ${
+        payload.person_name
+      }\n${formatCurrency(
+        Number(normalizedAmount),
+        selectedWallet?.currency ?? 'VND',
+      )} · ${selectedWallet?.name ?? 'Ví đã chọn'}${
+        dueDate ? `\nHẹn trả ${formatShortDate(dueDate)}` : ''
+      }\n${
+        loanDebtId
+          ? 'Kiểm tra số tiền gốc và ví trước khi lưu.'
+          : 'Số dư ví sẽ thay đổi sau khi xác nhận.'
+      }`,
+      [
+        {
+          text: 'Sửa lại',
+          style: 'cancel',
+          onPress: () => {
+            reviewOpen.current = false;
+          },
+        },
+        {
+          text: 'Xác nhận',
+          onPress: () => {
+            reviewOpen.current = false;
+            if (snapshot !== formSnapshotRef.current) {
+              Alert.alert(
+                'Thông tin đã thay đổi',
+                'Hãy kiểm tra lại trước khi lưu.',
+              );
+              return;
+            }
+            runLoanMutation(async () => {
+              setIsSaving(true);
+              try {
+                if (loanDebtId) {
+                  await loanDebtsService.update(
+                    token,
+                    loanDebtId,
+                    buildLoanDebtUpdatePayload(
+                      {
+                        person_name: payload.person_name,
+                        principal_amount: normalizedAmount,
+                        wallet_id: walletId,
+                        due_date: payload.due_date,
+                        note: note.trim(),
+                      },
+                      openingLocked,
+                    ),
+                  );
+                } else {
+                  firstCreateAttempt.current = JSON.stringify(payload);
+                  await loanDebtsService.createQuickEntry(token, {
+                    ...payload,
+                    client_request_id: createRequestId.current,
+                  });
+                }
+                navigation.goBack();
+              } catch (error) {
+                Alert.alert(
+                  'Không thể lưu khoản vay/nợ',
+                  getLoanDebtErrorMessage(
+                    error,
+                    'Không thể lưu khoản vay/nợ. Vui lòng thử lại.',
+                  ),
+                );
+              } finally {
+                setIsSaving(false);
+              }
+            });
+          },
+        },
+      ],
+    );
+  };
 
   const handleDueDateChange = (
     _event: DateTimePickerEvent,

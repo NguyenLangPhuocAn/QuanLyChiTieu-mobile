@@ -11,6 +11,7 @@ import MainScreen from '../src/screens/home/MainScreen';
 import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
+import { loanDebtsService } from '../src/services/loanDebts';
 import { walletsService } from '../src/services/wallets';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
@@ -268,6 +269,77 @@ beforeEach(async () => {
   await act(async () => {
     tab.props.onPress();
   });
+});
+
+it('previews a loan and retries with the same request id after a lost reply', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  const create = jest
+    .spyOn(loanDebtsService, 'createQuickEntry')
+    .mockRejectedValueOnce(new Error('Mất phản hồi'))
+    .mockResolvedValue({ id: 51 } as never);
+  await act(async () =>
+    chat().onCreateTransaction!({ ...draft, amount: 50000 } as any),
+  );
+  await act(async () => {
+    button('Vay/Nợ').props.onPress();
+    button('Tiền mặt').props.onPress();
+  });
+  await act(async () =>
+    tree.root
+      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
+      .props.onChangeText('Anh Minh'),
+  );
+  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
+  expect(create).not.toHaveBeenCalled();
+  const confirm = () =>
+    jest
+      .mocked(Alert.alert)
+      .mock.calls.at(-1)?.[2]
+      ?.find(item => item.text === 'Xác nhận')?.onPress;
+  const staleConfirmation = confirm();
+  await act(async () =>
+    tree.root
+      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
+      .props.onChangeText('Chị Lan'),
+  );
+  await act(async () => staleConfirmation?.());
+  expect(create).not.toHaveBeenCalled();
+  await act(async () =>
+    tree.root
+      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
+      .props.onChangeText('Anh Minh'),
+  );
+  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
+  await act(async () => {
+    confirm()?.();
+    await Promise.resolve();
+  });
+  expect(create).toHaveBeenCalledTimes(1);
+  const firstId = create.mock.calls[0][1].client_request_id;
+  await act(async () =>
+    tree.root
+      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
+      .props.onChangeText('Chị Lan'),
+  );
+  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
+    'Khoản trước có thể đã lưu',
+  );
+  await act(async () =>
+    tree.root
+      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
+      .props.onChangeText('Anh Minh'),
+  );
+  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
+  await act(async () => {
+    confirm()?.();
+    await Promise.resolve();
+  });
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(create.mock.calls[1][1].client_request_id).toBe(firstId);
+  expect(firstId).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
 });
 
 it('keeps the fresh wallet list when a slower offline cache read finishes last', async () => {

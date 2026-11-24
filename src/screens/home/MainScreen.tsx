@@ -293,6 +293,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   );
   // Keep the same idempotency key while the current form remains open.
   const transactionRequestId = useRef(createClientRequestId());
+  const firstLoanAttempt = useRef<string | null>(null);
+  const loanReviewOpen = useRef(false);
   const [receiptItems, setReceiptItems] = useState<ReceiptItemDraft[]>([]);
   const [isReceiptDetailsExpanded, setIsReceiptDetailsExpanded] =
     useState(false);
@@ -893,6 +895,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
 
   const resetTransactionForm = () => {
     transactionRequestId.current = createClientRequestId();
+    firstLoanAttempt.current = null;
+    loanReviewOpen.current = false;
     repeatReviewEpoch.current++;
     billReviewEpoch.current++;
     setBillPayment(null);
@@ -1575,6 +1579,20 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   });
   const billFormSnapshotRef = useRef(billFormSnapshot);
   billFormSnapshotRef.current = billFormSnapshot;
+  const loanFormSnapshot = JSON.stringify({
+    userId: user?.id,
+    server,
+    transactionEntryType,
+    loanDebtType,
+    loanDebtPersonName,
+    loanDebtDueDate,
+    amount: transactionAmount,
+    walletId: selectedWalletId,
+    note: transactionNote,
+    date: toDateKey(transactionDate),
+  });
+  const loanFormSnapshotRef = useRef(loanFormSnapshot);
+  loanFormSnapshotRef.current = loanFormSnapshot;
 
   const saveTransaction = (reviewed?: string) =>
     runSaveTransaction(async () => {
@@ -1828,17 +1846,76 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           return;
         }
 
+        const payload = {
+          person_name: loanDebtPersonName.trim(),
+          type: loanDebtType,
+          principal_amount: normalizedAmount,
+          wallet_id: selectedWallet.id,
+          due_date: loanDebtDueDate.trim() || null,
+          note: transactionNote.trim() || undefined,
+          transaction_date: toDateKey(transactionDate),
+        };
+        if (
+          firstLoanAttempt.current &&
+          firstLoanAttempt.current !== JSON.stringify(payload)
+        ) {
+          Alert.alert(
+            'Khoản trước có thể đã lưu',
+            'Hãy kiểm tra danh sách Vay/Nợ trước khi tạo khoản khác.',
+          );
+          return;
+        }
+        const snapshot = loanFormSnapshotRef.current;
+        if (reviewed !== snapshot) {
+          if (loanReviewOpen.current) return;
+          loanReviewOpen.current = true;
+          Alert.alert(
+            'Kiểm tra khoản Vay/Nợ',
+            `${loanDebtType === 'BORROWED' ? 'Vay từ' : 'Cho vay'} ${
+              payload.person_name
+            }\n${formatCurrency(
+              Number(normalizedAmount),
+              selectedWallet.currency,
+            )} · ${selectedWallet.name}\nNgày ${formatShortDate(
+              payload.transaction_date,
+            )}${
+              payload.due_date
+                ? ` · Hẹn ${formatShortDate(payload.due_date)}`
+                : ''
+            }\nXác nhận sẽ thay đổi số dư ví.`,
+            [
+              {
+                text: 'Sửa lại',
+                style: 'cancel',
+                onPress: () => {
+                  loanReviewOpen.current = false;
+                },
+              },
+              {
+                text: 'Xác nhận',
+                onPress: () => {
+                  loanReviewOpen.current = false;
+                  if (loanFormSnapshotRef.current !== snapshot) {
+                    Alert.alert(
+                      'Thông tin đã thay đổi',
+                      'Hãy kiểm tra lại trước khi lưu.',
+                    );
+                    return;
+                  }
+                  saveTransaction(snapshot).catch(() => undefined);
+                },
+              },
+            ],
+          );
+          return;
+        }
         try {
-          await loanDebtsService.create(token, {
-            person_name: loanDebtPersonName.trim(),
-            type: loanDebtType,
-            principal_amount: normalizedAmount,
-            wallet_id: selectedWallet.id,
-            due_date: loanDebtDueDate.trim() || null,
-            note: transactionNote.trim() || undefined,
-            transaction_date: toDateKey(transactionDate),
+          firstLoanAttempt.current = JSON.stringify(payload);
+          await loanDebtsService.createQuickEntry(token, {
+            ...payload,
+            client_request_id: transactionRequestId.current,
           });
-          await fetchDashboardData();
+          await fetchDashboardData().catch(() => undefined);
         } catch (error) {
           const message = getLoanDebtErrorMessage(
             error,
