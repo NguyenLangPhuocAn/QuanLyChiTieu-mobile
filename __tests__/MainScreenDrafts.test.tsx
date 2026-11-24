@@ -335,6 +335,9 @@ it('previews a loan and preserves the request after a lost reply', async () => {
   expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
     'Đã giữ khoản Vay/Nợ trên máy',
   );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[1]).toContain(
+    'Chưa rõ máy chủ đã nhận',
+  );
   expect(firstId).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
 });
 

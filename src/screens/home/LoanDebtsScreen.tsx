@@ -295,8 +295,9 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
                   {getLoanDebtTypeLabel(item.payload.type)} · {item.wallet.name}
                 </Text>
                 <Text style={styles.detail}>
-                  Chưa ghi vào ví. Khi có mạng, mở Dữ liệu và xuất nhập để đối
-                  chiếu.
+                  {item.attempts > 0
+                    ? 'Chưa rõ máy chủ đã ghi hay chưa. Khi có mạng, mở Dữ liệu và xuất nhập để đối chiếu.'
+                    : 'Chưa gửi lên máy chủ. Khi có mạng, mở Dữ liệu và xuất nhập để đối chiếu.'}
                 </Text>
               </View>
             ))}

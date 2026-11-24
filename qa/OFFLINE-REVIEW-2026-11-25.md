@@ -24,10 +24,11 @@
 
 ## Lượt kiểm tra hiện tại
 
-- Phát hiện khoản Vay/Nợ mới còn chờ nằm dưới bộ lọc trạng thái “Đã thanh toán”, dễ khiến người dùng hiểu nhầm đã ghi tiền. Đã chuyển sang khu “Chờ đồng bộ” riêng phía trên bộ lọc, ghi rõ chưa đổi số dư và có nhãn truy cập.
-- Jest màn Vay/Nợ: 4/4 ca đạt, gồm trường hợp khoản chờ vẫn hiện riêng khi lọc khoản đã thanh toán. TypeScript và ESLint các file sửa đạt.
+- Phát hiện khoản Vay/Nợ mới còn chờ nằm dưới bộ lọc trạng thái “Đã thanh toán”, dễ khiến người dùng hiểu nhầm đã ghi tiền. Đã chuyển sang khu “Chờ đồng bộ” riêng phía trên bộ lọc, có nhãn truy cập.
+- Phát hiện thông báo “số dư chưa thay đổi” là sai khi yêu cầu đã gửi nhưng mất phản hồi: server có thể đã ghi. Hai form và thẻ khoản chờ nay phân biệt **chưa gửi** với **chưa xác định server đã ghi**; giữ mã yêu cầu cũ để đối chiếu, không khuyên tạo lại.
+- Jest màn Vay/Nợ: 4/4 ca đạt, gồm trường hợp khoản chờ vẫn hiện riêng khi lọc khoản đã thanh toán. Sau sửa thông báo mất phản hồi, ba bộ màn liên quan đạt 47/47 ca; TypeScript và ESLint các file sửa đạt.
 - Build **debug tách riêng** với `QA_ISOLATED_APP=true` thành công; không ký/phát hành bản production.
-- Ba lượt thử trên hai cấu hình Android emulator không hoàn tất boot/ADB package service. Không cài app, thao tác UI, chụp ảnh hay tuyên bố Android đã đạt trong lượt này. Tiến trình emulator và Metro/API QA local đã được dừng; server production không đổi.
+- Bốn lượt thử trên hai cấu hình Android emulator không hoàn tất boot/ADB package service, kể cả khi giảm còn hai CPU và không chạy Gradle. Không cài app, thao tác UI, chụp ảnh hay tuyên bố Android đã đạt trong lượt này. Tiến trình emulator và Metro/API QA local đã được dừng; server production không đổi.
 
 ## Ca cần chạy tiếp trên thiết bị
 

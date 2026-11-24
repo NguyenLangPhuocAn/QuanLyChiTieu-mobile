@@ -63,7 +63,7 @@ it('keeps new local loans in a separate pending section even while filtering pai
     {
       id: 'loan_20261125_abcdef123456',
       revision: 1,
-      attempts: 0,
+      attempts: 1,
       status: 'PENDING',
       updatedAt: '2026-11-25T08:00:00.000Z',
       wallet: {
@@ -97,6 +97,12 @@ it('keeps new local loans in a separate pending section even while filtering pai
   ).toBeGreaterThan(0);
   expect(
     renderer.root.findAllByProps({ children: 'Khoản đã trả' }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    renderer.root.findAllByProps({
+      children:
+        'Chưa rõ máy chủ đã ghi hay chưa. Khi có mạng, mở Dữ liệu và xuất nhập để đối chiếu.',
+    }).length,
   ).toBeGreaterThan(0);
 });
 

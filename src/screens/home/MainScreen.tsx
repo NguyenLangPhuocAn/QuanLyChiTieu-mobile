@@ -1953,7 +1953,9 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
             resetTransactionForm();
             Alert.alert(
               'Đã giữ khoản Vay/Nợ trên máy',
-              'Số dư chưa thay đổi. Khi có mạng, bạn sẽ xem lại rồi chọn đồng bộ.',
+              isOfflineSession
+                ? 'Khoản chưa gửi lên máy chủ. Khi có mạng, bạn sẽ xem lại rồi chọn đồng bộ.'
+                : 'Chưa rõ máy chủ đã nhận khoản này hay chưa. Hãy đối chiếu khi có mạng; không tạo lại khoản mới.',
             );
             return;
           }

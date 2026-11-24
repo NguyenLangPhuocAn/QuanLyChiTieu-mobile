@@ -183,6 +183,9 @@ it('previews a new loan and retains its request id after a lost reply', async ()
   expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
     'Đã giữ khoản Vay/Nợ trên máy',
   );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[1]).toContain(
+    'Chưa rõ máy chủ đã nhận',
+  );
   expect(first.client_request_id).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
 });
 
@@ -221,5 +224,8 @@ it('uses cached wallets and queues a loan without calling the server in an offli
     expect.objectContaining({ principal_amount: '50000' }),
     expect.objectContaining({ id: 2 }),
     false,
+  );
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[1]).toContain(
+    'chưa gửi lên máy chủ',
   );
 });
