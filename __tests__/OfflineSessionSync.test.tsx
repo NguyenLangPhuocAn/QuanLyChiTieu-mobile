@@ -14,6 +14,8 @@ import { offlineSavingsGoalQueue as savingsQueue } from '../src/services/offline
 import { savingsService } from '../src/services/savings';
 import { offlineLoanDebtQueue as loanQueue } from '../src/services/offlineLoanDebtQueue';
 import { loanDebtsService } from '../src/services/loanDebts';
+import { offlineLoanCreateQueue as loanCreateQueue } from '../src/services/offlineLoanCreateQueue';
+import { walletsService } from '../src/services/wallets';
 
 const mockRetry = jest.fn();
 let mockUserId = 9;
@@ -87,6 +89,19 @@ jest.mock('../src/services/offlineLoanDebtQueue', () => ({
 }));
 jest.mock('../src/services/loanDebts', () => ({
   loanDebtsService: { getAll: jest.fn() },
+}));
+jest.mock('../src/services/offlineLoanCreateQueue', () => ({
+  offlineLoanCreateQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    sync: jest.fn(),
+    discard: jest.fn(),
+  },
+}));
+jest.mock('../src/services/wallets', () => ({
+  walletsService: { getAll: jest.fn() },
 }));
 
 const draft = {
@@ -180,6 +195,15 @@ beforeEach(() => {
     .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
   jest.mocked(loanQueue.discard).mockResolvedValue(undefined);
   jest.mocked(loanDebtsService.getAll).mockResolvedValue([]);
+  jest.mocked(loanCreateQueue.list).mockResolvedValue([]);
+  jest.mocked(loanCreateQueue.preview).mockResolvedValue([]);
+  jest.mocked(loanCreateQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(loanCreateQueue.rebaseReviewed).mockResolvedValue([]);
+  jest
+    .mocked(loanCreateQueue.sync)
+    .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(loanCreateQueue.discard).mockResolvedValue(undefined);
+  jest.mocked(walletsService.getAll).mockResolvedValue([]);
   mockRetry.mockResolvedValue(true);
 });
 afterEach(async () => {
@@ -198,6 +222,61 @@ it('refreshes server data when no offline writes are pending', async () => {
   expect(refreshed).toHaveBeenCalledTimes(1);
   expect(refreshed.mock.invocationCallOrder[0]).toBeLessThan(
     jest.mocked(financeRefresh.emit).mock.invocationCallOrder[0],
+  );
+});
+
+it('previews a local loan against its server wallet before sending it', async () => {
+  const wallet = {
+    id: 2,
+    name: 'Ví gia đình',
+    currency: 'VND',
+    balance: 500000,
+    wallet_type: 'BANK',
+  };
+  const pending = {
+    id: 'loan_20261124_abcdef123456',
+    revision: 1,
+    attempts: 0,
+    status: 'PENDING' as const,
+    updatedAt: '2026-11-24T05:00:00.000Z',
+    wallet: {
+      id: 2,
+      name: wallet.name,
+      currency: wallet.currency,
+      balance: '500000',
+    },
+    payload: {
+      person_name: 'Anh Minh',
+      type: 'BORROWED' as const,
+      principal_amount: '200000',
+      wallet_id: 2,
+      client_request_id: 'loan_20261124_abcdef123456',
+    },
+  };
+  jest.mocked(loanCreateQueue.list).mockResolvedValue([pending]);
+  jest
+    .mocked(loanCreateQueue.preview)
+    .mockResolvedValue([{ id: pending.id, revision: 1 }]);
+  jest
+    .mocked(loanCreateQueue.rebaseReviewed)
+    .mockResolvedValue([{ id: pending.id, revision: 1 }]);
+  jest.mocked(walletsService.getAll).mockResolvedValue([wallet] as never);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Vay/Nợ mới'),
+  ).toBe(true);
+  expect(loanCreateQueue.sync).not.toHaveBeenCalled();
+  await act(async () => pressReview('Dùng thay đổi trên máy'));
+  expect(loanCreateQueue.sync).toHaveBeenCalledWith(
+    'qa',
+    9,
+    [{ id: pending.id, revision: 1 }],
+    { 2: wallet },
+    expect.any(Function),
   );
 });
 

@@ -77,6 +77,7 @@ import {
 } from '../../services/offlineTransactionQueue';
 import { offlineCategoryQueue } from '../../services/offlineCategoryQueue';
 import { offlineWalletQueue } from '../../services/offlineWalletQueue';
+import { offlineLoanCreateQueue } from '../../services/offlineLoanCreateQueue';
 import { financialCaptureInbox } from '../../services/financialCaptureInbox';
 import { walletsService } from '../../services/wallets';
 import { tagsService } from '../../services/tags';
@@ -1889,7 +1890,11 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               payload.due_date
                 ? ` · Hẹn ${formatShortDate(payload.due_date)}`
                 : ''
-            }\nXác nhận sẽ thay đổi số dư ví.`,
+            }\n${
+              isOfflineSession
+                ? 'Lưu trên máy; số dư chỉ đổi sau khi bạn xác nhận đồng bộ.'
+                : 'Xác nhận sẽ thay đổi số dư ví.'
+            }`,
             [
               {
                 text: 'Sửa lại',
@@ -1916,14 +1921,42 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           );
           return;
         }
+        const createPayload = {
+          ...payload,
+          client_request_id: transactionRequestId.current,
+        };
         try {
           firstLoanAttempt.current = JSON.stringify(payload);
-          await loanDebtsService.createQuickEntry(token, {
-            ...payload,
-            client_request_id: transactionRequestId.current,
-          });
+          if (isOfflineSession) throw new Error('LOCAL_OFFLINE_SESSION');
+          await loanDebtsService.createQuickEntry(token, createPayload);
           await fetchDashboardData().catch(() => undefined);
         } catch (error) {
+          if (user?.id && isRetryableOfflineTransactionError(error)) {
+            try {
+              await offlineLoanCreateQueue.enqueue(
+                user.id,
+                createPayload,
+                selectedWallet,
+                !isOfflineSession,
+              );
+            } catch (storageError) {
+              Alert.alert(
+                'Chưa lưu được trên máy',
+                getUserFriendlyErrorMessage(
+                  storageError,
+                  'Giữ form và thử lại.',
+                ),
+              );
+              return;
+            }
+            setIsModalVisible(false);
+            resetTransactionForm();
+            Alert.alert(
+              'Đã giữ khoản Vay/Nợ trên máy',
+              'Số dư chưa thay đổi. Khi có mạng, bạn sẽ xem lại rồi chọn đồng bộ.',
+            );
+            return;
+          }
           const message = getLoanDebtErrorMessage(
             error,
             'Không thể lưu khoản vay/nợ. Vui lòng thử lại.',

@@ -3,11 +3,21 @@ import { Alert } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import LoanDebtFormScreen from '../src/screens/home/LoanDebtFormScreen';
 import { loanDebtsService } from '../src/services/loanDebts';
+import { offlineLoanCreateQueue } from '../src/services/offlineLoanCreateQueue';
+import { dashboardCache } from '../src/services/dashboardCache';
 import type { LoanDebt } from '../src/types/loanDebt';
 
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
+let mockOfflineSession = false;
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test' }),
+  useAuth: () => ({
+    token: 'test',
+    user: { id: 7 },
+    isOfflineSession: mockOfflineSession,
+  }),
+}));
+jest.mock('../src/services/offlineLoanCreateQueue', () => ({
+  offlineLoanCreateQueue: { enqueue: jest.fn().mockResolvedValue({}) },
 }));
 jest.mock('../src/services/wallets', () => ({
   walletsService: {
@@ -55,6 +65,7 @@ const mount = async (loanDebtId: number | null = 1) => {
   });
 };
 beforeEach(() => {
+  mockOfflineSession = false;
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   service.getOne.mockResolvedValue(record);
@@ -142,7 +153,7 @@ it('allows a name edit after payments without changing the archived opening wall
   expect(payload).not.toHaveProperty('principal_amount');
 });
 
-it('previews a new loan and reuses its request id after a lost reply', async () => {
+it('previews a new loan and retains its request id after a lost reply', async () => {
   service.createQuickEntry.mockRejectedValueOnce(new Error('Mất phản hồi'));
   await mount(null);
   await act(async () =>
@@ -159,24 +170,56 @@ it('previews a new loan and reuses its request id after a lost reply', async () 
   expect(service.createQuickEntry).not.toHaveBeenCalled();
   await confirm();
   const first = service.createQuickEntry.mock.calls[0][1];
-  await act(async () =>
-    renderer.root
-      .findByProps({ accessibilityLabel: 'Ghi chú khoản vay nợ' })
-      .props.onChangeText('Khoản khác'),
+  expect(offlineLoanCreateQueue.enqueue).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({
+      client_request_id: first.client_request_id,
+      person_name: 'Anh Minh',
+    }),
+    expect.objectContaining({ id: 2 }),
+    true,
   );
-  await act(async () => press('Lưu khoản vay nợ'));
   expect(service.createQuickEntry).toHaveBeenCalledTimes(1);
   expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
-    'Khoản trước có thể đã lưu',
+    'Đã giữ khoản Vay/Nợ trên máy',
+  );
+  expect(first.client_request_id).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
+});
+
+it('uses cached wallets and queues a loan without calling the server in an offline session', async () => {
+  mockOfflineSession = true;
+  jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue({
+    server: 'local',
+    updatedAt: '2026-11-24T05:00:00.000Z',
+    categories: [],
+    wallets: [
+      {
+        id: 2,
+        name: 'Ví VND',
+        currency: 'VND',
+        wallet_type: 'CASH',
+        balance: 100000,
+      },
+    ] as never,
+  });
+  await mount(null);
+  await act(async () =>
+    renderer.root
+      .findByProps({ accessibilityLabel: 'Tên người vay nợ' })
+      .props.onChangeText('Anh Minh'),
   );
   await act(async () =>
     renderer.root
-      .findByProps({ accessibilityLabel: 'Ghi chú khoản vay nợ' })
-      .props.onChangeText(''),
+      .findByProps({ accessibilityLabel: 'Tiền gốc vay nợ' })
+      .props.onChangeText('50000'),
   );
   await act(async () => press('Lưu khoản vay nợ'));
   await confirm();
-  const second = service.createQuickEntry.mock.calls[1][1];
-  expect(second.client_request_id).toBe(first.client_request_id);
-  expect(first.client_request_id).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
+  expect(service.createQuickEntry).not.toHaveBeenCalled();
+  expect(offlineLoanCreateQueue.enqueue).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ principal_amount: '50000' }),
+    expect.objectContaining({ id: 2 }),
+    false,
+  );
 });

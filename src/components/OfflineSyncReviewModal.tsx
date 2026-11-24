@@ -17,6 +17,7 @@ import type { OfflineBudgetChange } from '../services/offlineBudgetQueue';
 import type { OfflineSavingsGoalChange } from '../services/offlineSavingsGoalQueue';
 import type { SavingsGoal } from '../types/savings';
 import type { OfflineLoanDebtChange } from '../services/offlineLoanDebtQueue';
+import type { OfflineLoanCreate } from '../services/offlineLoanCreateQueue';
 import type { LoanDebt } from '../types/loanDebt';
 import type {
   OfflineTransactionChange,
@@ -36,6 +37,8 @@ export type OfflineSyncReview = {
   remoteSavingsGoals?: Record<number, SavingsGoal | null>;
   loanDebts?: OfflineLoanDebtChange[];
   remoteLoanDebts?: Record<number, LoanDebt | null>;
+  loanCreates?: OfflineLoanCreate[];
+  remoteLoanWallets?: Record<number, Wallet | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -115,6 +118,46 @@ export default function OfflineSyncReviewModal({
                 {item.status === 'NEEDS_REVIEW' ? (
                   <Text style={styles.warning}>
                     {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+            {review?.loanCreates?.map(item => (
+              <View key={`loan-create-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>Vay/Nợ mới</Text>
+                <Text style={styles.local}>
+                  Trên máy:{' '}
+                  {item.payload.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'}{' '}
+                  {item.payload.person_name} ·{' '}
+                  {Number(item.payload.principal_amount).toLocaleString(
+                    'vi-VN',
+                  )}{' '}
+                  {item.wallet.currency}
+                </Text>
+                <Text style={styles.local}>Ví đã chọn: {item.wallet.name}</Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {review.remoteLoanWallets?.[item.wallet.id]
+                    ? `Ví ${
+                        review.remoteLoanWallets[item.wallet.id]?.name
+                      } · ${Number(
+                        review.remoteLoanWallets[item.wallet.id]?.balance ?? 0,
+                      ).toLocaleString('vi-VN')} → ${(
+                        Number(
+                          review.remoteLoanWallets[item.wallet.id]?.balance ??
+                            0,
+                        ) +
+                        (item.payload.type === 'BORROWED' ? 1 : -1) *
+                          Number(item.payload.principal_amount)
+                      ).toLocaleString('vi-VN')} ${item.wallet.currency}`
+                    : 'Ví không còn hoặc chưa đọc được'}
+                </Text>
+                <Text style={styles.remote}>
+                  Khoản đã được ghi trước đó sẽ không tạo lại khi gửi cùng mã.
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra trước khi gửi.'}
                   </Text>
                 ) : null}
               </View>

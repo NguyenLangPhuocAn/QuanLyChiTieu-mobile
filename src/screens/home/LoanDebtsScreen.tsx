@@ -19,6 +19,11 @@ import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
 import { loanDebtsCache } from '../../services/loanDebtsCache';
 import {
+  offlineLoanCreateQueue,
+  type OfflineLoanCreate,
+} from '../../services/offlineLoanCreateQueue';
+import { dashboardCache } from '../../services/dashboardCache';
+import {
   offlineLoanDebtQueue,
   type OfflineLoanDebtChange,
 } from '../../services/offlineLoanDebtQueue';
@@ -49,6 +54,8 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   const [pendingChanges, setPendingChanges] = useState<OfflineLoanDebtChange[]>(
     [],
   );
+  const [pendingCreates, setPendingCreates] = useState<OfflineLoanCreate[]>([]);
+  const [hasLocalWallets, setHasLocalWallets] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
@@ -79,8 +86,36 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
     loadRevision.current += 1;
     setRecords([]);
     setPendingChanges([]);
+    setPendingCreates([]);
+    setHasLocalWallets(false);
     setCachedAt(null);
     setLoadError(null);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const refresh = () =>
+      offlineLoanCreateQueue
+        .list(userId)
+        .then(items => {
+          if (activeUserId.current === userId) setPendingCreates(items);
+        })
+        .catch(() => undefined);
+    refresh();
+    dashboardCache
+      .readReferences(userId)
+      .then(async cached => cached ?? dashboardCache.read(userId))
+      .then(cached => {
+        if (activeUserId.current === userId)
+          setHasLocalWallets(
+            Boolean(
+              cached?.wallets.some(wallet => wallet.wallet_type !== 'SAVINGS'),
+            ),
+          );
+      })
+      .catch(() => undefined);
+    return offlineLoanCreateQueue.subscribe(refresh);
   }, [user?.id]);
 
   useEffect(() => {
@@ -204,10 +239,13 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         <Text style={styles.title}>Vay/Nợ</Text>
         <TouchableOpacity
           style={styles.icon}
-          disabled={Boolean(cachedAt)}
+          disabled={Boolean(cachedAt) && !hasLocalWallets}
           onPress={() => navigation.navigate('LoanDebtForm')}
         >
-          <Plus size={22} color={cachedAt ? '#B7A294' : '#593420'} />
+          <Plus
+            size={22}
+            color={cachedAt && !hasLocalWallets ? '#B7A294' : '#593420'}
+          />
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
@@ -345,6 +383,32 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        {pendingCreates
+          .filter(item => !type || item.payload.type === type)
+          .map(item => (
+            <View key={item.id} style={styles.card}>
+              <View style={styles.row}>
+                <Text style={styles.name}>{item.payload.person_name}</Text>
+                <Text style={styles.meta}>
+                  {item.status === 'NEEDS_REVIEW'
+                    ? 'Cần xem lại'
+                    : 'Chờ đồng bộ'}
+                </Text>
+              </View>
+              <Text style={styles.amount}>
+                {formatCurrency(
+                  Number(item.payload.principal_amount),
+                  item.wallet.currency,
+                )}
+              </Text>
+              <Text style={styles.detail}>
+                {getLoanDebtTypeLabel(item.payload.type)} · {item.wallet.name}
+              </Text>
+              <Text style={styles.detail}>
+                Chưa ghi vào ví. Mở Dữ liệu trên máy khi có mạng để đối chiếu.
+              </Text>
+            </View>
+          ))}
         {loading ? (
           <ActivityIndicator color="#FF8500" style={styles.loading} />
         ) : loadError ? (

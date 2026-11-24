@@ -18,7 +18,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
-import { createClientRequestId } from '../../services/offlineTransactionQueue';
+import {
+  createClientRequestId,
+  isRetryableOfflineTransactionError,
+} from '../../services/offlineTransactionQueue';
+import { offlineLoanCreateQueue } from '../../services/offlineLoanCreateQueue';
+import { dashboardCache } from '../../services/dashboardCache';
 import { walletsService } from '../../services/wallets';
 import type { LoanDebtType } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
@@ -51,7 +56,7 @@ const parseDateKey = (value: string) => {
 };
 
 const LoanDebtFormScreen = ({ navigation, route }: Props) => {
-  const { token } = useAuth();
+  const { token, user, isOfflineSession } = useAuth();
   const { run: runLoanMutation } = useSingleFlight();
   const createRequestId = useRef(createClientRequestId());
   const firstCreateAttempt = useRef<string | null>(null);
@@ -89,6 +94,35 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
     if (!token) return;
     setIsLoading(true);
     setLoadError(null);
+    let hasCachedWallets = false;
+    if (!loanDebtId && user?.id) {
+      const cached =
+        (await dashboardCache.readReferences(user.id).catch(() => null)) ??
+        (await dashboardCache.read(user.id).catch(() => null));
+      if (revision !== loadRevision.current) return;
+      if (cached?.wallets.length) {
+        const available = cached.wallets.filter(
+          wallet => wallet.wallet_type !== 'SAVINGS',
+        );
+        hasCachedWallets = available.length > 0;
+        setWallets(available);
+        setWalletId(
+          current =>
+            available.find(wallet => wallet.id === current)?.id ??
+            available[0]?.id ??
+            null,
+        );
+        setIsLoading(false);
+      }
+    }
+    if (isOfflineSession && !loanDebtId) {
+      if (!hasCachedWallets)
+        setLoadError(
+          'Chưa có ví trên máy. Hãy mở app khi có mạng để tải ví trước.',
+        );
+      setIsLoading(false);
+      return;
+    }
     try {
       const [nextWallets, record] = await Promise.all([
         walletsService.getAll(token),
@@ -121,7 +155,7 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
         setOpeningLocked(false);
       }
     } catch (error) {
-      if (revision === loadRevision.current)
+      if (revision === loadRevision.current && !hasCachedWallets)
         setLoadError(
           getLoanDebtErrorMessage(
             error,
@@ -131,7 +165,7 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
     } finally {
       if (revision === loadRevision.current) setIsLoading(false);
     }
-  }, [loanDebtId, token]);
+  }, [isOfflineSession, loanDebtId, token, user?.id]);
 
   useEffect(() => {
     load();
@@ -191,6 +225,8 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
       }\n${
         loanDebtId
           ? 'Kiểm tra số tiền gốc và ví trước khi lưu.'
+          : isOfflineSession
+          ? 'Lưu trên máy; số dư chỉ đổi sau khi bạn xác nhận đồng bộ.'
           : 'Số dư ví sẽ thay đổi sau khi xác nhận.'
       }`,
       [
@@ -232,10 +268,35 @@ const LoanDebtFormScreen = ({ navigation, route }: Props) => {
                   );
                 } else {
                   firstCreateAttempt.current = JSON.stringify(payload);
-                  await loanDebtsService.createQuickEntry(token, {
+                  const createPayload = {
                     ...payload,
                     client_request_id: createRequestId.current,
-                  });
+                  };
+                  try {
+                    if (isOfflineSession)
+                      throw new Error('LOCAL_OFFLINE_SESSION');
+                    await loanDebtsService.createQuickEntry(
+                      token,
+                      createPayload,
+                    );
+                  } catch (error) {
+                    if (
+                      !user?.id ||
+                      !selectedWallet ||
+                      !isRetryableOfflineTransactionError(error)
+                    )
+                      throw error;
+                    await offlineLoanCreateQueue.enqueue(
+                      user.id,
+                      createPayload,
+                      selectedWallet,
+                      !isOfflineSession,
+                    );
+                    Alert.alert(
+                      'Đã giữ khoản Vay/Nợ trên máy',
+                      'Số dư chưa thay đổi. Khi có mạng, bạn sẽ xem lại rồi chọn đồng bộ.',
+                    );
+                  }
                 }
                 navigation.goBack();
               } catch (error) {

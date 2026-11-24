@@ -9,6 +9,8 @@ import { offlineTransactionChanges } from '../src/services/offlineTransactionCha
 import { offlineBudgetQueue } from '../src/services/offlineBudgetQueue';
 import { offlineSavingsGoalQueue } from '../src/services/offlineSavingsGoalQueue';
 import { savingsService } from '../src/services/savings';
+import { offlineLoanCreateQueue } from '../src/services/offlineLoanCreateQueue';
+import { walletsService } from '../src/services/wallets';
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn() }),
@@ -68,6 +70,19 @@ jest.mock('../src/services/offlineSavingsGoalQueue', () => ({
 }));
 jest.mock('../src/services/savings', () => ({
   savingsService: { getAll: jest.fn() },
+}));
+jest.mock('../src/services/offlineLoanCreateQueue', () => ({
+  offlineLoanCreateQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    sync: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    discard: jest.fn(),
+  },
+}));
+jest.mock('../src/services/wallets', () => ({
+  walletsService: { getAll: jest.fn() },
 }));
 jest.mock('../src/services/financeRefresh', () => ({
   financeRefresh: { emit: jest.fn() },
@@ -131,6 +146,69 @@ beforeEach(() => {
     .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
   jest.mocked(offlineSavingsGoalQueue.discard).mockResolvedValue(undefined);
   jest.mocked(savingsService.getAll).mockResolvedValue([]);
+  jest.mocked(offlineLoanCreateQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineLoanCreateQueue.preview).mockResolvedValue([]);
+  jest.mocked(offlineLoanCreateQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(offlineLoanCreateQueue.rebaseReviewed).mockResolvedValue([]);
+  jest
+    .mocked(offlineLoanCreateQueue.sync)
+    .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(offlineLoanCreateQueue.discard).mockResolvedValue(undefined);
+  jest.mocked(walletsService.getAll).mockResolvedValue([]);
+});
+
+it('lets the user review a new local loan before manual sync', async () => {
+  const wallet = {
+    id: 2,
+    name: 'Ví gia đình',
+    currency: 'VND',
+    balance: 500000,
+    wallet_type: 'BANK',
+  };
+  const pending = {
+    id: 'loan_20261124_abcdef123456',
+    revision: 1,
+    attempts: 0,
+    status: 'PENDING' as const,
+    updatedAt: '2026-11-24T05:00:00.000Z',
+    wallet: {
+      id: 2,
+      name: wallet.name,
+      currency: wallet.currency,
+      balance: '500000',
+    },
+    payload: {
+      person_name: 'Anh Minh',
+      type: 'BORROWED' as const,
+      principal_amount: '200000',
+      wallet_id: 2,
+      client_request_id: 'loan_20261124_abcdef123456',
+    },
+  };
+  jest.mocked(offlineTransactionQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineLoanCreateQueue.list).mockResolvedValue([pending]);
+  jest
+    .mocked(offlineLoanCreateQueue.preview)
+    .mockResolvedValue([{ id: pending.id, revision: 1 }]);
+  jest
+    .mocked(offlineLoanCreateQueue.rebaseReviewed)
+    .mockResolvedValue([{ id: pending.id, revision: 1 }]);
+  jest.mocked(walletsService.getAll).mockResolvedValue([wallet] as never);
+  await act(async () => {
+    renderer = TestRenderer.create(<DataManagementScreen />);
+  });
+  await openReview();
+  expect(review().props.review.loanCreates).toEqual([pending]);
+  expect(review().props.review.remoteLoanWallets).toEqual({ 2: wallet });
+  expect(offlineLoanCreateQueue.sync).not.toHaveBeenCalled();
+  await act(async () => review().props.onChoose('local'));
+  expect(offlineLoanCreateQueue.sync).toHaveBeenCalledWith(
+    'qa',
+    9,
+    [{ id: pending.id, revision: 1 }],
+    { 2: wallet },
+    expect.any(Function),
+  );
 });
 
 it('lets the user review a budget even when no transaction is waiting', async () => {

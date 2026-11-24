@@ -12,6 +12,7 @@ import ChatbotScreen from '../src/screens/home/ChatbotScreen';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { transactionsService } from '../src/services/transactions';
 import { loanDebtsService } from '../src/services/loanDebts';
+import { offlineLoanCreateQueue } from '../src/services/offlineLoanCreateQueue';
 import { walletsService } from '../src/services/wallets';
 import { formatCurrency } from '../src/utils/format';
 import { bankNotificationReader } from '../src/native/bankNotificationReader';
@@ -27,6 +28,9 @@ import {
 } from '../src/services/dashboardCache';
 import { billOccurrences } from '../src/utils/recurringBills';
 
+jest.mock('../src/services/offlineLoanCreateQueue', () => ({
+  offlineLoanCreateQueue: { enqueue: jest.fn().mockResolvedValue({}) },
+}));
 jest.mock('../src/services/bankNotificationExtraction', () => ({
   ...jest.requireActual('../src/services/bankNotificationExtraction'),
   bankNotificationExtraction: {
@@ -271,7 +275,7 @@ beforeEach(async () => {
   });
 });
 
-it('previews a loan and retries with the same request id after a lost reply', async () => {
+it('previews a loan and preserves the request after a lost reply', async () => {
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   const create = jest
@@ -317,33 +321,20 @@ it('previews a loan and retries with the same request id after a lost reply', as
   });
   expect(create).toHaveBeenCalledTimes(1);
   const firstId = create.mock.calls[0][1].client_request_id;
-  await act(async () => button('Chi').props.onPress());
-  expect(button('Lưu khoản vay/nợ')).toBeDefined();
-  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
-    'Khoản trước có thể đã lưu',
+  expect(offlineLoanCreateQueue.enqueue).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({
+      client_request_id: firstId,
+      person_name: 'Anh Minh',
+    }),
+    expect.objectContaining({ name: 'Tiền mặt' }),
+    true,
   );
-  await act(async () =>
-    tree.root
-      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
-      .props.onChangeText('Chị Lan'),
-  );
-  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
+  expect(button('Lưu khoản vay/nợ')).toBeUndefined();
   expect(create).toHaveBeenCalledTimes(1);
   expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
-    'Khoản trước có thể đã lưu',
+    'Đã giữ khoản Vay/Nợ trên máy',
   );
-  await act(async () =>
-    tree.root
-      .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })
-      .props.onChangeText('Anh Minh'),
-  );
-  await act(async () => button('Lưu khoản vay/nợ').props.onPress());
-  await act(async () => {
-    confirm()?.();
-    await Promise.resolve();
-  });
-  expect(create).toHaveBeenCalledTimes(2);
-  expect(create.mock.calls[1][1].client_request_id).toBe(firstId);
   expect(firstId).toMatch(/^[a-zA-Z0-9_-]{16,64}$/);
 });
 
