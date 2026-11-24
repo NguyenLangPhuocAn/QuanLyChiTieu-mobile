@@ -53,6 +53,7 @@ import {
   type OfflineSavingsGoalChange,
 } from '../../services/offlineSavingsGoalQueue';
 import { savingsGoalsCache } from '../../services/savingsGoalsCache';
+import { financeRefresh } from '../../services/financeRefresh';
 import { walletsService } from '../../services/wallets';
 import type { SavingsGoal } from '../../types/savings';
 import type { Wallet } from '../../types/wallet';
@@ -90,6 +91,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   const [pendingGoalChanges, setPendingGoalChanges] = useState<
     OfflineSavingsGoalChange[]
   >([]);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,6 +123,7 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
     loadRevision.current += 1;
     setGoals([]);
     setPendingGoalChanges([]);
+    setPendingLoaded(false);
     setWallets([]);
     setCachedAt(null);
     setLoadError(null);
@@ -137,9 +140,14 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
       offlineSavingsGoalQueue
         .list(userId)
         .then(items => {
-          if (activeUserId.current === userId) setPendingGoalChanges(items);
+          if (activeUserId.current === userId) {
+            setPendingGoalChanges(items);
+            setPendingLoaded(true);
+          }
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (activeUserId.current === userId) setPendingLoaded(false);
+        });
     refresh();
     return offlineSavingsGoalQueue.subscribe(refresh);
   }, [user?.id]);
@@ -247,8 +255,12 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   useFocusEffect(
     useCallback(() => {
       loadData();
+      const unsubscribe = financeRefresh.subscribe(() => {
+        loadData(true).catch(() => undefined);
+      });
       return () => {
         loadRevision.current += 1;
+        unsubscribe();
       };
     }, [loadData]),
   );
@@ -304,6 +316,13 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
   };
 
   const openEdit = (goal: SavingsGoal) => {
+    if (!pendingLoaded) {
+      Alert.alert(
+        'Chưa đọc được dữ liệu trên máy',
+        'Hãy mở lại màn mục tiêu trước khi sửa.',
+      );
+      return;
+    }
     if (
       pendingGoalChanges.some(
         item =>
@@ -329,6 +348,13 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
 
   const saveGoal = () =>
     runSavingsMutation(async () => {
+      if (editingGoal && !pendingLoaded) {
+        Alert.alert(
+          'Chưa đọc được dữ liệu trên máy',
+          'Hãy mở lại màn mục tiêu trước khi sửa.',
+        );
+        return;
+      }
       if (cachedAt && !editingGoal) {
         Alert.alert(
           'Đang xem dữ liệu đã lưu',
@@ -470,7 +496,17 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
     });
 
   const openEntry = (goal: SavingsGoal, mode: EntryMode) => {
-    if (cachedAt) return;
+    if (
+      cachedAt ||
+      !pendingLoaded ||
+      pendingGoalChanges.some(item => item.id === goal.id)
+    ) {
+      Alert.alert(
+        'Chưa thể chuyển tiền',
+        'Hãy đối chiếu mục tiêu đang chờ và kết nối mạng trước khi góp hoặc rút.',
+      );
+      return;
+    }
     const compatibleWallets = regularWallets.filter(
       wallet => wallet.currency === goal.wallet_currency,
     );
@@ -490,6 +526,13 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
 
   const saveEntry = () =>
     runSavingsMutation(async () => {
+      if (
+        !pendingLoaded ||
+        (entryGoal && pendingGoalChanges.some(item => item.id === entryGoal.id))
+      ) {
+        Alert.alert('Chưa thể chuyển tiền', 'Mục tiêu đang chờ đối chiếu.');
+        return;
+      }
       if (cachedAt) {
         Alert.alert(
           'Đang xem dữ liệu đã lưu',
@@ -569,7 +612,17 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
     });
 
   const removeGoal = (goal: SavingsGoal) => {
-    if (cachedAt) return;
+    if (
+      cachedAt ||
+      !pendingLoaded ||
+      pendingGoalChanges.some(item => item.id === goal.id)
+    ) {
+      Alert.alert(
+        'Chưa thể xóa mục tiêu',
+        'Hãy đối chiếu thay đổi trên máy trước khi xóa.',
+      );
+      return;
+    }
     Alert.alert(
       'Xóa mục tiêu?',
       goal.current_amount > 0
@@ -724,6 +777,17 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
           }
           contentContainerStyle={styles.content}
         >
+          {!pendingLoaded ? (
+            <View style={styles.cacheNotice}>
+              <Text style={styles.cacheNoticeTitle}>
+                Đang kiểm tra thay đổi trên máy
+              </Text>
+              <Text style={styles.cacheNoticeText}>
+                Chưa thể sửa mục tiêu hoặc chuyển tiền cho đến khi đọc xong dữ
+                liệu đang chờ.
+              </Text>
+            </View>
+          ) : null}
           {cachedAt ? (
             <View style={styles.cacheNotice}>
               <Text style={styles.cacheNoticeTitle}>
@@ -895,7 +959,9 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                   {pendingGoalChanges.some(item => item.id === goal.id) ? (
                     <Text style={styles.goalMeta}>Chờ đồng bộ</Text>
                   ) : null}
-                  {!cachedAt ? (
+                  {!cachedAt &&
+                  pendingLoaded &&
+                  !pendingGoalChanges.some(item => item.id === goal.id) ? (
                     <TouchableOpacity
                       style={styles.iconButton}
                       onPress={() => removeGoal(goal)}
@@ -974,7 +1040,9 @@ const SavingsGoalsScreen = ({ navigation }: Props) => {
                   />
                 ) : null}
 
-                {!cachedAt ? (
+                {!cachedAt &&
+                pendingLoaded &&
+                !pendingGoalChanges.some(item => item.id === goal.id) ? (
                   <View style={styles.actions}>
                     {goal.status === 'COMPLETED' ? (
                       <>
