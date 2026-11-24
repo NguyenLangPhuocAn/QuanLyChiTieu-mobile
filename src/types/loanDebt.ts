@@ -44,8 +44,18 @@ export type CreateLoanDebtPayload = {
 
 export type UpdateLoanDebtPayload = Omit<
   Partial<CreateLoanDebtPayload>,
-  'type' | 'transaction_date' | 'client_request_id'
->;
+  'type' | 'transaction_date' | 'client_request_id' | 'note'
+> & { note?: string | null; offline_expected?: LoanDebtExpected };
+
+export type LoanDebtExpected = {
+  person_name: string;
+  principal_amount: string;
+  opening_wallet_id: number;
+  type: LoanDebtType;
+  due_date: string | null;
+  note: string | null;
+  settled_amount: string;
+};
 
 export type CreateLoanDebtPaymentPayload = {
   wallet_id: number;

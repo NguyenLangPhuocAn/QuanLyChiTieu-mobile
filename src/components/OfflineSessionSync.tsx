@@ -8,6 +8,8 @@ import { offlineWalletQueue } from '../services/offlineWalletQueue';
 import { offlineBudgetQueue } from '../services/offlineBudgetQueue';
 import { offlineSavingsGoalQueue } from '../services/offlineSavingsGoalQueue';
 import { savingsService } from '../services/savings';
+import { offlineLoanDebtQueue } from '../services/offlineLoanDebtQueue';
+import { loanDebtsService } from '../services/loanDebts';
 import { budgetsService } from '../services/budgets';
 import { walletsService } from '../services/wallets';
 import { categoriesService } from '../services/categories';
@@ -91,6 +93,7 @@ export default function OfflineSessionSync({
         const wallets = await offlineWalletQueue.list(userId);
         const budgets = await offlineBudgetQueue.list(userId);
         const savingsGoals = await offlineSavingsGoalQueue.list(userId);
+        const loanDebts = await offlineLoanDebtQueue.list(userId);
         if (!current()) return;
         retryPending = Boolean(
           drafts.length ||
@@ -98,7 +101,8 @@ export default function OfflineSessionSync({
             categories.length ||
             wallets.length ||
             budgets.length ||
-            savingsGoals.length,
+            savingsGoals.length ||
+            loanDebts.length,
         );
         if (offlineTransactionQueue.isSyncing(userId)) return;
         if (!(await homeWidget.connected())) return;
@@ -110,7 +114,8 @@ export default function OfflineSessionSync({
           !categories.length &&
           !wallets.length &&
           !budgets.length &&
-          !savingsGoals.length
+          !savingsGoals.length &&
+          !loanDebts.length
         ) {
           shownKey = '';
           clearRetry();
@@ -128,6 +133,7 @@ export default function OfflineSessionSync({
         const expectedSavingsGoals = await offlineSavingsGoalQueue.preview(
           userId,
         );
+        const expectedLoanDebts = await offlineLoanDebtQueue.preview(userId);
         const key = JSON.stringify([
           expected,
           expectedChanges,
@@ -135,6 +141,7 @@ export default function OfflineSessionSync({
           expectedWallets,
           expectedBudgets,
           expectedSavingsGoals,
+          expectedLoanDebts,
         ]);
         if (shownKey === key || !current()) {
           retryPending = false;
@@ -151,6 +158,17 @@ export default function OfflineSessionSync({
         const remoteSavingsGoals: NonNullable<
           OfflineSyncReview['remoteSavingsGoals']
         > = {};
+        const remoteLoanDebts: NonNullable<
+          OfflineSyncReview['remoteLoanDebts']
+        > = {};
+        if (loanDebts.length) {
+          const serverLoans = await loanDebtsService.getAll(
+            latest.current.token,
+          );
+          for (const item of loanDebts)
+            remoteLoanDebts[item.id] =
+              serverLoans.find(row => row.id === item.id) ?? null;
+        }
         if (savingsGoals.length) {
           const serverGoals = await savingsService.getAll(latest.current.token);
           for (const item of savingsGoals)
@@ -214,6 +232,7 @@ export default function OfflineSessionSync({
         const latestSavingsGoals = await offlineSavingsGoalQueue.preview(
           userId,
         );
+        const latestLoanDebts = await offlineLoanDebtQueue.preview(userId);
         if (
           !current() ||
           offlineTransactionQueue.isSyncing(userId) ||
@@ -229,7 +248,8 @@ export default function OfflineSessionSync({
           JSON.stringify(latestWallets) !== JSON.stringify(expectedWallets) ||
           JSON.stringify(latestBudgets) !== JSON.stringify(expectedBudgets) ||
           JSON.stringify(latestSavingsGoals) !==
-            JSON.stringify(expectedSavingsGoals)
+            JSON.stringify(expectedSavingsGoals) ||
+          JSON.stringify(latestLoanDebts) !== JSON.stringify(expectedLoanDebts)
         )
           return;
         shownKey = key;
@@ -252,13 +272,19 @@ export default function OfflineSessionSync({
                 throw Error(
                   'Thay đổi trên máy đã đổi. Hãy xem lại trước khi bỏ.',
                 );
-              const [nowCategories, nowWallets, nowBudgets, nowSavingsGoals] =
-                await Promise.all([
-                  offlineCategoryQueue.preview(userId),
-                  offlineWalletQueue.preview(userId),
-                  offlineBudgetQueue.preview(userId),
-                  offlineSavingsGoalQueue.preview(userId),
-                ]);
+              const [
+                nowCategories,
+                nowWallets,
+                nowBudgets,
+                nowSavingsGoals,
+                nowLoanDebts,
+              ] = await Promise.all([
+                offlineCategoryQueue.preview(userId),
+                offlineWalletQueue.preview(userId),
+                offlineBudgetQueue.preview(userId),
+                offlineSavingsGoalQueue.preview(userId),
+                offlineLoanDebtQueue.preview(userId),
+              ]);
               if (
                 JSON.stringify(nowCategories) !==
                   JSON.stringify(expectedCategories) ||
@@ -267,7 +293,9 @@ export default function OfflineSessionSync({
                 JSON.stringify(nowBudgets) !==
                   JSON.stringify(expectedBudgets) ||
                 JSON.stringify(nowSavingsGoals) !==
-                  JSON.stringify(expectedSavingsGoals)
+                  JSON.stringify(expectedSavingsGoals) ||
+                JSON.stringify(nowLoanDebts) !==
+                  JSON.stringify(expectedLoanDebts)
               )
                 throw Error(
                   'Dữ liệu trên máy đã đổi. Hãy xem lại trước khi bỏ.',
@@ -281,6 +309,7 @@ export default function OfflineSessionSync({
                 userId,
                 expectedSavingsGoals,
               );
+              await offlineLoanDebtQueue.discard(userId, expectedLoanDebts);
               shownKey = '';
             } else {
               const now = (await offlineTransactionQueue.list(userId)).filter(
@@ -327,6 +356,11 @@ export default function OfflineSessionSync({
                 ) !== JSON.stringify(expectedSavingsGoals)
               )
                 throw Error('Mục tiêu trên máy đã đổi. Hãy xem lại.');
+              if (
+                JSON.stringify(await offlineLoanDebtQueue.preview(userId)) !==
+                JSON.stringify(expectedLoanDebts)
+              )
+                throw Error('Khoản Vay/Nợ trên máy đã đổi. Hãy xem lại.');
               const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
                 latest.current.token,
                 userId,
@@ -381,6 +415,17 @@ export default function OfflineSessionSync({
                 ),
                 current,
               );
+              const loanResult = await offlineLoanDebtQueue.sync(
+                latest.current.token,
+                userId,
+                await offlineLoanDebtQueue.rebaseReviewed(
+                  latest.current.token,
+                  userId,
+                  expectedLoanDebts,
+                  remoteLoanDebts,
+                ),
+                current,
+              );
               const result = categoriesReady
                 ? await offlineTransactionQueue.sync(
                     latest.current.token,
@@ -414,7 +459,9 @@ export default function OfflineSessionSync({
                 budgetResult.pending ||
                 budgetResult.needsReview ||
                 savingsResult.pending ||
-                savingsResult.needsReview
+                savingsResult.needsReview ||
+                loanResult.pending ||
+                loanResult.needsReview
               ) {
                 shownKey = '';
                 retryAfterChoice = Boolean(
@@ -423,7 +470,8 @@ export default function OfflineSessionSync({
                     categoryResult.pending ||
                     walletResult.pending ||
                     budgetResult.pending ||
-                    savingsResult.pending,
+                    savingsResult.pending ||
+                    loanResult.pending,
                 );
                 Alert.alert(
                   'Còn dữ liệu cần kiểm tra',
@@ -433,14 +481,16 @@ export default function OfflineSessionSync({
                     categoryResult.pending +
                     walletResult.pending +
                     budgetResult.pending +
-                    savingsResult.pending
+                    savingsResult.pending +
+                    loanResult.pending
                   } đang chờ · ${
                     result.needsReview +
                     edits.needsReview +
                     categoryResult.needsReview +
                     walletResult.needsReview +
                     budgetResult.needsReview +
-                    savingsResult.needsReview
+                    savingsResult.needsReview +
+                    loanResult.needsReview
                   } cần xem lại.`,
                 );
               } else {
@@ -451,7 +501,8 @@ export default function OfflineSessionSync({
                   categoryResult.synced +
                   walletResult.synced +
                   budgetResult.synced +
-                  savingsResult.synced;
+                  savingsResult.synced +
+                  loanResult.synced;
                 if (savedCount > 0 && current())
                   Alert.alert(
                     'Đã sao lưu dữ liệu thành công',
@@ -496,7 +547,8 @@ export default function OfflineSessionSync({
                 categories.length +
                 wallets.length +
                 budgets.length +
-                savingsGoals.length
+                savingsGoals.length +
+                loanDebts.length
               } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
               [
                 { text: 'Quay lại', style: 'cancel' },
@@ -520,11 +572,13 @@ export default function OfflineSessionSync({
           wallets,
           budgets,
           savingsGoals,
+          loanDebts,
           remote,
           remoteCategories,
           remoteWallets,
           remoteBudgets,
           remoteSavingsGoals,
+          remoteLoanDebts,
         });
       } catch {
         /* Durable drafts remain; retry only for pending writes in foreground. */
@@ -545,9 +599,18 @@ export default function OfflineSessionSync({
         offlineWalletQueue.preview(userId),
         offlineBudgetQueue.preview(userId),
         offlineSavingsGoalQueue.preview(userId),
+        offlineLoanDebtQueue.preview(userId),
       ])
         .then(
-          ([drafts, changes, categories, wallets, budgets, savingsGoals]) => {
+          ([
+            drafts,
+            changes,
+            categories,
+            wallets,
+            budgets,
+            savingsGoals,
+            loanDebts,
+          ]) => {
             if (!active || !reviewVisible) return;
             const key = JSON.stringify([
               drafts
@@ -558,6 +621,7 @@ export default function OfflineSessionSync({
               wallets,
               budgets,
               savingsGoals,
+              loanDebts,
             ]);
             if (key === shownKey) return;
             setReview(null);
@@ -586,6 +650,7 @@ export default function OfflineSessionSync({
     const changedBudgets = offlineBudgetQueue.subscribe(reviewQueueChanged);
     const changedSavingsGoals =
       offlineSavingsGoalQueue.subscribe(reviewQueueChanged);
+    const changedLoanDebts = offlineLoanDebtQueue.subscribe(reviewQueueChanged);
     attempt().catch(() => undefined);
     return () => {
       active = false;
@@ -602,6 +667,7 @@ export default function OfflineSessionSync({
       changedWallets();
       changedBudgets();
       changedSavingsGoals();
+      changedLoanDebts();
     };
   }, [user?.id, server, isRestoringSession]);
   return (

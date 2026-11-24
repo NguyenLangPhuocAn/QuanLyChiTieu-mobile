@@ -24,6 +24,11 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
 import { loanDebtsCache } from '../../services/loanDebtsCache';
+import {
+  offlineLoanDebtQueue,
+  type OfflineLoanDebtChange,
+} from '../../services/offlineLoanDebtQueue';
+import { financeRefresh } from '../../services/financeRefresh';
 import { walletsService } from '../../services/wallets';
 import type { LoanDebt } from '../../types/loanDebt';
 import type { Wallet } from '../../types/wallet';
@@ -66,6 +71,14 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const [pendingChange, setPendingChange] =
+    useState<OfflineLoanDebtChange | null>(null);
+  const [pendingLoaded, setPendingLoaded] = useState(false);
+  const [metadataVisible, setMetadataVisible] = useState(false);
+  const [metadataName, setMetadataName] = useState('');
+  const [metadataDue, setMetadataDue] = useState('');
+  const [metadataNote, setMetadataNote] = useState('');
+  const [metadataDatePicker, setMetadataDatePicker] = useState(false);
   const lastLoadedAt = React.useRef<string | null>(null);
   const loadRevision = React.useRef(0);
 
@@ -77,7 +90,31 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
     setCachedAt(null);
     lastLoadedAt.current = null;
     setModalVisible(false);
+    setMetadataVisible(false);
+    setPendingLoaded(false);
+    setPendingChange(null);
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const refresh = () =>
+      offlineLoanDebtQueue
+        .list(userId)
+        .then(changes => {
+          if (activeUserId.current === userId) {
+            setPendingChange(
+              changes.find(item => item.id === route.params.loanDebtId) ?? null,
+            );
+            setPendingLoaded(true);
+          }
+        })
+        .catch(() => {
+          if (activeUserId.current === userId) setPendingLoaded(false);
+        });
+    refresh();
+    return offlineLoanDebtQueue.subscribe(refresh);
+  }, [user?.id, route.params.loanDebtId]);
 
   const load = useCallback(async () => {
     const revision = ++loadRevision.current;
@@ -86,8 +123,14 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
     setLoadError(null);
     try {
       const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-      const savedRecord = saved?.records.find(item => item.id === route.params.loanDebtId);
+      if (
+        revision !== loadRevision.current ||
+        activeUserId.current !== requestUserId
+      )
+        return;
+      const savedRecord = saved?.records.find(
+        item => item.id === route.params.loanDebtId,
+      );
       if (savedRecord && saved) {
         setRecord(savedRecord);
         setCachedAt(saved.updatedAt);
@@ -96,7 +139,11 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
         loanDebtsService.getOne(token, route.params.loanDebtId),
         walletsService.getAll(token),
       ]);
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      if (
+        revision !== loadRevision.current ||
+        activeUserId.current !== requestUserId
+      )
+        return;
       setRecord(nextRecord);
       setWallets(nextWallets);
       setCachedAt(null);
@@ -111,10 +158,20 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           null,
       );
     } catch (error) {
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+      if (
+        revision !== loadRevision.current ||
+        activeUserId.current !== requestUserId
+      )
+        return;
       const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-      const savedRecord = saved?.records.find(item => item.id === route.params.loanDebtId);
+      if (
+        revision !== loadRevision.current ||
+        activeUserId.current !== requestUserId
+      )
+        return;
+      const savedRecord = saved?.records.find(
+        item => item.id === route.params.loanDebtId,
+      );
       if (savedRecord && saved) {
         setRecord(savedRecord);
         setWallets([]);
@@ -123,7 +180,14 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
         setModalVisible(false);
       } else {
         setCachedAt(lastLoadedAt.current);
-        setLoadError(lastLoadedAt.current ? null : getLoanDebtErrorMessage(error, 'Không tải được khoản vay/nợ. Vui lòng thử lại.'));
+        setLoadError(
+          lastLoadedAt.current
+            ? null
+            : getLoanDebtErrorMessage(
+                error,
+                'Không tải được khoản vay/nợ. Vui lòng thử lại.',
+              ),
+        );
       }
     }
   }, [route.params.loanDebtId, token, user?.id]);
@@ -131,8 +195,12 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
   useFocusEffect(
     useCallback(() => {
       load();
+      const unsubscribe = financeRefresh.subscribe(() =>
+        load().catch(() => undefined),
+      );
       return () => {
         loadRevision.current += 1;
+        unsubscribe();
       };
     }, [load]),
   );
@@ -168,8 +236,18 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
 
   const pay = () =>
     runLoanMutation(async () => {
+      if (!pendingLoaded || pendingChange) {
+        Alert.alert(
+          'Chưa thể thanh toán',
+          'Hãy đối chiếu thay đổi Vay/Nợ trên máy trước.',
+        );
+        return;
+      }
       if (cachedAt) {
-        Alert.alert('Đang xem dữ liệu đã lưu', 'Kết nối mạng để ghi thanh toán.');
+        Alert.alert(
+          'Đang xem dữ liệu đã lưu',
+          'Kết nối mạng để ghi thanh toán.',
+        );
         return;
       }
       const normalizedAmount = parsePositiveMoneyInput(amount);
@@ -219,6 +297,10 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
     record.settled_amount,
     record.principal_amount,
   );
+  const visibleRecord = offlineLoanDebtQueue.apply(
+    [record],
+    pendingChange ? [pendingChange] : [],
+  )[0];
   const remainingAfterPayment = calculateRemainingAfterPayment(
     amount,
     record.remaining_amount,
@@ -233,8 +315,39 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
     if (selectedDate) setPaymentDate(selectedDate);
   };
 
+  const saveMetadata = () =>
+    runLoanMutation(async () => {
+      if (!user?.id || !pendingLoaded || !metadataName.trim()) {
+        Alert.alert(
+          'Thiếu thông tin',
+          'Hãy nhập tên người và kiểm tra dữ liệu trên máy.',
+        );
+        return;
+      }
+      const payload = {
+        person_name: metadataName.trim(),
+        due_date: metadataDue || null,
+        note: metadataNote.trim() || null,
+      };
+      setSaving(true);
+      try {
+        await offlineLoanDebtQueue.update(user.id, record, payload);
+        setMetadataVisible(false);
+        Alert.alert(
+          'Đã lưu trên máy',
+          'Thay đổi sẽ được xem trước khi có mạng lại.',
+        );
+      } catch (error) {
+        Alert.alert('Chưa lưu được', getLoanDebtErrorMessage(error));
+      } finally {
+        setSaving(false);
+      }
+    });
+
   const remove = () =>
     !cachedAt &&
+    pendingLoaded &&
+    !pendingChange &&
     Alert.alert(
       'Xóa khoản vay/nợ',
       'Số dư ví và các giao dịch liên kết sẽ được hoàn lại.',
@@ -270,24 +383,64 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Chi tiết vay/nợ</Text>
-        {!cachedAt ? <View style={styles.actions}>
+        <View style={styles.actions}>
           <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('LoanDebtForm', { loanDebtId: record.id })
-            }
+            accessibilityRole="button"
+            accessibilityLabel="Sửa thông tin vay nợ"
+            onPress={() => {
+              if (!pendingLoaded) {
+                Alert.alert(
+                  'Chưa đọc được dữ liệu trên máy',
+                  'Hãy mở lại khoản Vay/Nợ trước khi sửa.',
+                );
+                return;
+              }
+              if (cachedAt || pendingChange) {
+                if (
+                  pendingChange?.attempts ||
+                  pendingChange?.status === 'NEEDS_REVIEW'
+                ) {
+                  Alert.alert(
+                    'Cần đối chiếu',
+                    'Khoản này đã được thử gửi. Hãy xem bản máy chủ trước khi sửa tiếp.',
+                  );
+                  return;
+                }
+                setMetadataName(
+                  pendingChange?.payload.person_name ?? record.person_name,
+                );
+                setMetadataDue(
+                  pendingChange
+                    ? pendingChange.payload.due_date ?? ''
+                    : record.due_date?.slice(0, 10) ?? '',
+                );
+                setMetadataNote(
+                  pendingChange?.payload.note ?? record.note ?? '',
+                );
+                setMetadataVisible(true);
+              } else
+                navigation.navigate('LoanDebtForm', { loanDebtId: record.id });
+            }}
           >
             <PenLine size={20} color="#A85C28" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={remove}>
-            <Trash2 size={20} color="#D04432" />
-          </TouchableOpacity>
-        </View> : null}
+          {!cachedAt && pendingLoaded && !pendingChange ? (
+            <TouchableOpacity onPress={remove}>
+              <Trash2 size={20} color="#D04432" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {cachedAt ? (
           <View style={styles.cacheNotice}>
-            <Text style={styles.cacheNoticeTitle}>Dữ liệu đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
-            <Text style={styles.cacheNoticeText}>Số còn lại và lịch sử có thể đã thay đổi. Kết nối mạng để ghi hoặc xóa thanh toán.</Text>
+            <Text style={styles.cacheNoticeTitle}>
+              Dữ liệu đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}
+            </Text>
+            <Text style={styles.cacheNoticeText}>
+              Số còn lại và lịch sử có thể đã thay đổi. Kết nối mạng để ghi hoặc
+              xóa thanh toán.
+            </Text>
             <TouchableOpacity accessibilityRole="button" onPress={load}>
               <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
             </TouchableOpacity>
@@ -305,10 +458,12 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
           </TouchableOpacity>
         ) : null}
         <View style={styles.hero}>
-          <Text style={styles.person}>{record.person_name}</Text>
+          <Text style={styles.person}>
+            {pendingChange?.payload.person_name ?? record.person_name}
+          </Text>
           <Text style={styles.heroMeta}>
             {getLoanDebtTypeLabel(record.type)} ·{' '}
-            {getLoanDebtStatusLabel(record.status)}
+            {getLoanDebtStatusLabel(visibleRecord.status)}
           </Text>
           <Text style={styles.remaining}>
             {formatCurrency(record.remaining_amount, record.currency)}
@@ -317,10 +472,19 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
             {getLoanDebtPrincipalLabel(record.type)}:{' '}
             {formatCurrency(record.principal_amount, record.currency)}
           </Text>
-          {record.due_date ? (
+          {(
+            pendingChange ? pendingChange.payload.due_date : record.due_date
+          ) ? (
             <Text style={styles.heroMeta}>
-              Hẹn trả {record.due_date.slice(0, 10)}
+              Hẹn trả{' '}
+              {(pendingChange
+                ? pendingChange.payload.due_date
+                : record.due_date
+              )?.slice(0, 10)}
             </Text>
+          ) : null}
+          {pendingChange ? (
+            <Text style={styles.heroMeta}>Chờ đối chiếu</Text>
           ) : null}
         </View>
         <View style={styles.progressCard}>
@@ -344,7 +508,10 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
         </View>
-        {!cachedAt && record.status !== 'PAID' ? (
+        {!cachedAt &&
+        pendingLoaded &&
+        !pendingChange &&
+        record.status !== 'PAID' ? (
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel="Ghi nhận thanh toán vay nợ"
@@ -370,49 +537,140 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
                   {payment.payment_date.slice(0, 10)}
                   {payment.note ? ` · ${payment.note}` : ''}
                 </Text>
-                {!cachedAt ? <Text style={styles.paymentWallet}>
-                  {walletName(payment.wallet_id)}
-                </Text> : null}
+                {!cachedAt ? (
+                  <Text style={styles.paymentWallet}>
+                    {walletName(payment.wallet_id)}
+                  </Text>
+                ) : null}
               </View>
-              {!cachedAt ? <TouchableOpacity
-                onPress={() =>
-                  Alert.alert(
-                    'Xóa lần thanh toán',
-                    'Số dư ví sẽ được hoàn lại.',
-                    [
-                      { text: 'Hủy', style: 'cancel' },
-                      {
-                        text: 'Xóa',
-                        style: 'destructive',
-                        onPress: () =>
-                          runLoanMutation(async () => {
-                            if (token) {
-                              try {
-                                await loanDebtsService.removePayment(
-                                  token,
-                                  record.id,
-                                  payment.id,
-                                );
-                                await load();
-                              } catch (error) {
-                                Alert.alert(
-                                  'Chưa xóa được lần thanh toán',
-                                  getLoanDebtErrorMessage(error),
-                                );
+              {!cachedAt && pendingLoaded && !pendingChange ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    Alert.alert(
+                      'Xóa lần thanh toán',
+                      'Số dư ví sẽ được hoàn lại.',
+                      [
+                        { text: 'Hủy', style: 'cancel' },
+                        {
+                          text: 'Xóa',
+                          style: 'destructive',
+                          onPress: () =>
+                            runLoanMutation(async () => {
+                              if (token) {
+                                try {
+                                  await loanDebtsService.removePayment(
+                                    token,
+                                    record.id,
+                                    payment.id,
+                                  );
+                                  await load();
+                                } catch (error) {
+                                  Alert.alert(
+                                    'Chưa xóa được lần thanh toán',
+                                    getLoanDebtErrorMessage(error),
+                                  );
+                                }
                               }
-                            }
-                          }),
-                      },
-                    ],
-                  )
-                }
-              >
-                <Trash2 size={18} color="#D04432" />
-              </TouchableOpacity> : null}
+                            }),
+                        },
+                      ],
+                    )
+                  }
+                >
+                  <Trash2 size={18} color="#D04432" />
+                </TouchableOpacity>
+              ) : null}
             </View>
           ))
         )}
       </ScrollView>
+      <Modal
+        transparent
+        visible={metadataVisible}
+        animationType="fade"
+        onRequestClose={() => !saving && setMetadataVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => !saving && setMetadataVisible(false)}
+          />
+          <View style={styles.sheet}>
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.sheetTitle}>Sửa thông tin Vay/Nợ</Text>
+              <Text style={styles.sheetHint}>
+                Số tiền gốc và ví không đổi khi mất mạng.
+              </Text>
+              <Text style={styles.label}>Tên người</Text>
+              <TextInput
+                style={styles.input}
+                value={metadataName}
+                onChangeText={setMetadataName}
+                editable={!saving}
+                maxLength={100}
+              />
+              <Text style={styles.label}>Ngày hẹn trả</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                disabled={saving}
+                onPress={() => setMetadataDatePicker(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Chọn ngày hẹn trả"
+              >
+                <CalendarDays size={18} color="#A85C28" />
+                <Text style={styles.dateText}>
+                  {metadataDue || 'Chọn ngày'}
+                </Text>
+              </TouchableOpacity>
+              {metadataDue ? (
+                <TouchableOpacity
+                  disabled={saving}
+                  onPress={() => setMetadataDue('')}
+                >
+                  <Text style={styles.cacheRefresh}>Bỏ ngày hẹn</Text>
+                </TouchableOpacity>
+              ) : null}
+              <Text style={styles.label}>Ghi chú</Text>
+              <TextInput
+                style={styles.input}
+                value={metadataNote}
+                onChangeText={setMetadataNote}
+                editable={!saving}
+              />
+              <TouchableOpacity
+                style={[styles.primary, saving && styles.disabled]}
+                disabled={saving}
+                onPress={saveMetadata}
+                accessibilityRole="button"
+                accessibilityLabel="Lưu thông tin vay nợ trên máy"
+              >
+                <Text style={styles.primaryText}>
+                  {saving ? 'Đang lưu...' : 'Lưu trên máy'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+          {metadataDatePicker ? (
+            <DateTimePicker
+              value={
+                metadataDue ? new Date(`${metadataDue}T00:00:00`) : new Date()
+              }
+              mode="date"
+              onChange={(_event, selectedDate) => {
+                setMetadataDatePicker(false);
+                if (selectedDate)
+                  setMetadataDue(formatLoanDebtPaymentDate(selectedDate));
+              }}
+            />
+          ) : null}
+        </KeyboardAvoidingView>
+      </Modal>
       <Modal
         transparent
         visible={modalVisible}
@@ -468,9 +726,7 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
                   )
                 }
                 keyboardType={
-                  isVndCurrency(record.currency)
-                    ? 'number-pad'
-                    : 'decimal-pad'
+                  isVndCurrency(record.currency) ? 'number-pad' : 'decimal-pad'
                 }
                 placeholder="0"
               />
@@ -557,10 +813,22 @@ const LoanDebtDetailScreen = ({ navigation, route }: Props) => {
 };
 
 const styles = StyleSheet.create({
-  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4 },
+  cacheNotice: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EAC69F',
+    backgroundColor: '#FFF0DE',
+    padding: 12,
+    gap: 4,
+  },
   cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
   cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
-  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
+  cacheRefresh: {
+    color: '#B45C13',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   loadErrorText: {
     color: '#9A342B',
     fontSize: 14,

@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus } from 'lucide-react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,6 +18,10 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { useAuth } from '../../context/AuthContext';
 import { loanDebtsService } from '../../services/loanDebts';
 import { loanDebtsCache } from '../../services/loanDebtsCache';
+import {
+  offlineLoanDebtQueue,
+  type OfflineLoanDebtChange,
+} from '../../services/offlineLoanDebtQueue';
 import type {
   LoanDebt,
   LoanDebtStatus,
@@ -27,7 +33,11 @@ import {
   getLoanDebtStatusLabel,
   getLoanDebtTypeLabel,
 } from '../../utils/loanDebt';
-import { filterLoanDebts, toLoanDebtDateKey, type LoanDebtPeriodFilter } from '../../utils/loanDebtPeriodFilter';
+import {
+  filterLoanDebts,
+  toLoanDebtDateKey,
+  type LoanDebtPeriodFilter,
+} from '../../utils/loanDebtPeriodFilter';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LoanDebts'>;
 
@@ -36,17 +46,28 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   const activeUserId = useRef(user?.id);
   activeUserId.current = user?.id;
   const [records, setRecords] = useState<LoanDebt[]>([]);
+  const [pendingChanges, setPendingChanges] = useState<OfflineLoanDebtChange[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const loadRevision = useRef(0);
   const [type, setType] = useState<LoanDebtType>();
   const [status, setStatus] = useState<LoanDebtStatus>();
-  const [periodFilter, setPeriodFilter] = useState<LoanDebtPeriodFilter>('CURRENT');
-  const [filterStartDate, setFilterStartDate] = useState(toLoanDebtDateKey(new Date()));
-  const [filterEndDate, setFilterEndDate] = useState(toLoanDebtDateKey(new Date()));
-  const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end' | null>(null);
-  const filteredRecords = filterLoanDebts(records, {
+  const [periodFilter, setPeriodFilter] =
+    useState<LoanDebtPeriodFilter>('CURRENT');
+  const [filterStartDate, setFilterStartDate] = useState(
+    toLoanDebtDateKey(new Date()),
+  );
+  const [filterEndDate, setFilterEndDate] = useState(
+    toLoanDebtDateKey(new Date()),
+  );
+  const [datePickerTarget, setDatePickerTarget] = useState<
+    'start' | 'end' | null
+  >(null);
+  const visibleRecords = offlineLoanDebtQueue.apply(records, pendingChanges);
+  const filteredRecords = filterLoanDebts(visibleRecords, {
     type,
     status,
     period: periodFilter,
@@ -57,11 +78,29 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
   useEffect(() => {
     loadRevision.current += 1;
     setRecords([]);
+    setPendingChanges([]);
     setCachedAt(null);
     setLoadError(null);
   }, [user?.id]);
 
-  const onFilterDateChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+  useEffect(() => {
+    if (!user?.id) return;
+    const userId = user.id;
+    const refresh = () =>
+      offlineLoanDebtQueue
+        .list(userId)
+        .then(changes => {
+          if (activeUserId.current === userId) setPendingChanges(changes);
+        })
+        .catch(() => undefined);
+    refresh();
+    return offlineLoanDebtQueue.subscribe(refresh);
+  }, [user?.id]);
+
+  const onFilterDateChange = (
+    _event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
     const target = datePickerTarget;
     setDatePickerTarget(null);
     if (!target || !selectedDate) return;
@@ -70,50 +109,86 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
     else setFilterEndDate(value);
   };
 
-  const load = useCallback(async (refresh = false) => {
-    const revision = ++loadRevision.current;
-    const requestUserId = user?.id;
-    if (!token || !requestUserId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      if (!refresh) {
-        const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
-        if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
+  const load = useCallback(
+    async (refresh = false) => {
+      const revision = ++loadRevision.current;
+      const requestUserId = user?.id;
+      if (!token || !requestUserId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setLoadError(null);
+      try {
+        if (!refresh) {
+          const saved = await loanDebtsCache
+            .read(requestUserId)
+            .catch(() => null);
+          if (
+            revision !== loadRevision.current ||
+            activeUserId.current !== requestUserId
+          )
+            return;
+          if (saved) {
+            setRecords(saved.records);
+            setCachedAt(saved.updatedAt);
+            setLoading(false);
+          }
+        }
+        const nextRecords = await loanDebtsService.getAll(token);
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
+          return;
+        setRecords(nextRecords);
+        setCachedAt(null);
+        await loanDebtsCache
+          .save(requestUserId, nextRecords)
+          .catch(() => undefined);
+      } catch (error) {
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
+          return;
+        const saved = await loanDebtsCache
+          .read(requestUserId)
+          .catch(() => null);
+        if (
+          revision !== loadRevision.current ||
+          activeUserId.current !== requestUserId
+        )
+          return;
         if (saved) {
           setRecords(saved.records);
           setCachedAt(saved.updatedAt);
-          setLoading(false);
+          setLoadError(null);
+        } else {
+          setLoadError(
+            getLoanDebtErrorMessage(
+              error,
+              'Không tải được danh sách vay/nợ. Vui lòng thử lại.',
+            ),
+          );
         }
+      } finally {
+        if (
+          revision === loadRevision.current &&
+          activeUserId.current === requestUserId
+        )
+          setLoading(false);
       }
-      const nextRecords = await loanDebtsService.getAll(token);
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-      setRecords(nextRecords);
-      setCachedAt(null);
-      await loanDebtsCache.save(requestUserId, nextRecords).catch(() => undefined);
-    } catch (error) {
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-      const saved = await loanDebtsCache.read(requestUserId).catch(() => null);
-      if (revision !== loadRevision.current || activeUserId.current !== requestUserId) return;
-      if (saved) {
-        setRecords(saved.records);
-        setCachedAt(saved.updatedAt);
-        setLoadError(null);
-      } else {
-        setLoadError(getLoanDebtErrorMessage(error, 'Không tải được danh sách vay/nợ. Vui lòng thử lại.'));
-      }
-    } finally {
-      if (revision === loadRevision.current && activeUserId.current === requestUserId) setLoading(false);
-    }
-  }, [token, user?.id]);
+    },
+    [token, user?.id],
+  );
 
   useFocusEffect(
     useCallback(() => {
       load();
-      return () => { loadRevision.current += 1; };
+      return () => {
+        loadRevision.current += 1;
+      };
     }, [load]),
   );
 
@@ -122,23 +197,34 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.icon}
-          onPress={() => navigation.goBack()}>
+          onPress={() => navigation.goBack()}
+        >
           <ArrowLeft size={22} color="#593420" />
         </TouchableOpacity>
         <Text style={styles.title}>Vay/Nợ</Text>
         <TouchableOpacity
           style={styles.icon}
           disabled={Boolean(cachedAt)}
-          onPress={() => navigation.navigate('LoanDebtForm')}>
+          onPress={() => navigation.navigate('LoanDebtForm')}
+        >
           <Plus size={22} color={cachedAt ? '#B7A294' : '#593420'} />
         </TouchableOpacity>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         {cachedAt ? (
           <View style={styles.cacheNotice}>
-            <Text style={styles.cacheNoticeTitle}>Vay/Nợ đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}</Text>
-            <Text style={styles.cacheNoticeText}>Số còn lại và trạng thái có thể đã thay đổi. Kết nối mạng để ghi thanh toán hoặc sửa khoản vay/nợ.</Text>
-            <TouchableOpacity accessibilityRole="button" onPress={() => load(true)}>
+            <Text style={styles.cacheNoticeTitle}>
+              Vay/Nợ đã lưu · {new Date(cachedAt).toLocaleString('vi-VN')}
+            </Text>
+            <Text style={styles.cacheNoticeText}>
+              Số còn lại và trạng thái có thể đã thay đổi. Bạn có thể sửa tên
+              người, ngày hẹn và ghi chú; kết nối mạng để đối chiếu hoặc ghi
+              thanh toán.
+            </Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => load(true)}
+            >
               <Text style={styles.cacheRefresh}>Cập nhật dữ liệu</Text>
             </TouchableOpacity>
           </View>
@@ -147,7 +233,8 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}>
+          contentContainerStyle={styles.chips}
+        >
           {[
             { value: undefined, label: 'Tất cả' },
             { value: 'BORROWED' as const, label: 'Vay' },
@@ -156,19 +243,25 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
             <TouchableOpacity
               key={item.label}
               style={[styles.chip, type === item.value && styles.chipActive]}
-              onPress={() => setType(item.value)}>
+              onPress={() => setType(item.value)}
+            >
               <Text
                 style={[
                   styles.chipText,
                   type === item.value && styles.chipTextActive,
-                ]}>
+                ]}
+              >
                 {item.label}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         <Text style={styles.filterTitle}>Thời gian</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+        >
           {[
             { value: 'CURRENT' as const, label: 'Chưa tất toán' },
             { value: 'PREVIOUS_MONTH' as const, label: 'Tháng trước' },
@@ -177,25 +270,53 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
             { value: 'CUSTOM_RANGE' as const, label: 'Tùy chọn' },
             { value: 'ALL' as const, label: 'Tất cả' },
           ].map(item => (
-            <TouchableOpacity key={item.value} style={[styles.chip, periodFilter === item.value && styles.chipActive]} onPress={() => {
-              setPeriodFilter(item.value);
-              if (item.value === 'CURRENT' && status === 'PAID') setStatus(undefined);
-            }}>
-              <Text style={[styles.chipText, periodFilter === item.value && styles.chipTextActive]}>{item.label}</Text>
+            <TouchableOpacity
+              key={item.value}
+              style={[
+                styles.chip,
+                periodFilter === item.value && styles.chipActive,
+              ]}
+              onPress={() => {
+                setPeriodFilter(item.value);
+                if (item.value === 'CURRENT' && status === 'PAID')
+                  setStatus(undefined);
+              }}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  periodFilter === item.value && styles.chipTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         {periodFilter === 'CUSTOM_RANGE' ? (
           <View style={styles.dateFilterRow}>
-            <TouchableOpacity style={styles.dateFilterButton} onPress={() => setDatePickerTarget('start')}><Text style={styles.dateFilterLabel}>Từ ngày</Text><Text style={styles.dateFilterValue}>{filterStartDate}</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.dateFilterButton} onPress={() => setDatePickerTarget('end')}><Text style={styles.dateFilterLabel}>Đến ngày</Text><Text style={styles.dateFilterValue}>{filterEndDate}</Text></TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dateFilterButton}
+              onPress={() => setDatePickerTarget('start')}
+            >
+              <Text style={styles.dateFilterLabel}>Từ ngày</Text>
+              <Text style={styles.dateFilterValue}>{filterStartDate}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dateFilterButton}
+              onPress={() => setDatePickerTarget('end')}
+            >
+              <Text style={styles.dateFilterLabel}>Đến ngày</Text>
+              <Text style={styles.dateFilterValue}>{filterEndDate}</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
         <Text style={styles.filterTitle}>Trạng thái</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}>
+          contentContainerStyle={styles.chips}
+        >
           {[
             { value: undefined, label: 'Tất cả' },
             { value: 'OPEN' as const, label: 'Đang mở' },
@@ -206,19 +327,19 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
               key={item.label}
               accessibilityRole="button"
               accessibilityLabel={`Lọc vay nợ: ${item.label}`}
-              style={[
-                styles.chip,
-                status === item.value && styles.chipActive,
-              ]}
+              style={[styles.chip, status === item.value && styles.chipActive]}
               onPress={() => {
                 setStatus(item.value);
-                if (item.value === 'PAID' && periodFilter === 'CURRENT') setPeriodFilter('ALL');
-              }}>
+                if (item.value === 'PAID' && periodFilter === 'CURRENT')
+                  setPeriodFilter('ALL');
+              }}
+            >
               <Text
                 style={[
                   styles.chipText,
                   status === item.value && styles.chipTextActive,
-                ]}>
+                ]}
+              >
                 {item.label}
               </Text>
             </TouchableOpacity>
@@ -229,12 +350,19 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
         ) : loadError ? (
           <View>
             <Text style={styles.empty}>{loadError}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Thử tải lại danh sách vay nợ" style={styles.retryButton} onPress={() => load(true)}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Thử tải lại danh sách vay nợ"
+              style={styles.retryButton}
+              onPress={() => load(true)}
+            >
               <Text>Thử lại</Text>
             </TouchableOpacity>
           </View>
         ) : filteredRecords.length === 0 ? (
-          <Text style={styles.empty}>Không có khoản vay/nợ phù hợp với bộ lọc.</Text>
+          <Text style={styles.empty}>
+            Không có khoản vay/nợ phù hợp với bộ lọc.
+          </Text>
         ) : (
           filteredRecords.map(record => (
             <TouchableOpacity
@@ -244,7 +372,8 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
                 navigation.navigate('LoanDebtDetail', {
                   loanDebtId: record.id,
                 })
-              }>
+              }
+            >
               <View style={styles.row}>
                 <View style={styles.cardTitleBlock}>
                   <Text style={styles.name} numberOfLines={2}>
@@ -253,20 +382,27 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
                   <Text style={styles.meta}>
                     {getLoanDebtTypeLabel(record.type)}
                   </Text>
+                  {pendingChanges.some(change => change.id === record.id) ? (
+                    <Text style={styles.meta}>
+                      Đã sửa trên máy · chờ đối chiếu
+                    </Text>
+                  ) : null}
                 </View>
                 <View
                   style={[
                     styles.badge,
                     record.status === 'OVERDUE' && styles.overdue,
                     record.status === 'PAID' && styles.paid,
-                  ]}>
+                  ]}
+                >
                   <Text style={styles.badgeText} numberOfLines={1}>
                     {getLoanDebtStatusLabel(record.status)}
                   </Text>
                 </View>
               </View>
               <Text style={styles.amount}>
-                {formatCurrency(record.remaining_amount, record.currency)} còn lại
+                {formatCurrency(record.remaining_amount, record.currency)} còn
+                lại
               </Text>
               <Text style={styles.detail}>
                 Gốc {formatCurrency(record.principal_amount, record.currency)} ·
@@ -282,35 +418,108 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
           ))
         )}
       </ScrollView>
-      {datePickerTarget ? <DateTimePicker value={new Date(`${datePickerTarget === 'start' ? filterStartDate : filterEndDate}T00:00:00`)} mode="date" onChange={onFilterDateChange} /> : null}
+      {datePickerTarget ? (
+        <DateTimePicker
+          value={
+            new Date(
+              `${
+                datePickerTarget === 'start' ? filterStartDate : filterEndDate
+              }T00:00:00`,
+            )
+          }
+          mode="date"
+          onChange={onFilterDateChange}
+        />
+      ) : null}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  cacheNotice: { borderRadius: 10, borderWidth: 1, borderColor: '#EAC69F', backgroundColor: '#FFF0DE', padding: 12, gap: 4, marginBottom: 12 },
+  cacheNotice: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EAC69F',
+    backgroundColor: '#FFF0DE',
+    padding: 12,
+    gap: 4,
+    marginBottom: 12,
+  },
   cacheNoticeTitle: { color: '#593420', fontSize: 13, fontWeight: '800' },
   cacheNoticeText: { color: '#7B573C', fontSize: 12, lineHeight: 18 },
-  cacheRefresh: { color: '#B45C13', fontSize: 12, fontWeight: '800', marginTop: 4 },
-  retryButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  cacheRefresh: {
+    color: '#B45C13',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  retryButton: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: { flex: 1, backgroundColor: '#FFF8F1' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFF0E1', alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF0E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: 24, fontWeight: '900', color: '#4A2B1A' },
   content: { padding: 16, paddingBottom: 40 },
-  filterTitle: { fontWeight: '900', color: '#4A2B1A', marginBottom: 8, marginTop: 8 },
+  filterTitle: {
+    fontWeight: '900',
+    color: '#4A2B1A',
+    marginBottom: 8,
+    marginTop: 8,
+  },
   chips: { flexDirection: 'row', gap: 8, marginBottom: 12, paddingRight: 16 },
-  chip: { borderWidth: 1, borderColor: '#F0C8A7', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, backgroundColor: '#FFF', flexShrink: 0 },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#F0C8A7',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: '#FFF',
+    flexShrink: 0,
+  },
   chipActive: { backgroundColor: '#FF8500', borderColor: '#FF8500' },
   chipText: { fontWeight: '800', color: '#7B573C' },
   chipTextActive: { color: '#FFF' },
   loading: { marginTop: 40 },
-  card: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#F0C8A7', borderRadius: 18, padding: 16, marginTop: 12 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  card: {
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#F0C8A7',
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 12,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
   cardTitleBlock: { flex: 1, minWidth: 0 },
   name: { fontSize: 18, fontWeight: '900', color: '#4A2B1A', lineHeight: 24 },
   meta: { color: '#8B674D', marginTop: 4 },
-  badge: { backgroundColor: '#E7F8EF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, flexShrink: 0, maxWidth: 126 },
+  badge: {
+    backgroundColor: '#E7F8EF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    flexShrink: 0,
+    maxWidth: 126,
+  },
   overdue: { backgroundColor: '#FFE5E1' },
   paid: { backgroundColor: '#EEE' },
   badgeText: { fontSize: 11, fontWeight: '900', color: '#4A2B1A' },
@@ -318,7 +527,14 @@ const styles = StyleSheet.create({
   detail: { color: '#8B674D', marginTop: 6 },
   empty: { textAlign: 'center', color: '#8B674D', marginTop: 50 },
   dateFilterRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  dateFilterButton: { flex: 1, borderWidth: 1, borderColor: '#F0C8A7', backgroundColor: '#FFF', borderRadius: 14, padding: 12 },
+  dateFilterButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#F0C8A7',
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 12,
+  },
   dateFilterLabel: { color: '#8B674D', fontWeight: '800', fontSize: 12 },
   dateFilterValue: { color: '#4A2B1A', fontWeight: '900', marginTop: 4 },
 });

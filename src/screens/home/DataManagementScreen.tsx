@@ -69,6 +69,11 @@ import {
   type OfflineSavingsGoalChange,
 } from '../../services/offlineSavingsGoalQueue';
 import { savingsService } from '../../services/savings';
+import {
+  offlineLoanDebtQueue,
+  type OfflineLoanDebtChange,
+} from '../../services/offlineLoanDebtQueue';
+import { loanDebtsService } from '../../services/loanDebts';
 import { getUserFriendlyErrorMessage } from '../../utils/errors';
 import { formatCurrency } from '../../utils/format';
 import { parsePositiveMoneyInput } from '../../utils/moneyInput';
@@ -102,6 +107,7 @@ type ManualSyncReview = OfflineSyncReview & {
   expectedWallets: Array<{ id: number; revision: number }>;
   expectedBudgets: Array<{ id: number; revision: number }>;
   expectedSavingsGoals: Array<{ id: number; revision: number }>;
+  expectedLoanDebts: Array<{ id: number; revision: number }>;
 };
 
 const DataManagementScreen = () => {
@@ -127,6 +133,9 @@ const DataManagementScreen = () => {
   );
   const [offlineSavingsGoals, setOfflineSavingsGoals] = useState<
     OfflineSavingsGoalChange[]
+  >([]);
+  const [offlineLoanDebts, setOfflineLoanDebts] = useState<
+    OfflineLoanDebtChange[]
   >([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isSyncingDrafts, setIsSyncingDrafts] = useState(false);
@@ -157,6 +166,7 @@ const DataManagementScreen = () => {
       offlineWalletQueue.list(user.id),
       offlineBudgetQueue.list(user.id),
       offlineSavingsGoalQueue.list(user.id),
+      offlineLoanDebtQueue.list(user.id),
     ]).then(
       ([
         nextCache,
@@ -166,6 +176,7 @@ const DataManagementScreen = () => {
         wallets,
         budgets,
         savingsGoals,
+        loanDebts,
       ]) => {
         setCache(nextCache);
         setOfflineDrafts(drafts);
@@ -174,6 +185,7 @@ const DataManagementScreen = () => {
         setOfflineWallets(wallets);
         setOfflineBudgets(budgets);
         setOfflineSavingsGoals(savingsGoals);
+        setOfflineLoanDebts(loanDebts);
       },
     );
     const unsubscribeChanges = offlineTransactionChanges.subscribe(() => {
@@ -212,6 +224,12 @@ const DataManagementScreen = () => {
         .then(setOfflineSavingsGoals)
         .catch(() => undefined);
     });
+    const unsubscribeLoanDebts = offlineLoanDebtQueue.subscribe(() => {
+      offlineLoanDebtQueue
+        .list(user.id)
+        .then(setOfflineLoanDebts)
+        .catch(() => undefined);
+    });
     return () => {
       unsubscribeChanges();
       unsubscribeDrafts();
@@ -219,6 +237,7 @@ const DataManagementScreen = () => {
       unsubscribeWallets();
       unsubscribeBudgets();
       unsubscribeSavingsGoals();
+      unsubscribeLoanDebts();
     };
   }, [user?.id]);
 
@@ -374,6 +393,8 @@ const DataManagementScreen = () => {
     remoteBudgets: NonNullable<OfflineSyncReview['remoteBudgets']>,
     expectedSavingsGoals: Array<{ id: number; revision: number }>,
     remoteSavingsGoals: NonNullable<OfflineSyncReview['remoteSavingsGoals']>,
+    expectedLoanDebts: Array<{ id: number; revision: number }>,
+    remoteLoanDebts: NonNullable<OfflineSyncReview['remoteLoanDebts']>,
     scope: { userId: number; server: string; token: string },
   ) => {
     if (isSyncingDrafts) return;
@@ -406,6 +427,11 @@ const DataManagementScreen = () => {
         JSON.stringify(expectedSavingsGoals)
       )
         throw Error('Mục tiêu trên máy đã đổi. Hãy xem lại.');
+      if (
+        JSON.stringify(await offlineLoanDebtQueue.preview(scope.userId)) !==
+        JSON.stringify(expectedLoanDebts)
+      )
+        throw Error('Khoản Vay/Nợ trên máy đã đổi. Hãy xem lại.');
       const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
         scope.token,
         scope.userId,
@@ -458,6 +484,17 @@ const DataManagementScreen = () => {
         ),
         isCurrent,
       );
+      const loanResult = await offlineLoanDebtQueue.sync(
+        scope.token,
+        scope.userId,
+        await offlineLoanDebtQueue.rebaseReviewed(
+          scope.token,
+          scope.userId,
+          expectedLoanDebts,
+          remoteLoanDebts,
+        ),
+        isCurrent,
+      );
       const result =
         categoryResult.pending ||
         categoryResult.needsReview ||
@@ -496,21 +533,24 @@ const DataManagementScreen = () => {
           categoryResult.synced +
           walletResult.synced +
           budgetResult.synced +
-          savingsResult.synced
+          savingsResult.synced +
+          loanResult.synced
         } · Còn chờ ${
           result.pending +
           edits.pending +
           categoryResult.pending +
           walletResult.pending +
           budgetResult.pending +
-          savingsResult.pending
+          savingsResult.pending +
+          loanResult.pending
         } · Cần kiểm tra ${
           result.needsReview +
           edits.needsReview +
           categoryResult.needsReview +
           walletResult.needsReview +
           budgetResult.needsReview +
-          savingsResult.needsReview
+          savingsResult.needsReview +
+          loanResult.needsReview
         }.`,
       );
     } catch (error) {
@@ -528,15 +568,23 @@ const DataManagementScreen = () => {
     const scope = { userId: user.id, token, server: getApiStorageBaseUrl() };
     try {
       if (!(await homeWidget.connected())) throw Error('Chưa có kết nối mạng.');
-      const [drafts, changes, categories, wallets, budgets, savingsGoals] =
-        await Promise.all([
-          offlineTransactionQueue.list(scope.userId),
-          offlineTransactionChanges.list(scope.userId),
-          offlineCategoryQueue.list(scope.userId),
-          offlineWalletQueue.list(scope.userId),
-          offlineBudgetQueue.list(scope.userId),
-          offlineSavingsGoalQueue.list(scope.userId),
-        ]);
+      const [
+        drafts,
+        changes,
+        categories,
+        wallets,
+        budgets,
+        savingsGoals,
+        loanDebts,
+      ] = await Promise.all([
+        offlineTransactionQueue.list(scope.userId),
+        offlineTransactionChanges.list(scope.userId),
+        offlineCategoryQueue.list(scope.userId),
+        offlineWalletQueue.list(scope.userId),
+        offlineBudgetQueue.list(scope.userId),
+        offlineSavingsGoalQueue.list(scope.userId),
+        offlineLoanDebtQueue.list(scope.userId),
+      ]);
       const currentDrafts = drafts.filter(item => item.server === scope.server);
       if (
         !currentDrafts.length &&
@@ -544,7 +592,8 @@ const DataManagementScreen = () => {
         !categories.length &&
         !wallets.length &&
         !budgets.length &&
-        !savingsGoals.length
+        !savingsGoals.length &&
+        !loanDebts.length
       ) {
         Alert.alert('Không có dữ liệu đang chờ');
         return;
@@ -558,6 +607,14 @@ const DataManagementScreen = () => {
       const remoteSavingsGoals: NonNullable<
         OfflineSyncReview['remoteSavingsGoals']
       > = {};
+      const remoteLoanDebts: NonNullable<OfflineSyncReview['remoteLoanDebts']> =
+        {};
+      if (loanDebts.length) {
+        const serverLoans = await loanDebtsService.getAll(token);
+        for (const item of loanDebts)
+          remoteLoanDebts[item.id] =
+            serverLoans.find(row => row.id === item.id) ?? null;
+      }
       if (savingsGoals.length) {
         const serverGoals = await savingsService.getAll(token);
         for (const item of savingsGoals)
@@ -602,6 +659,9 @@ const DataManagementScreen = () => {
       const expectedSavingsGoals = await offlineSavingsGoalQueue.preview(
         scope.userId,
       );
+      const expectedLoanDebts = await offlineLoanDebtQueue.preview(
+        scope.userId,
+      );
       if (
         currentScope.current.userId !== scope.userId ||
         currentScope.current.token !== scope.token ||
@@ -616,11 +676,13 @@ const DataManagementScreen = () => {
         wallets,
         budgets,
         savingsGoals,
+        loanDebts,
         remote,
         remoteCategories,
         remoteWallets,
         remoteBudgets,
         remoteSavingsGoals,
+        remoteLoanDebts,
         expectedDrafts: currentDrafts.map(item => ({
           id: item.id,
           updatedAt: item.updatedAt,
@@ -630,6 +692,7 @@ const DataManagementScreen = () => {
         expectedWallets,
         expectedBudgets,
         expectedSavingsGoals,
+        expectedLoanDebts,
       });
     } catch (error) {
       Alert.alert(
@@ -659,6 +722,8 @@ const DataManagementScreen = () => {
         review.remoteBudgets ?? {},
         review.expectedSavingsGoals,
         review.remoteSavingsGoals ?? {},
+        review.expectedLoanDebts,
+        review.remoteLoanDebts ?? {},
         review,
       ).catch(() => undefined);
       return;
@@ -671,7 +736,8 @@ const DataManagementScreen = () => {
         (review.categories?.length ?? 0) +
         (review.wallets?.length ?? 0) +
         (review.budgets?.length ?? 0) +
-        (review.savingsGoals?.length ?? 0)
+        (review.savingsGoals?.length ?? 0) +
+        (review.loanDebts?.length ?? 0)
       } thay đổi chưa đồng bộ sẽ bị bỏ khỏi điện thoại. Dữ liệu trên máy chủ được giữ nguyên.`,
       [
         { text: 'Quay lại', style: 'cancel' },
@@ -694,13 +760,19 @@ const DataManagementScreen = () => {
                 throw Error(
                   'Thay đổi trên máy đã đổi. Hãy xem lại trước khi bỏ.',
                 );
-              const [nowCategories, nowWallets, nowBudgets, nowSavingsGoals] =
-                await Promise.all([
-                  offlineCategoryQueue.preview(review.userId),
-                  offlineWalletQueue.preview(review.userId),
-                  offlineBudgetQueue.preview(review.userId),
-                  offlineSavingsGoalQueue.preview(review.userId),
-                ]);
+              const [
+                nowCategories,
+                nowWallets,
+                nowBudgets,
+                nowSavingsGoals,
+                nowLoanDebts,
+              ] = await Promise.all([
+                offlineCategoryQueue.preview(review.userId),
+                offlineWalletQueue.preview(review.userId),
+                offlineBudgetQueue.preview(review.userId),
+                offlineSavingsGoalQueue.preview(review.userId),
+                offlineLoanDebtQueue.preview(review.userId),
+              ]);
               if (
                 JSON.stringify(nowCategories) !==
                   JSON.stringify(review.expectedCategories) ||
@@ -709,7 +781,9 @@ const DataManagementScreen = () => {
                 JSON.stringify(nowBudgets) !==
                   JSON.stringify(review.expectedBudgets) ||
                 JSON.stringify(nowSavingsGoals) !==
-                  JSON.stringify(review.expectedSavingsGoals)
+                  JSON.stringify(review.expectedSavingsGoals) ||
+                JSON.stringify(nowLoanDebts) !==
+                  JSON.stringify(review.expectedLoanDebts)
               )
                 throw Error(
                   'Dữ liệu trên máy đã đổi. Hãy xem lại trước khi bỏ.',
@@ -737,6 +811,10 @@ const DataManagementScreen = () => {
               await offlineSavingsGoalQueue.discard(
                 review.userId,
                 review.expectedSavingsGoals,
+              );
+              await offlineLoanDebtQueue.discard(
+                review.userId,
+                review.expectedLoanDebts,
               );
               setManualReview(null);
               setOfflineDrafts(
@@ -1095,8 +1173,8 @@ const DataManagementScreen = () => {
             <View style={styles.actionCopy}>
               <Text style={styles.cardTitle}>Dữ liệu chờ lưu</Text>
               <Text style={styles.cardText}>
-                Xem lại giao dịch, danh mục, ví, ngân sách và mục tiêu trên máy
-                trước khi lưu.
+                Xem lại giao dịch, danh mục, ví, ngân sách, mục tiêu và Vay/Nợ
+                trên máy trước khi lưu.
               </Text>
             </View>
             <TouchableOpacity
@@ -1111,7 +1189,8 @@ const DataManagementScreen = () => {
                   offlineCategories.length === 0 &&
                   offlineWallets.length === 0 &&
                   offlineBudgets.length === 0 &&
-                  offlineSavingsGoals.length === 0)
+                  offlineSavingsGoals.length === 0 &&
+                  offlineLoanDebts.length === 0)
               }
             >
               {isSyncingDrafts ? (
@@ -1125,6 +1204,11 @@ const DataManagementScreen = () => {
             <Text style={styles.cardText}>
               {offlineSavingsGoals.length} mục tiêu tiết kiệm đang chờ đối
               chiếu.
+            </Text>
+          ) : null}
+          {offlineLoanDebts.length > 0 ? (
+            <Text style={styles.cardText}>
+              {offlineLoanDebts.length} khoản Vay/Nợ đang chờ đối chiếu.
             </Text>
           ) : null}
           {offlineCategories.length > 0 ? (

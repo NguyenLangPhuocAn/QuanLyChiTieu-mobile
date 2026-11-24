@@ -16,6 +16,8 @@ import type { Budget } from '../types/budget';
 import type { OfflineBudgetChange } from '../services/offlineBudgetQueue';
 import type { OfflineSavingsGoalChange } from '../services/offlineSavingsGoalQueue';
 import type { SavingsGoal } from '../types/savings';
+import type { OfflineLoanDebtChange } from '../services/offlineLoanDebtQueue';
+import type { LoanDebt } from '../types/loanDebt';
 import type {
   OfflineTransactionChange,
   TransactionSnapshot,
@@ -32,6 +34,8 @@ export type OfflineSyncReview = {
   remoteBudgets?: Record<number, Budget | null>;
   savingsGoals?: OfflineSavingsGoalChange[];
   remoteSavingsGoals?: Record<number, SavingsGoal | null>;
+  loanDebts?: OfflineLoanDebtChange[];
+  remoteLoanDebts?: Record<number, LoanDebt | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -82,6 +86,31 @@ export default function OfflineSyncReviewModal({
                         review.remoteSavingsGoals[item.id]?.target_amount,
                       ).toLocaleString('vi-VN')}`
                     : 'Không còn mục tiêu'}
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+            {review?.loanDebts?.map(item => (
+              <View key={`loan-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>Sửa thông tin Vay/Nợ</Text>
+                <Text style={styles.local}>
+                  Trên máy: {item.payload.person_name} ·{' '}
+                  {item.payload.due_date?.slice(0, 10) ?? 'Chưa hẹn ngày'}
+                </Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {review.remoteLoanDebts?.[item.id]
+                    ? `${review.remoteLoanDebts[item.id]?.person_name} · ${
+                        review.remoteLoanDebts[item.id]?.due_date?.slice(
+                          0,
+                          10,
+                        ) ?? 'Chưa hẹn ngày'
+                      }`
+                    : 'Không còn khoản này'}
                 </Text>
                 {item.status === 'NEEDS_REVIEW' ? (
                   <Text style={styles.warning}>
