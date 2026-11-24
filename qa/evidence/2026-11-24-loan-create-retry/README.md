@@ -4,7 +4,7 @@
 
 1. Trong form Vay/Nợ riêng và form Thêm giao dịch, nhập tên người, số tiền, ví; bấm lưu. Kiểm tra API chưa được gọi trước khi người dùng xác nhận bản xem trước.
 2. Mô phỏng API nhận lệnh nhưng phản hồi bị mất. Giữ form, bấm lưu và xác nhận lại. Kiểm tra mã yêu cầu vẫn như lần đầu.
-3. Sau phản hồi không rõ, đổi nội dung khoản rồi bấm lưu. Kiểm tra app chặn lệnh mới và hướng dẫn xem danh sách trước.
+3. Sau phản hồi không rõ, đổi nội dung khoản hoặc đổi sang Chi trong cùng form rồi bấm lưu. Kiểm tra app chặn lệnh mới và hướng dẫn xem danh sách trước.
 4. Kiểm tra các ca sửa Vay/Nợ và luồng giao dịch khác không bị ảnh hưởng.
 
 ## Kết quả và giới hạn

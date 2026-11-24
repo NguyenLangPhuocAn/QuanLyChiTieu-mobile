@@ -317,6 +317,11 @@ it('previews a loan and retries with the same request id after a lost reply', as
   });
   expect(create).toHaveBeenCalledTimes(1);
   const firstId = create.mock.calls[0][1].client_request_id;
+  await act(async () => button('Chi').props.onPress());
+  expect(button('Lưu khoản vay/nợ')).toBeDefined();
+  expect(jest.mocked(Alert.alert).mock.calls.at(-1)?.[0]).toBe(
+    'Khoản trước có thể đã lưu',
+  );
   await act(async () =>
     tree.root
       .findByProps({ placeholder: 'Ví dụ: Nguyễn Văn A' })

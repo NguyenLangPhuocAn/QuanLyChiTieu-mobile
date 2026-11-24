@@ -836,6 +836,13 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   };
 
   const handleSelectTransactionType = (type: TransactionEntryType) => {
+    if (firstLoanAttempt.current && type !== 'LOAN_DEBT') {
+      Alert.alert(
+        'Khoản trước có thể đã lưu',
+        'Hãy kiểm tra danh sách Vay/Nợ trước khi tạo giao dịch khác.',
+      );
+      return;
+    }
     setTransactionEntryType(type);
     if (activeBankNotificationEventId) {
       setRequiresBankDirectionConfirmation(false);
