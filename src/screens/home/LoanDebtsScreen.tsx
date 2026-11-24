@@ -267,6 +267,41 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
             </TouchableOpacity>
           </View>
         ) : null}
+        {pendingCreates.length > 0 ? (
+          <View>
+            <Text
+              style={styles.filterTitle}
+              accessibilityLabel={`Chờ đồng bộ ${pendingCreates.length} khoản Vay/Nợ`}
+            >
+              Chờ đồng bộ ({pendingCreates.length})
+            </Text>
+            {pendingCreates.map(item => (
+              <View key={item.id} style={styles.card}>
+                <View style={styles.row}>
+                  <Text style={styles.name}>{item.payload.person_name}</Text>
+                  <Text style={styles.meta}>
+                    {item.status === 'NEEDS_REVIEW'
+                      ? 'Cần xem lại'
+                      : 'Chờ đồng bộ'}
+                  </Text>
+                </View>
+                <Text style={styles.amount}>
+                  {formatCurrency(
+                    Number(item.payload.principal_amount),
+                    item.wallet.currency,
+                  )}
+                </Text>
+                <Text style={styles.detail}>
+                  {getLoanDebtTypeLabel(item.payload.type)} · {item.wallet.name}
+                </Text>
+                <Text style={styles.detail}>
+                  Chưa ghi vào ví. Khi có mạng, mở Dữ liệu và xuất nhập để đối
+                  chiếu.
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <Text style={styles.filterTitle}>Loại</Text>
         <ScrollView
           horizontal
@@ -383,32 +418,6 @@ const LoanDebtsScreen = ({ navigation }: Props) => {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        {pendingCreates
-          .filter(item => !type || item.payload.type === type)
-          .map(item => (
-            <View key={item.id} style={styles.card}>
-              <View style={styles.row}>
-                <Text style={styles.name}>{item.payload.person_name}</Text>
-                <Text style={styles.meta}>
-                  {item.status === 'NEEDS_REVIEW'
-                    ? 'Cần xem lại'
-                    : 'Chờ đồng bộ'}
-                </Text>
-              </View>
-              <Text style={styles.amount}>
-                {formatCurrency(
-                  Number(item.payload.principal_amount),
-                  item.wallet.currency,
-                )}
-              </Text>
-              <Text style={styles.detail}>
-                {getLoanDebtTypeLabel(item.payload.type)} · {item.wallet.name}
-              </Text>
-              <Text style={styles.detail}>
-                Chưa ghi vào ví. Mở Dữ liệu trên máy khi có mạng để đối chiếu.
-              </Text>
-            </View>
-          ))}
         {loading ? (
           <ActivityIndicator color="#FF8500" style={styles.loading} />
         ) : loadError ? (

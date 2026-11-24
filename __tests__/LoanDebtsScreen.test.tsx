@@ -2,6 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import LoanDebtsScreen from '../src/screens/home/LoanDebtsScreen';
 import { loanDebtsService } from '../src/services/loanDebts';
+import { offlineLoanCreateQueue } from '../src/services/offlineLoanCreateQueue';
 import type { LoanDebt } from '../src/types/loanDebt';
 
 jest.mock('@react-navigation/native', () => ({
@@ -54,6 +55,49 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => renderer.unmount());
+  jest.restoreAllMocks();
+});
+
+it('keeps new local loans in a separate pending section even while filtering paid records', async () => {
+  jest.spyOn(offlineLoanCreateQueue, 'list').mockResolvedValue([
+    {
+      id: 'loan_20261125_abcdef123456',
+      revision: 1,
+      attempts: 0,
+      status: 'PENDING',
+      updatedAt: '2026-11-25T08:00:00.000Z',
+      wallet: {
+        id: 2,
+        name: 'Ví gia đình',
+        currency: 'VND',
+        balance: '500000',
+      },
+      payload: {
+        person_name: 'Anh Minh',
+        type: 'LENT',
+        principal_amount: '200000',
+        wallet_id: 2,
+        client_request_id: 'loan_20261125_abcdef123456',
+      },
+    },
+  ]);
+  await mount();
+  await act(async () =>
+    renderer.root
+      .findByProps({ accessibilityLabel: 'Lọc vay nợ: Đã thanh toán' })
+      .props.onPress(),
+  );
+  expect(
+    renderer.root.findAllByProps({
+      accessibilityLabel: 'Chờ đồng bộ 1 khoản Vay/Nợ',
+    }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    renderer.root.findAllByProps({ children: 'Anh Minh' }).length,
+  ).toBeGreaterThan(0);
+  expect(
+    renderer.root.findAllByProps({ children: 'Khoản đã trả' }).length,
+  ).toBeGreaterThan(0);
 });
 
 it('shows paid loans when selecting Paid from the default open-loan period', async () => {
