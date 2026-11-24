@@ -13,7 +13,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
-    token: 'qa-token',
+    token: 'session-token',
     user: { id: 7, role: 'BASIC', currency_default: 'VND' },
     isOfflineSession: false,
   }),
@@ -28,16 +28,21 @@ jest.mock('../src/services/budgets', () => ({
   budgetsService: { getAll: jest.fn() },
 }));
 jest.mock('../src/services/dashboardCache', () => ({
-  dashboardCache: { read: jest.fn() },
+  dashboardCache: {
+    read: jest.fn(),
+    readReferences: jest.fn(),
+    saveReferences: jest.fn(),
+  },
 }));
 
 it('shows fresh wallets when the separate budget API fails', async () => {
   jest.mocked(dashboardCache.read).mockResolvedValue(null);
+  jest.mocked(dashboardCache.readReferences).mockResolvedValue(null);
   jest.mocked(walletsService.getAll).mockResolvedValue([
     {
       id: 8,
       user_id: 7,
-      name: 'Ví QA mới',
+      name: 'Ví sinh hoạt',
       wallet_type: 'CASH',
       currency: 'VND',
       balance: '1000',
@@ -59,7 +64,7 @@ it('shows fresh wallets when the separate budget API fails', async () => {
   const texts = renderer!.root
     .findAllByType(Text)
     .map(node => node.props.children);
-  expect(texts).toContain('Ví QA mới');
+  expect(texts).toContain('Ví sinh hoạt');
   expect(texts).not.toContain('Bạn chưa có ví nào');
   await act(async () => renderer!.unmount());
 });

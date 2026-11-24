@@ -11,10 +11,16 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test' }),
+  useAuth: () => ({ token: 'session-token', user: { id: 7 } }),
 }));
 jest.mock('../src/services/loanDebts', () => ({
   loanDebtsService: { getAll: jest.fn() },
+}));
+jest.mock('../src/services/loanDebtsCache', () => ({
+  loanDebtsCache: {
+    read: jest.fn().mockResolvedValue(null),
+    save: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 const record: LoanDebt = {
   id: 1,
@@ -57,10 +63,7 @@ it('shows paid loans when selecting Paid from the default open-loan period', asy
       .findByProps({ accessibilityLabel: 'Lọc vay nợ: Đã thanh toán' })
       .props.onPress();
   });
-  expect(service.getAll).toHaveBeenLastCalledWith('test', {
-    type: undefined,
-    status: 'PAID',
-  });
+  expect(service.getAll).toHaveBeenLastCalledWith('session-token');
   expect(
     renderer.root.findAllByProps({ children: 'Khoản đã trả' }).length,
   ).toBeGreaterThan(0);
@@ -87,7 +90,7 @@ it('offers retry after a network failure instead of showing an empty loan list',
   ).toHaveLength(0);
 });
 
-it('ignores old records arriving after the status filter changes', async () => {
+it('keeps the selected status filter when records arrive later', async () => {
   let finish!: (value: LoanDebt[]) => void;
   service.getAll.mockImplementationOnce(
     () =>
@@ -104,10 +107,12 @@ it('ignores old records arriving after the status filter changes', async () => {
   await act(async () => {
     finish([{ ...record, person_name: 'Khoản cũ', status: 'OPEN' }]);
   });
-  expect(
-    renderer.root.findAllByProps({ children: 'Khoản đã trả' }).length,
-  ).toBeGreaterThan(0);
   expect(renderer.root.findAllByProps({ children: 'Khoản cũ' })).toHaveLength(
     0,
   );
+  expect(
+    renderer.root.findAllByProps({
+      children: 'Không có khoản vay/nợ phù hợp với bộ lọc.',
+    }).length,
+  ).toBeGreaterThan(0);
 });

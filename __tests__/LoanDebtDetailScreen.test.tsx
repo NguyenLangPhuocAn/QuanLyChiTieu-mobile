@@ -12,7 +12,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-token' }),
+  useAuth: () => ({ token: 'session-token', user: { id: 7 } }),
 }));
 jest.mock('../src/services/loanDebts', () => ({
   loanDebtsService: { getOne: jest.fn(), addPayment: jest.fn() },
@@ -30,7 +30,7 @@ const service = jest.mocked(loanDebtsService);
 const record: LoanDebt = {
   id: 1,
   user_id: 7,
-  person_name: 'Khoản vay thử',
+  person_name: 'Khoản vay của Minh',
   type: 'BORROWED',
   principal_amount: 12.75,
   settled_amount: 0,
@@ -70,7 +70,7 @@ it('recovers from a failed initial load through the retry button', async () => {
       .props.onPress();
   });
   expect(service.getOne).toHaveBeenCalledTimes(2);
-  expect(JSON.stringify(renderer.toJSON())).toContain('Khoản vay thử');
+  expect(JSON.stringify(renderer.toJSON())).toContain('Khoản vay của Minh');
   await act(async () => renderer.unmount());
 });
 
@@ -103,7 +103,7 @@ it('keeps decimal payment, prevents repeat submission and keeps the pending form
   });
   expect(service.addPayment).toHaveBeenCalledTimes(1);
   expect(service.addPayment).toHaveBeenCalledWith(
-    'test-token',
+    'session-token',
     1,
     expect.objectContaining({ amount: '0.50', wallet_id: 3 }),
   );
@@ -129,7 +129,7 @@ it('does not display the previous loan while a different loan is loading', async
       }),
   );
   await act(async () => renderer.update(screen(2)));
-  expect(JSON.stringify(renderer.toJSON())).not.toContain('Khoản vay thử');
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('Khoản vay của Minh');
   await act(async () => {
     resolveNext({ ...record, id: 2, person_name: 'Khoản mới' });
   });

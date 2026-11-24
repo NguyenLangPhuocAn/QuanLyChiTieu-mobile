@@ -17,9 +17,13 @@ import { bankNotificationReader } from '../src/native/bankNotificationReader';
 import { bankNotificationExtraction } from '../src/services/bankNotificationExtraction';
 import { ApiError, getApiBaseUrl } from '../src/services/api';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
+import { offlineReceiptStore } from '../src/services/offlineReceiptStore';
 import type { RepeatTransactionRequest } from '../src/utils/repeatTransaction';
 import { recurringBillsService } from '../src/services/recurringBills';
-import { dashboardCache, type DashboardCache } from '../src/services/dashboardCache';
+import {
+  dashboardCache,
+  type DashboardCache,
+} from '../src/services/dashboardCache';
 import { billOccurrences } from '../src/utils/recurringBills';
 
 jest.mock('../src/services/bankNotificationExtraction', () => ({
@@ -73,7 +77,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('../src/context/AuthContext', () => ({
   useAuth: () => ({
-    token: 'test-token',
+    token: 'session-token',
     user: mockUser,
     isOfflineSession: mockOfflineSession,
   }),
@@ -181,7 +185,7 @@ const draft = {
   type: 'EXPENSE',
   amount: 30000,
   currency: 'VND',
-  note: 'Test draft',
+  note: 'Bữa trưa',
   transaction_date: null,
   wallet_name: null,
   category_name: null,
@@ -204,7 +208,7 @@ const repeatSource: RepeatTransactionRequest['transaction'] = {
   currency: 'VND',
   displayAmount: 3,
   displayCurrency: 'USD',
-  note: 'Cà phê nhập lại QA',
+  note: 'Cà phê nhập lại',
   date: '2020-01-01',
   receiptImage: '/old.jpg',
   receiptItems: [{ name: 'Bạc xỉu (2)', amount: 94000 }],
@@ -269,19 +273,38 @@ beforeEach(async () => {
 it('keeps the fresh wallet list when a slower offline cache read finishes last', async () => {
   let finishCache!: (value: DashboardCache) => void;
   jest.spyOn(dashboardCache, 'read').mockImplementation(
-    () => new Promise(resolve => { finishCache = resolve; }),
+    () =>
+      new Promise(resolve => {
+        finishCache = resolve;
+      }),
   );
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   await act(async () => chat().onCreateTransaction!(draft as any));
   expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
 
-  await act(async () => finishCache({
-    server: getApiBaseUrl(),
-    wallets: [{ id: 99, user_id: 7, name: 'Ví cũ', currency: 'VND', wallet_type: 'CASH', balance: '1', created_at: '2026-01-01T00:00:00.000Z' }],
-    transactions: [], categories: [], tags: [], budgets: [], savingsGoals: [],
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  } as DashboardCache));
+  await act(async () =>
+    finishCache({
+      server: getApiBaseUrl(),
+      wallets: [
+        {
+          id: 99,
+          user_id: 7,
+          name: 'Ví cũ',
+          currency: 'VND',
+          wallet_type: 'CASH',
+          balance: '1',
+          created_at: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      transactions: [],
+      categories: [],
+      tags: [],
+      budgets: [],
+      savingsGoals: [],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    } as DashboardCache),
+  );
   expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
   expect(JSON.stringify(tree.toJSON())).not.toContain('Ví cũ');
 });
@@ -290,30 +313,45 @@ it('keeps transaction wallets when a separate dashboard request fails', async ()
   jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
   jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue(null);
   const saved = jest.spyOn(dashboardCache, 'saveReferences').mockResolvedValue({
-    server: getApiBaseUrl(), wallets: [], categories: [], updatedAt: '',
+    server: getApiBaseUrl(),
+    wallets: [],
+    categories: [],
+    updatedAt: '',
   });
-  jest.mocked(transactionsService.getAll).mockRejectedValueOnce(new Error('API failed'));
+  jest
+    .mocked(transactionsService.getAll)
+    .mockRejectedValueOnce(new Error('API failed'));
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   await act(async () => chat().onCreateTransaction!(draft as any));
   expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
-  expect(saved).toHaveBeenCalledWith(7, expect.arrayContaining([
-    expect.objectContaining({ name: 'Tiền mặt' }),
-  ]), []);
+  expect(saved).toHaveBeenCalledWith(
+    7,
+    expect.arrayContaining([expect.objectContaining({ name: 'Tiền mặt' })]),
+    [],
+  );
 });
 
 it('opens the transaction form with previously loaded reference wallets while offline', async () => {
   jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
   jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue({
     server: getApiBaseUrl(),
-    wallets: [{
-      id: 99, user_id: 7, name: 'Ví đã tải', currency: 'VND', balance: '100000',
-      created_at: '2026-11-16T00:00:00.000Z',
-    }],
+    wallets: [
+      {
+        id: 99,
+        user_id: 7,
+        name: 'Ví đã tải',
+        currency: 'VND',
+        balance: '100000',
+        created_at: '2026-11-16T00:00:00.000Z',
+      },
+    ],
     categories: [{ id: 4, name: 'Ăn uống', type: 'EXPENSE' }],
     updatedAt: '2026-11-16T00:00:00.000Z',
   });
-  jest.mocked(walletsService.getAll).mockRejectedValueOnce(new Error('offline'));
+  jest
+    .mocked(walletsService.getAll)
+    .mockRejectedValueOnce(new Error('offline'));
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   await act(async () => chat().onCreateTransaction!(draft as any));
@@ -324,19 +362,32 @@ it('opens the transaction form with previously loaded reference wallets while of
 it('does not show another account’s late wallet response', async () => {
   jest.spyOn(dashboardCache, 'read').mockResolvedValue(null);
   jest.spyOn(dashboardCache, 'readReferences').mockResolvedValue(null);
-  let finishOld!: (wallets: Awaited<ReturnType<typeof walletsService.getAll>>) => void;
+  let finishOld!: (
+    wallets: Awaited<ReturnType<typeof walletsService.getAll>>,
+  ) => void;
   jest.mocked(walletsService.getAll).mockImplementationOnce(
-    () => new Promise(resolve => { finishOld = resolve; }),
+    () =>
+      new Promise(resolve => {
+        finishOld = resolve;
+      }),
   );
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   mockUser = { id: 8, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   await act(async () => chat().onCreateTransaction!(draft as any));
-  await act(async () => finishOld([{
-    id: 99, user_id: 7, name: 'Ví tài khoản cũ', currency: 'VND', balance: '1',
-    created_at: '2026-11-16T00:00:00.000Z',
-  }]));
+  await act(async () =>
+    finishOld([
+      {
+        id: 99,
+        user_id: 7,
+        name: 'Ví tài khoản cũ',
+        currency: 'VND',
+        balance: '1',
+        created_at: '2026-11-16T00:00:00.000Z',
+      },
+    ]),
+  );
   expect(JSON.stringify(tree.toJSON())).toContain('Tiền mặt');
   expect(JSON.stringify(tree.toJSON())).not.toContain('Ví tài khoản cũ');
 });
@@ -400,7 +451,7 @@ it('keeps the existing draft when speech is cancelled and ignores late events', 
   expect(
     tree.root
       .findAllByType(TextInput)
-      .some(input => input.props.value === 'Test draft'),
+      .some(input => input.props.value === 'Bữa trưa'),
   ).toBe(true);
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
@@ -497,7 +548,7 @@ it('opens a fresh draft without old amount, note or receipt and does not save', 
   expect(
     tree.root
       .findAllByType(TextInput)
-      .some(input => input.props.value === 'Test draft'),
+      .some(input => input.props.value === 'Bữa trưa'),
   ).toBe(false);
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
@@ -626,8 +677,11 @@ it('attaches a receipt image without running AI', async () => {
   expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
 });
 
-it('keeps the form and image when an offline session cannot retain a receipt', async () => {
+it('keeps the form and image when storing an offline receipt fails', async () => {
   const enqueue = jest.spyOn(offlineTransactionQueue, 'enqueue');
+  jest
+    .spyOn(offlineReceiptStore, 'stage')
+    .mockRejectedValue(new Error('Không thể lưu ảnh hóa đơn trên máy.'));
   mockUser = { id: 7, currency_default: 'VND' };
   mockOfflineSession = true;
   await act(async () => tree.update(<MainScreen />));
@@ -662,16 +716,18 @@ it('keeps the form and image when an offline session cannot retain a receipt', a
   await act(async () => button('Lưu giao dịch').props.onPress());
 
   expect(Alert.alert).toHaveBeenCalledWith(
-    'Ảnh hóa đơn chưa lưu được offline',
-    expect.stringContaining('Hãy bỏ ảnh'),
+    'Chưa lưu được trên máy',
+    expect.stringContaining('Không thể lưu ảnh hóa đơn'),
   );
   expect(button('Đổi ảnh')).toBeTruthy();
-  expect(enqueue).not.toHaveBeenCalled();
+  expect(enqueue).toHaveBeenCalledTimes(1);
   expect(transactionsService.create).not.toHaveBeenCalled();
 });
 
-it('does not silently discard a receipt when the network fails during save', async () => {
-  const enqueue = jest.spyOn(offlineTransactionQueue, 'enqueue');
+it('keeps a receipt with the draft when the network fails during save', async () => {
+  const enqueue = jest
+    .spyOn(offlineTransactionQueue, 'enqueue')
+    .mockResolvedValue({ id: 'saved-on-device' } as never);
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   (launchImageLibrary as jest.Mock).mockResolvedValue({
@@ -679,7 +735,6 @@ it('does not silently discard a receipt when the network fails during save', asy
   });
   jest
     .mocked(transactionsService.create)
-    .mockRejectedValueOnce(new ApiError('Network request failed', 0))
     .mockRejectedValueOnce(new ApiError('Network request failed', 0));
   await act(async () =>
     chat().onCreateTransaction!({
@@ -703,18 +758,18 @@ it('does not silently discard a receipt when the network fails during save', asy
   await act(async () => button('Lưu giao dịch').props.onPress());
 
   expect(Alert.alert).toHaveBeenCalledWith(
-    'Chưa lưu giao dịch',
-    expect.stringContaining('Form và ảnh vẫn còn'),
+    'Đã giữ bản nháp ngoại tuyến',
+    expect.stringContaining('Giao dịch và ảnh đã lưu trên máy'),
   );
-  expect(button('Bỏ ảnh')).toBeTruthy();
-  expect(enqueue).not.toHaveBeenCalled();
-  await act(async () => button('Lưu giao dịch').props.onPress());
+  expect(draftVisible()).toBe(false);
+  expect(enqueue).toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ amount: '30000' }),
+    expect.objectContaining({ uri: 'file:///receipt-only.jpg' }),
+  );
   const attempts = jest.mocked(transactionsService.create).mock.calls;
-  expect(attempts).toHaveLength(2);
+  expect(attempts).toHaveLength(1);
   expect(attempts[0][1].client_request_id).toBeTruthy();
-  expect(attempts[1][1].client_request_id).toBe(
-    attempts[0][1].client_request_id,
-  );
 });
 
 it('cancelling the image picker does not create a transaction', async () => {
@@ -764,6 +819,8 @@ it('does not create a draft when the selected image has no valid receipt total',
 });
 
 it('submits once when Save is pressed twice before the response', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
   let finish!: (value: unknown) => void;
   (transactionsService.create as jest.Mock).mockImplementation(
     () =>
@@ -786,7 +843,7 @@ it('submits once when Save is pressed twice before the response', async () => {
   });
   expect(transactionsService.create).toHaveBeenCalledTimes(1);
   expect(transactionsService.create).toHaveBeenCalledWith(
-    'test-token',
+    'session-token',
     expect.objectContaining({
       wallet_id: 1,
       category_id: 4,
@@ -806,7 +863,7 @@ it('opens a scheduled bill in the ordinary expense form and writes only after re
   const scope = { userId: 7, server: getApiBaseUrl() };
   const date = '2026-11-03';
   await recurringBillsService.save(scope, {
-    label: 'Internet QA',
+    label: 'Internet gia đình',
     anchorDate: date,
     cycle: 'MONTHLY',
     kind: 'FIXED',
@@ -829,7 +886,9 @@ it('opens a scheduled bill in the ordinary expense form and writes only after re
   );
   expect(draftVisible()).toBe(true);
   expect(amount()).toBe('300.000');
-  expect(JSON.stringify(tree.toJSON())).not.toContain('Từ lịch Internet QA');
+  expect(JSON.stringify(tree.toJSON())).not.toContain(
+    'Từ lịch Internet gia đình',
+  );
   expect(JSON.stringify(tree.toJSON())).not.toContain(
     'Kiểm tra số tiền, ví và danh mục trước khi lưu.',
   );
@@ -857,7 +916,13 @@ it('opens a scheduled bill in the ordinary expense form and writes only after re
     currency: 'VND',
     type: 'EXPENSE',
     transaction_date: date,
-    note: 'Internet QA',
+    note: 'Internet gia đình',
+    category: {
+      id: 4,
+      name: 'Ăn uống',
+      type: 'EXPENSE',
+      cash_flow_group: 'NORMAL',
+    },
   });
   const confirm = jest
     .mocked(Alert.alert)
@@ -906,7 +971,7 @@ it('saves a bank notification with its source key and no conflicting client key'
   });
 
   expect(transactionsService.create).toHaveBeenCalledWith(
-    'test-token',
+    'session-token',
     expect.objectContaining({
       source: 'BANK_NOTIFICATION',
       source_ref: 'a'.repeat(64),
@@ -1096,6 +1161,8 @@ it('requires missing draft amount before saving', async () => {
 });
 
 it('blocks saving an OCR draft into a wallet with another currency', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
   (launchImageLibrary as jest.Mock).mockResolvedValue({
     assets: [{ uri: 'file:///receipt.jpg', type: 'image/jpeg' }],
   });
@@ -1168,6 +1235,8 @@ it('ignores OCR completion after cancelling the pending scan', async () => {
 });
 
 it('shows OCR line items and saves them with the transaction', async () => {
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
   (launchImageLibrary as jest.Mock).mockResolvedValue({
     assets: [{ uri: 'file:///detailed-receipt.jpg', type: 'image/jpeg' }],
   });
@@ -1216,7 +1285,7 @@ it('shows OCR line items and saves them with the transaction', async () => {
   });
 
   expect(transactionsService.create).toHaveBeenCalledWith(
-    'test-token',
+    'session-token',
     expect.objectContaining({
       amount: '80000',
       receipt_items: [
@@ -1365,6 +1434,8 @@ it.each([
 ] as const)(
   'keeps widget %s/category while scanning without attaching or uploading the photo',
   async (type, categoryId) => {
+    mockUser = { id: 7, currency_default: 'VND' };
+    await act(async () => tree.update(<MainScreen />));
     (launchCamera as jest.Mock).mockResolvedValue({
       assets: [{ uri: 'file:///widget-camera.jpg', type: 'image/jpeg' }],
     });
@@ -1400,7 +1471,7 @@ it.each([
     expect(transactionsService.create).not.toHaveBeenCalled();
     await act(async () => button('Lưu giao dịch').props.onPress());
     expect(transactionsService.create).toHaveBeenCalledWith(
-      'test-token',
+      'session-token',
       expect.objectContaining({
         type,
         category_id: categoryId,
@@ -1468,7 +1539,7 @@ it('prefills repeat for today, optional items and original money, then requires 
 it('keeps the same request key for a retry and ignores a second confirmation tap while saving', async () => {
   jest
     .mocked(transactionsService.create)
-    .mockRejectedValueOnce(new ApiError('Kiểm tra QA', 400));
+    .mockRejectedValueOnce(new ApiError('Giao dịch chưa hợp lệ', 400));
   await openRepeat();
   await act(async () => button('Lưu giao dịch').props.onPress());
   await act(async () => acceptRepeat()());
@@ -1508,6 +1579,7 @@ it('queues the confirmed repeat with the same key after network failure, without
   expect(enqueue).toHaveBeenCalledWith(
     7,
     jest.mocked(transactionsService.create).mock.calls[0][1],
+    null,
   );
   expect(draftVisible()).toBe(false);
 });

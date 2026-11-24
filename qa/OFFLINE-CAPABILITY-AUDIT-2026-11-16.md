@@ -39,3 +39,7 @@ Ca tiếp theo 20/11: bản nháp **đã thử gửi mà chưa biết kết qu�
 ## Điều chỉnh phạm vi được duyệt ngày 20/11/2026
 
 Người dùng đã duyệt mở rộng thêm/sửa/xóa offline cho Danh mục, Ví và các nhóm phù hợp sau khi phần giao dịch ổn định; khi có mạng lại phải đối chiếu, cho người dùng chọn bản giữ rồi báo khi lưu lên máy chủ thành công. Ảnh hóa đơn của giao dịch Chi đã qua QA Android; [biên bản ảnh](evidence/2026-11-20-offline-receipt/README.md). Danh mục và Ví đã qua luồng Android giả lập và backend QA; các nhóm còn lại chưa có hàng chờ ghi.
+
+## Kiểm tra mã 24/11/2026
+
+Bộ Jest mobile đạt 114/114 bộ, 745/745 ca sau khi cập nhật dữ liệu dựng kiểm thử theo phiên có ID tài khoản, cache độc lập và luồng ảnh hóa đơn offline hiện tại; TypeScript và ESLint file sửa đạt. Đây là kiểm tra mã, **không phải xác nhận trên điện thoại thật**. ADB chưa thấy thiết bị, nên chưa có ảnh chụp hoặc lượt thử Ngân sách mất mạng/nối lại ngoài đời thực.
