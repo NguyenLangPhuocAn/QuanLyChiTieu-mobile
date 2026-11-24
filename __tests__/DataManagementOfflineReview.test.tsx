@@ -7,6 +7,8 @@ import { homeWidget } from '../src/native/homeWidget';
 import { offlineTransactionQueue } from '../src/services/offlineTransactionQueue';
 import { offlineTransactionChanges } from '../src/services/offlineTransactionChanges';
 import { offlineBudgetQueue } from '../src/services/offlineBudgetQueue';
+import { offlineSavingsGoalQueue } from '../src/services/offlineSavingsGoalQueue';
+import { savingsService } from '../src/services/savings';
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn() }),
@@ -54,6 +56,19 @@ jest.mock('../src/services/offlineBudgetQueue', () => ({
     discard: jest.fn(),
   },
 }));
+jest.mock('../src/services/offlineSavingsGoalQueue', () => ({
+  offlineSavingsGoalQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    sync: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    discard: jest.fn(),
+  },
+}));
+jest.mock('../src/services/savings', () => ({
+  savingsService: { getAll: jest.fn() },
+}));
 jest.mock('../src/services/financeRefresh', () => ({
   financeRefresh: { emit: jest.fn() },
 }));
@@ -69,7 +84,7 @@ const draft = {
     type: 'EXPENSE',
     wallet_id: 2,
     amount: '4157',
-    note: 'QA_offline_19_Nov',
+    note: 'Mua đồ ăn sáng',
     client_request_id: 'txn_manual_1',
   },
 };
@@ -107,6 +122,15 @@ beforeEach(() => {
   jest.mocked(offlineBudgetQueue.list).mockResolvedValue([]);
   jest.mocked(offlineBudgetQueue.preview).mockResolvedValue([]);
   jest.mocked(offlineBudgetQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(offlineSavingsGoalQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineSavingsGoalQueue.preview).mockResolvedValue([]);
+  jest.mocked(offlineSavingsGoalQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(offlineSavingsGoalQueue.rebaseReviewed).mockResolvedValue([]);
+  jest
+    .mocked(offlineSavingsGoalQueue.sync)
+    .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(offlineSavingsGoalQueue.discard).mockResolvedValue(undefined);
+  jest.mocked(savingsService.getAll).mockResolvedValue([]);
 });
 
 it('lets the user review a budget even when no transaction is waiting', async () => {
@@ -142,6 +166,49 @@ it('lets the user review a budget even when no transaction is waiting', async ()
   await act(async () => {
     review().props.onChoose('later');
   });
+});
+it('shows a savings goal edit before manually syncing it', async () => {
+  const pending = {
+    id: 4,
+    revision: 1,
+    attempts: 0,
+    status: 'PENDING' as const,
+    updatedAt: '2026-11-24T05:00:00.000Z',
+    base: {
+      name: 'Quỹ dự phòng',
+      target_amount: '2000000.00',
+      target_date: null,
+      note: null,
+      status: 'ACTIVE' as const,
+    },
+    payload: {
+      name: 'Quỹ gia đình',
+      target_amount: '3000000',
+      target_date: null,
+      note: 'Sinh hoạt',
+    },
+  };
+  jest.mocked(offlineTransactionQueue.list).mockResolvedValue([]);
+  jest.mocked(offlineSavingsGoalQueue.list).mockResolvedValue([pending]);
+  jest
+    .mocked(offlineSavingsGoalQueue.preview)
+    .mockResolvedValue([{ id: 4, revision: 1 }]);
+  jest
+    .mocked(offlineSavingsGoalQueue.rebaseReviewed)
+    .mockResolvedValue([{ id: 4, revision: 1 }]);
+  await act(async () => {
+    renderer = TestRenderer.create(<DataManagementScreen />);
+  });
+  await openReview();
+  expect(review().props.review.savingsGoals).toEqual([pending]);
+  expect(offlineSavingsGoalQueue.sync).not.toHaveBeenCalled();
+  await act(async () => review().props.onChoose('local'));
+  expect(offlineSavingsGoalQueue.sync).toHaveBeenCalledWith(
+    'qa',
+    9,
+    [{ id: 4, revision: 1 }],
+    expect.any(Function),
+  );
 });
 afterEach(async () => {
   if (renderer) await act(() => renderer!.unmount());

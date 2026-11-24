@@ -11,6 +11,19 @@ export type SavingsGoalPayload = {
   currency?: string;
 };
 
+export type SavingsGoalExpected = {
+  name: string;
+  target_amount: string;
+  target_date: string | null;
+  note: string | null;
+  status: SavingsGoal['status'];
+};
+
+export type SavingsGoalUpdate = Pick<
+  SavingsGoalPayload,
+  'name' | 'target_amount' | 'target_date' | 'note'
+>;
+
 export const savingsService = {
   getAll(token: string) {
     return apiRequest<SavingsGoal[]>('/savings-goals', {
@@ -37,12 +50,9 @@ export const savingsService = {
   update(
     token: string,
     id: number,
-    payload: Partial<
-      Pick<
-        SavingsGoalPayload,
-        'name' | 'target_amount' | 'target_date' | 'note'
-      >
-    >,
+    payload: Partial<SavingsGoalUpdate> & {
+      offline_expected?: SavingsGoalExpected;
+    },
   ) {
     return apiRequest<SavingsGoal>(`/savings-goals/${id}`, {
       method: 'PUT',

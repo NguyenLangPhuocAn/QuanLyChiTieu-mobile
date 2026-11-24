@@ -10,6 +10,8 @@ import {
 import { financeRefresh } from '../src/services/financeRefresh';
 import { offlineTransactionChanges as changes } from '../src/services/offlineTransactionChanges';
 import { offlineBudgetQueue as budgetQueue } from '../src/services/offlineBudgetQueue';
+import { offlineSavingsGoalQueue as savingsQueue } from '../src/services/offlineSavingsGoalQueue';
+import { savingsService } from '../src/services/savings';
 
 const mockRetry = jest.fn();
 let mockUserId = 9;
@@ -57,6 +59,19 @@ jest.mock('../src/services/offlineBudgetQueue', () => ({
     sync: jest.fn(),
     discard: jest.fn(),
   },
+}));
+jest.mock('../src/services/offlineSavingsGoalQueue', () => ({
+  offlineSavingsGoalQueue: {
+    list: jest.fn(),
+    preview: jest.fn(),
+    subscribe: jest.fn(),
+    rebaseReviewed: jest.fn(),
+    sync: jest.fn(),
+    discard: jest.fn(),
+  },
+}));
+jest.mock('../src/services/savings', () => ({
+  savingsService: { getAll: jest.fn() },
 }));
 
 const draft = {
@@ -132,6 +147,15 @@ beforeEach(() => {
     .mocked(budgetQueue.sync)
     .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
   jest.mocked(budgetQueue.discard).mockResolvedValue(undefined);
+  jest.mocked(savingsQueue.list).mockResolvedValue([]);
+  jest.mocked(savingsQueue.preview).mockResolvedValue([]);
+  jest.mocked(savingsQueue.subscribe).mockReturnValue(jest.fn());
+  jest.mocked(savingsQueue.rebaseReviewed).mockResolvedValue([]);
+  jest
+    .mocked(savingsQueue.sync)
+    .mockResolvedValue({ synced: 0, pending: 0, needsReview: 0 });
+  jest.mocked(savingsQueue.discard).mockResolvedValue(undefined);
+  jest.mocked(savingsService.getAll).mockResolvedValue([]);
   mockRetry.mockResolvedValue(true);
 });
 afterEach(async () => {
@@ -193,6 +217,45 @@ it('shows a pending budget and waits for the user before syncing it', async () =
     pressReview('Dùng thay đổi trên máy');
   });
   expect(budgetQueue.sync).toHaveBeenCalledTimes(1);
+});
+
+it('shows a saved goal edit and waits for the local choice', async () => {
+  const pending = {
+    id: 4,
+    revision: 1,
+    attempts: 0,
+    status: 'PENDING' as const,
+    updatedAt: '2026-11-24T05:00:00.000Z',
+    base: {
+      name: 'Quỹ dự phòng',
+      target_amount: '2000000.00',
+      target_date: null,
+      note: null,
+      status: 'ACTIVE' as const,
+    },
+    payload: {
+      name: 'Quỹ gia đình',
+      target_amount: '3000000',
+      target_date: null,
+      note: 'Sinh hoạt',
+    },
+  };
+  jest.mocked(savingsQueue.list).mockResolvedValue([pending]);
+  jest.mocked(savingsQueue.preview).mockResolvedValue([{ id: 4, revision: 1 }]);
+  jest
+    .mocked(savingsQueue.rebaseReviewed)
+    .mockResolvedValue([{ id: 4, revision: 1 }]);
+  await act(async () => {
+    renderer = TestRenderer.create(<OfflineSessionSync />);
+  });
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Sửa mục tiêu tiết kiệm'),
+  ).toBe(true);
+  expect(savingsQueue.sync).not.toHaveBeenCalled();
+  await act(async () => pressReview('Dùng thay đổi trên máy'));
+  expect(savingsQueue.sync).toHaveBeenCalledTimes(1);
 });
 
 it('waits for an explicit local choice before sending any money to the server', async () => {

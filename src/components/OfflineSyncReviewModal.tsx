@@ -14,6 +14,8 @@ import type { Wallet } from '../types/wallet';
 import type { Category } from '../types/category';
 import type { Budget } from '../types/budget';
 import type { OfflineBudgetChange } from '../services/offlineBudgetQueue';
+import type { OfflineSavingsGoalChange } from '../services/offlineSavingsGoalQueue';
+import type { SavingsGoal } from '../types/savings';
 import type {
   OfflineTransactionChange,
   TransactionSnapshot,
@@ -28,6 +30,8 @@ export type OfflineSyncReview = {
   remoteWallets?: Record<number, Wallet | null>;
   budgets?: OfflineBudgetChange[];
   remoteBudgets?: Record<number, Budget | null>;
+  savingsGoals?: OfflineSavingsGoalChange[];
+  remoteSavingsGoals?: Record<number, SavingsGoal | null>;
   remote: Record<number, TransactionSnapshot | null>;
 };
 
@@ -64,6 +68,28 @@ export default function OfflineSyncReviewModal({
             style={styles.list}
             contentContainerStyle={styles.listContent}
           >
+            {review?.savingsGoals?.map(item => (
+              <View key={`savings-${item.id}`} style={styles.row}>
+                <Text style={styles.rowTitle}>Sửa mục tiêu tiết kiệm</Text>
+                <Text style={styles.local}>
+                  Trên máy: {item.payload.name} ·{' '}
+                  {Number(item.payload.target_amount).toLocaleString('vi-VN')}
+                </Text>
+                <Text style={styles.remote}>
+                  Máy chủ:{' '}
+                  {review.remoteSavingsGoals?.[item.id]
+                    ? `${review.remoteSavingsGoals[item.id]?.name} · ${Number(
+                        review.remoteSavingsGoals[item.id]?.target_amount,
+                      ).toLocaleString('vi-VN')}`
+                    : 'Không còn mục tiêu'}
+                </Text>
+                {item.status === 'NEEDS_REVIEW' ? (
+                  <Text style={styles.warning}>
+                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
             {review?.budgets?.map(item => (
               <View key={`budget-${item.id}`} style={styles.row}>
                 <Text style={styles.rowTitle}>
