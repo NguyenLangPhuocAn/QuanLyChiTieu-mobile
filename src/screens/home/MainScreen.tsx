@@ -222,6 +222,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   const repeatReviewEpoch = useRef(0);
   const lastRepeatEvent = useRef('');
   const latestRepeatSave = useRef<(reviewed: string) => void>(() => undefined);
+  const latestStandardSave = useRef<(reviewed: string) => void>(() => undefined);
   const repeatScope = useRef({ userId: user?.id, server });
   repeatScope.current = { userId: user?.id, server };
   useEffect(() => {
@@ -2062,6 +2063,52 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
           return;
         }
       }
+      if (!repeatDraft) {
+        const fingerprint = JSON.stringify({
+          userId: user?.id,
+          server,
+          payload: createPayload,
+          receiptFile,
+        });
+        if (reviewed && reviewed !== fingerprint) {
+          Alert.alert(
+            'Thông tin đã thay đổi',
+            'Hãy kiểm tra lại giao dịch trước khi lưu.',
+          );
+          return;
+        }
+        if (!reviewed) {
+          const epoch = repeatReviewEpoch.current;
+          const scope = { userId: user?.id, server };
+          Alert.alert(
+            'Kiểm tra giao dịch',
+            `${transactionType === 'income' ? 'Thu +' : 'Chi -'}${formatCurrency(
+              amount,
+              selectedWallet.currency,
+            )}\n${selectedWallet.name} · ${
+              selectedTransactionCategory.name
+            }\n${formatShortDate(transactionDate.toISOString())}${
+              transactionNote.trim() ? `\n${transactionNote.trim()}` : ''
+            }${receiptFile ? '\nCó ảnh hóa đơn' : ''}\nNếu mất mạng, giao dịch sẽ chờ bạn xác nhận đồng bộ.`,
+            [
+              { text: 'Sửa lại', style: 'cancel' },
+              {
+                text: 'Xác nhận lưu',
+                onPress: () => {
+                  if (
+                    repeatReviewEpoch.current !== epoch ||
+                    repeatScope.current.userId !== scope.userId ||
+                    repeatScope.current.server !== scope.server
+                  )
+                    return;
+                  latestStandardSave.current(fingerprint);
+                },
+              },
+            ],
+          );
+          return;
+        }
+      }
       let createdTransaction;
       try {
         if (isOfflineSession) throw new Error('LOCAL_OFFLINE_SESSION');
@@ -2182,6 +2229,8 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
       }
     });
   latestRepeatSave.current = reviewed =>
+    saveTransaction(reviewed).catch(() => undefined);
+  latestStandardSave.current = reviewed =>
     saveTransaction(reviewed).catch(() => undefined);
   latestBillSave.current = reviewed =>
     saveTransaction(reviewed).catch(() => undefined);

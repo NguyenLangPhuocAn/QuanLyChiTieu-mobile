@@ -1,10 +1,10 @@
 # Ma trận và thứ tự hoàn thiện offline — 16/11/2026
 
-Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. Không đồng nghĩa thêm, sửa, xóa hay đồng bộ ngoại tuyến. Bằng chứng: [QA Android đợt 2 ngày 16/11](evidence/2026-11-16-offline-wave2/README.md), [QA Android đợt 1](evidence/2026-11-16-offline-audit/README.md); Thu/Chi sửa/xóa/xung đột: [QA 13/11](evidence/2026-11-13-offline-transactions/README.md). Bản debug qua Metro **không khởi động được khi tắt Wi-Fi/dữ liệu**; chưa được tính là đạt cold start standalone.
+Mức “xem” chỉ có nghĩa đọc dữ liệu đã tải/lưu trên máy. Không đồng nghĩa thêm, sửa, xóa hay đồng bộ ngoại tuyến. Bằng chứng: [QA Android đợt 2 ngày 16/11](evidence/2026-11-16-offline-wave2/README.md), [QA Android đợt 1](evidence/2026-11-16-offline-audit/README.md); Thu/Chi sửa/xóa/xung đột: [QA 13/11](evidence/2026-11-13-offline-transactions/README.md). Bản debug qua Metro ở đợt đầu không khởi động được khi tắt radio; đợt 25/11 đã thử riêng bản debug local nhúng JS và mở lại được trên giả lập khi tắt cả Wi-Fi/dữ liệu di động. Điện thoại thật vẫn chưa được xác nhận.
 
 | Nhóm | Xem | Thêm | Sửa | Xóa | Đồng bộ và giới hạn |
 | --- | --- | --- | --- | --- | --- |
-| Giao dịch Thu/Chi trong app | Cache + hàng chờ | Hàng chờ, xem trước; ảnh được giữ trong bộ nhớ riêng của app | Hàng chờ, xem trước | Hàng chờ, xác nhận | Chọn bản máy/server/để sau; server kiểm tra bản gốc và mã chống trùng. Ảnh được kiểm tra hash và loại tệp trước khi gửi; chỉ xóa bản máy khi server xác nhận. [QA ảnh Android 20/11](evidence/2026-11-20-offline-receipt/README.md). Bản debug vẫn cần Metro; chưa lặp toàn luồng trên điện thoại thật. |
+| Giao dịch Thu/Chi trong app | Cache + hàng chờ | Hàng chờ, xem trước; ảnh được giữ trong bộ nhớ riêng của app | Hàng chờ, xem trước | Hàng chờ, xác nhận | Chọn bản máy/server/để sau; server kiểm tra bản gốc và mã chống trùng. Ảnh được kiểm tra hash và loại tệp trước khi gửi; chỉ xóa bản máy khi server xác nhận. [QA ảnh Android 20/11](evidence/2026-11-20-offline-receipt/README.md), [cold start/ảnh 25/11](evidence/2026-11-25-offline-receipt-standalone/README.md), [xem trước 25/11](evidence/2026-11-25-offline-preview-standalone/README.md). Chưa lặp toàn luồng trên điện thoại thật. |
 | Lịch sử và Tìm giao dịch | Tìm/lọc trên giao dịch đã tải: ghi chú, ngày, ví, danh mục, Thu/Chi; hiện thời điểm và cảnh báo phạm vi | Theo luồng Thu/Chi | Theo luồng Thu/Chi | Theo luồng Thu/Chi | Android emulator khi radio tắt đã lọc nhóm Chi và ghi chú QA từ 3 giao dịch cache, còn 1 kết quả. Không tự xem cache là toàn bộ server. |
 | Thống kê và báo cáo | Tính từ giao dịch trong phiên/cache; ghi thời điểm và cảnh báo thiếu/cũ; không hiện số 0 khi phiên offline chưa có cache | Không áp dụng | Không áp dụng | Không áp dụng | Ca mã xác nhận offline không gọi API thống kê. Xuất/gửi báo cáo vẫn cần API; chưa chụp màn Android với mã mới. |
 | Chi an toàn hôm nay | Lịch tiền tính từ ví cache, lịch và khoản chờ; hiện thời điểm, cảnh báo cache cũ; Trung tâm tài chính không hiện số khi thiếu ví cache | Không ghi tiền | Không áp dụng | Không áp dụng | Cảnh báo sau 24 giờ hoặc thời điểm không rõ; vẫn chỉ là ước tính, có thể thiếu giao dịch chưa tải. Ca màn Lịch tiền qua, chưa chụp Android với mã mới. |
@@ -32,13 +32,17 @@ Ca tiếp theo 20/11: bản nháp **đã thử gửi mà chưa biết kết qu�
 
 ## Thứ tự tiếp theo
 
-1. Khép bài thử Thu/Chi trên điện thoại thật: tắt Wi-Fi/4G, khởi động lạnh bản standalone, tạo/sửa/xóa trong app và widget, đổi tài khoản và xung đột. Ca gửi lại sau khi server đã ghi đã đạt trên emulator QA, vẫn cần lặp trên thiết bị thật. Kiểm ảnh form sau đóng/mở. Chỉ thử bản standalone khi người dùng chốt cập nhật; hiện không build APK.
+1. Khép bài thử Thu/Chi trên điện thoại thật: tắt Wi-Fi/4G, khởi động lạnh, tạo/sửa/xóa trong app và widget, đổi tài khoản và xung đột. Ca gửi lại sau khi server đã ghi và ca ảnh offline đã đạt trên giả lập, vẫn cần lặp trên thiết bị thật. Bản debug local nhúng JS đã được dựng để thử giả lập; chưa ký/phát hành APK cho người dùng.
 2. Ưu tiên dữ liệu cần để nhập Thu/Chi: tài khoản đăng nhập đã xác thực, ví, danh mục và quy tắc thông minh phải đọc được bản đã tải trên máy khi API ngắt; kiểm tra đổi tài khoản và thiếu cache. Người dùng tự chọn tạo các mục phụ thuộc khi muốn, app không tự sinh mục mới để hoàn thành giao dịch.
 3. Thu/Chi, Danh mục, Ví và Ngân sách có hàng chờ ghi trong mã hiện tại; các thay đổi backend tương ứng cùng migration cần triển khai production trong đợt phát hành được chốt. Ngân sách mới chỉ qua kiểm thử mã, chưa qua điện thoại thật. Các nhóm kế hoạch khác chưa có hàng chờ ghi. Ví/Danh mục mới phải đồng bộ trước khi dùng cho Ngân sách; thay đổi số dư Ví offline vẫn bị chặn.
 
 ## Điều chỉnh phạm vi được duyệt ngày 20/11/2026
 
 Người dùng đã duyệt mở rộng thêm/sửa/xóa offline cho Danh mục, Ví và các nhóm phù hợp sau khi phần giao dịch ổn định; khi có mạng lại phải đối chiếu, cho người dùng chọn bản giữ rồi báo khi lưu lên máy chủ thành công. Ảnh hóa đơn của giao dịch Chi đã qua QA Android; [biên bản ảnh](evidence/2026-11-20-offline-receipt/README.md). Danh mục và Ví đã qua luồng Android giả lập và backend QA; các nhóm còn lại chưa có hàng chờ ghi.
+
+## Kiểm tra Android standalone 25/11/2026
+
+Giả lập Android API 33 chạy app debug local có JS bundle nhúng. Đã tắt Wi-Fi/dữ liệu di động, force-stop rồi mở lại app **không cần Metro**, tạo Chi và giữ ảnh hóa đơn qua lần mở lại. Sau khi nối API QA, màn so sánh cho chọn bản máy/chủ/để sau; chọn bản máy tạo đúng một giao dịch Chi 18.000đ kèm ảnh PNG và giảm ví một lần. Bản đầu lượt thử thiếu xác nhận trước khi lưu Thu/Chi; đã thêm hộp xem trước và kiểm tra lại trên giả lập với khoản Chi 7.000đ: hủy không ghi, xác nhận mới giữ bản nháp, nối mạng mới ghi một lần sau khi chọn bản máy. [Ảnh và biên bản ảnh hóa đơn](evidence/2026-11-25-offline-receipt-standalone/README.md), [ảnh và biên bản xem trước](evidence/2026-11-25-offline-preview-standalone/README.md). Đây là giả lập; điện thoại thật, xung đột thiết bị khác và luồng ảnh với hộp xác nhận mới chưa lặp cùng một ca Android.
 
 ## Kiểm tra mã 24/11/2026
 

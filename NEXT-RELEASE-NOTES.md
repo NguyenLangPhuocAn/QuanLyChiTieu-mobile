@@ -2,6 +2,9 @@
 
 Sau [bản 1.2.9](RELEASE-1.2.9.md):
 
+- Form Thu/Chi thường nay hiện số tiền, ví, danh mục, ngày, ghi chú và trạng thái ảnh để người dùng xác nhận trước khi lưu, kể cả khi offline. Đổi số tiền sau khi mở hộp xem trước sẽ buộc xem lại; nút xác nhận cũ không ghi giao dịch đã đổi. Trên giả lập Android tắt cả Wi-Fi/dữ liệu di động, bấm sửa lại không ghi tiền; xác nhận giữ bản nháp, mở lại app offline vẫn còn và chỉ khi chọn dùng bản máy sau nối API mới ghi đúng một khoản Chi 7.000đ. [Ảnh và bước thử](qa/evidence/2026-11-25-offline-preview-standalone/README.md).
+- Ảnh hóa đơn đã chọn được giữ trong app qua force-stop offline và gửi kèm giao dịch sau khi người dùng chọn bản máy: ca Android với ảnh tự tạo 18.000đ tạo đúng một giao dịch và giảm ví một lần. [Ảnh và bước thử](qa/evidence/2026-11-25-offline-receipt-standalone/README.md). Chưa lặp ca ảnh trên điện thoại thật.
+
 - Đồng bộ giao dịch từ trang Dữ liệu nay mở màn xem từng khoản Thu/Chi đang chờ, cho chọn dùng bản máy, giữ bản máy chủ hoặc để sau. Bỏ bản máy vẫn cần xác nhận thêm. Phiên đối chiếu tự động không hỏi lại hàng chờ đã được đồng bộ thủ công.
 - Android QA khi ngắt API: tài khoản, ví, danh mục đã tải vẫn dùng được trong form Thu/Chi; hai bản nháp Chi 4.157 đ và 2.391 đ còn sau khởi động lại và mỗi khoản chỉ ghi một lần lên database QA khi nối lại. [Ảnh và biên bản](qa/evidence/2026-11-19-offline-reference/README.md). 47/47 ca tập trung, TypeScript và ESLint đạt. Bản debug vẫn cần Metro; chưa thử cold start không Wi-Fi/4G trên APK độc lập, chưa phát hành bản mới.
 - Lịch tiền: khoản dự kiến do người dùng tự nhập có thể sửa trực tiếp, xem trước rồi mới lưu; app từ chối bản sửa cũ nếu khoản đã đổi. Đã thử thêm/sửa/xóa và giữ bản sửa sau khi đóng mở app QA lúc API ngắt. Bỏ khối sao lưu lịch ở cuối màn. [Ảnh và giới hạn](qa/evidence/2026-11-16-offline-wave2/README.md). Đây không phải giao dịch thực.
