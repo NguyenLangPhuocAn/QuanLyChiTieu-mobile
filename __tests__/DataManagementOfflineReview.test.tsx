@@ -305,7 +305,7 @@ it('shows the actual offline transaction before manual sync and lets the user de
       .findAllByType(Text)
       .some(node =>
         String(node.props.children).includes(
-          'Máy chủ: Chưa xác định đã nhận khoản này',
+          'Máy chủ: Chưa gửi giao dịch',
         ),
       ),
   ).toBe(true);
@@ -351,6 +351,17 @@ it('warns before editing or removing a payment whose server result is unknown', 
   await act(async () => {
     renderer = TestRenderer.create(<DataManagementScreen />);
   });
+  await openReview();
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node =>
+        String(node.props.children).includes(
+          'Máy chủ: Chưa xác định đã nhận khoản này',
+        ),
+      ),
+  ).toBe(true);
+  await act(async () => review().props.onChoose('later'));
   expect(
     renderer!.root
       .findAllByType(Text)

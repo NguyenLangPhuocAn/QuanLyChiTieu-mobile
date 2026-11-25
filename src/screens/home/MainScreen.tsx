@@ -657,19 +657,25 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
   useEffect(() => {
     if (
       !isChatDraft &&
+      transactionEntryType !== 'LOAN_DEBT' &&
       (!selectedTransactionCategory ||
+        selectedTransactionCategory.type !== transactionEntryType ||
         !normalTransactionCategories.some(
           category => category.id === selectedTransactionCategory.id,
-        )) &&
-      normalTransactionCategories.length > 0
+        ))
     ) {
-      setSelectedTransactionCategory(normalTransactionCategories[0]);
+      const nextCategory = normalTransactionCategories.find(
+        category => category.type === transactionEntryType,
+      );
+      if (nextCategory || selectedTransactionCategory)
+        setSelectedTransactionCategory(nextCategory ?? null);
     }
   }, [
     normalTransactionCategories,
     selectedTransactionCategory,
     setSelectedTransactionCategory,
     isChatDraft,
+    transactionEntryType,
   ]);
 
   useEffect(() => {
@@ -747,10 +753,7 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
     chatDraftCurrency ??
     user?.currency_default ??
     'VND';
-  const selectedTransactionType =
-    transactionEntryType === 'LOAN_DEBT'
-      ? 'LOAN_DEBT'
-      : selectedTransactionCategory?.type ?? transactionEntryType;
+  const selectedTransactionType = transactionEntryType;
   const hashtagChoices = useMemo(() => {
     const counter = new Map<string, number>();
 
@@ -3259,7 +3262,12 @@ const MainScreen = ({ route }: Partial<MainScreenProps>) => {
               );
             })}
 
-            <TouchableOpacity style={styles.fab} onPress={openTransactionModal}>
+            <TouchableOpacity
+              style={styles.fab}
+              accessibilityRole="button"
+              accessibilityLabel="Thêm giao dịch"
+              onPress={openTransactionModal}
+            >
               <Plus size={28} color={Colors.white} />
             </TouchableOpacity>
 

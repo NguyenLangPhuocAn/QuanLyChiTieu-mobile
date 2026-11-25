@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import type { OfflineTransactionDraft } from '../services/offlineTransactionQueue';
+import {
+  mayHaveReachedServer,
+  type OfflineTransactionDraft,
+} from '../services/offlineTransactionQueue';
 import type { OfflineCategoryChange } from '../services/offlineCategoryQueue';
 import type { OfflineWalletChange } from '../services/offlineWalletQueue';
 import type { Wallet } from '../types/wallet';
@@ -280,7 +283,11 @@ export default function OfflineSyncReviewModal({
                 <Text style={styles.remote}>
                   {item.confirmedTransactionId
                     ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
-                    : 'Máy chủ: Chưa xác định đã nhận khoản này'}
+                    : mayHaveReachedServer(item)
+                      ? 'Máy chủ: Chưa xác định đã nhận khoản này'
+                      : item.rejectedByServer
+                        ? 'Máy chủ: Đã từ chối; chưa ghi giao dịch'
+                        : 'Máy chủ: Chưa gửi giao dịch'}
                 </Text>
                 {item.receipt ? (
                   <Text style={styles.remote}>

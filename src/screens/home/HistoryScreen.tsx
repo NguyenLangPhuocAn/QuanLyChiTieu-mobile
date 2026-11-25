@@ -78,6 +78,7 @@ import {
   type TransactionChangePayload,
 } from '../../services/offlineTransactionChanges';
 import { financeRefresh } from '../../services/financeRefresh';
+import { homeWidget } from '../../native/homeWidget';
 
 type HistoryScreenProps = {
   wallets?: Wallet[];
@@ -872,7 +873,12 @@ const HistoryScreen = ({
       const pendingChange = offlineChanges.some(
         item => item.transactionId === transactionId,
       );
-      if (isOfflineSession || cachedView || pendingChange) {
+      const offline =
+        isOfflineSession ||
+        !!cachedView ||
+        pendingChange ||
+        !(await homeWidget.connected().catch(() => false));
+      if (offline) {
         if (editReceiptFile) {
           Alert.alert(
             'Ảnh chưa lưu được offline',
@@ -983,7 +989,7 @@ const HistoryScreen = ({
       }
     });
 
-  const handleDeleteTransaction = () => {
+  const handleDeleteTransaction = async () => {
     if (!selectedTransaction) {
       return;
     }
@@ -998,7 +1004,12 @@ const HistoryScreen = ({
     const pendingChange = offlineChanges.some(
       item => item.transactionId === transactionId,
     );
-    if (isOfflineSession || cachedView || pendingChange) {
+    const offline =
+      isOfflineSession ||
+      !!cachedView ||
+      pendingChange ||
+      !(await homeWidget.connected().catch(() => false));
+    if (offline) {
       if (!user?.id) return;
       Alert.alert(
         'Xóa giao dịch trên máy?',
@@ -1727,6 +1738,8 @@ const HistoryScreen = ({
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.deleteButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Xóa giao dịch đang sửa"
                   onPress={handleDeleteTransaction}
                   disabled={isSaving}
                 >

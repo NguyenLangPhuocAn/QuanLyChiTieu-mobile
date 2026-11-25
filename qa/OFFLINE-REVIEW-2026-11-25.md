@@ -30,6 +30,16 @@
 - Build **debug tách riêng** với `QA_ISOLATED_APP=true` thành công; không ký/phát hành bản production.
 - Bốn lượt thử trên hai cấu hình Android emulator không hoàn tất boot/ADB package service, kể cả khi giảm còn hai CPU và không chạy Gradle. Không cài app, thao tác UI, chụp ảnh hay tuyên bố Android đã đạt trong lượt này. Tiến trình emulator và Metro/API QA local đã được dừng; server production không đổi.
 
+## Bổ sung kiểm thử Android giả lập thành công — 25/11/2026
+
+Lượt thử sau đã dùng AVD `NovaOffline33` với bản debug local nhúng JS; các lượt không boot phía trên vẫn là kết quả của **cấu hình giả lập trước**, không còn mô tả toàn bộ ngày. Biên bản và ảnh gốc: [offline-flow](evidence/2026-11-25-offline-flow/README.md).
+
+- Thu/Chi: tắt cả Wi-Fi/di động, force-stop/mở lại, tạo Chi 12.000đ, thấy hàng chờ còn sau khởi động; nối mạng tự hiện đối chiếu, chọn bản máy và database QA có một giao dịch, số dư giảm một lần. Tạo Thu 5.000đ rồi chọn giữ server; bản máy được bỏ sau xác nhận, server không ghi khoản Thu.
+- Phát hiện lỗi danh mục cache chỉ có Chi khiến form Thu tự trở lại Chi; đã sửa để lựa chọn Thu giữ nguyên, không chọn nhầm danh mục Chi. Phát hiện lỗi sửa/xóa giao dịch khi mạng ngắt giữa phiên online; đã kiểm tra kết nối tại lúc bấm, hiển thị xem trước và giữ thay đổi trên máy. Sửa 12.000đ thành 13.000đ rồi đồng bộ: database QA còn đúng một giao dịch -13.000đ, số dư đổi đúng 1.000đ. Xóa offline còn sau force-stop; chọn giữ bản server, giao dịch và số dư không đổi.
+- Sửa câu trong hộp đối chiếu: nháp chưa từng gửi ghi “Chưa gửi giao dịch”; chỉ trường hợp đã gửi nhưng mất phản hồi mới ghi chưa xác định server đã nhận.
+- Jest ba bộ màn liên quan: 55 ca đạt sau khi sửa mock của ca thử xóa; `tsc --noEmit`, ESLint sáu file và build debug tách riêng đạt. Chưa phát hành APK.
+- Giới hạn: đây là giả lập và database QA, chưa phải điện thoại thật; chưa thử xung đột thiết bị thứ hai, đổi tài khoản, widget có ảnh, hoặc mất phản hồi sau khi server đã ghi.
+
 ## Ca cần chạy tiếp trên thiết bị
 
 - Mỗi nhóm ghi: mất mạng trước xác nhận, mất phản hồi sau khi server ghi, force-stop/mở lại, đổi tài khoản, hai bản cùng sửa, chọn máy/chủ/để sau, thử gửi lại và kiểm database không trùng.

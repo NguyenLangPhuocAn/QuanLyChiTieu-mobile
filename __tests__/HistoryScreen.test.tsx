@@ -7,6 +7,8 @@ import type { ApiTransaction } from '../src/types/transaction';
 import type { Wallet } from '../src/types/wallet';
 import type { Category } from '../src/types/category';
 import { launchImageLibrary } from 'react-native-image-picker';
+import { homeWidget } from '../src/native/homeWidget';
+import { offlineTransactionChanges } from '../src/services/offlineTransactionChanges';
 
 jest.setTimeout(15_000);
 
@@ -17,8 +19,18 @@ jest.mock('@react-navigation/native', () => ({
   },
 }));
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
+jest.mock('../src/native/homeWidget', () => ({
+  homeWidget: { connected: jest.fn().mockResolvedValue(true) },
+}));
+jest.mock('../src/services/offlineTransactionChanges', () => ({
+  offlineTransactionChanges: {
+    list: jest.fn().mockResolvedValue([]),
+    apply: jest.fn((rows: ApiTransaction[]) => rows),
+    upsert: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 jest.mock('../src/context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test', user: { role: 'BASIC' } }),
+  useAuth: () => ({ token: 'test', user: { id: 99, role: 'BASIC' } }),
 }));
 jest.mock('../src/context/FinanceContext', () => ({
   useFinance: () => ({
@@ -33,6 +45,7 @@ jest.mock('../src/services/transactions', () => ({
   transactionsService: {
     getPage: jest.fn(),
     update: jest.fn(),
+    remove: jest.fn(),
     uploadReceipt: jest.fn(),
   },
 }));
@@ -62,6 +75,8 @@ const categories = [{ id: 2, name: 'Ăn uống', type: 'EXPENSE' }] as Category[
 let renderer: TestRenderer.ReactTestRenderer;
 beforeEach(async () => {
   jest.clearAllMocks();
+  jest.mocked(homeWidget.connected).mockResolvedValue(true);
+  jest.mocked(offlineTransactionChanges.list).mockResolvedValue([]);
   service.getPage.mockResolvedValue({
     data: [transaction],
     meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
@@ -77,6 +92,44 @@ beforeEach(async () => {
       .findByProps({ accessibilityLabel: 'Sửa giao dịch 8' })
       .props.onPress();
   });
+});
+it('keeps an edit on device when connectivity disappears after history loaded', async () => {
+  jest.mocked(homeWidget.connected).mockResolvedValue(false);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await act(async () => {
+    await renderer.root.findByProps({ accessibilityLabel: 'Lưu giao dịch đang sửa' }).props.onPress();
+  });
+  expect(service.update).not.toHaveBeenCalled();
+  const review = alert.mock.calls.find(call => call[0] === 'Lưu sửa đổi trên máy?');
+  expect(review).toBeDefined();
+  await act(async () => {
+    await review?.[2]?.find(button => button.text === 'Lưu trên máy')?.onPress?.();
+  });
+  expect(offlineTransactionChanges.upsert).toHaveBeenCalledWith(
+    99,
+    expect.objectContaining({ id: 8 }),
+    'UPDATE',
+    expect.objectContaining({ wallet_id: 3, category_id: 2 }),
+  );
+});
+
+it('keeps a deletion on device when connectivity disappears after history loaded', async () => {
+  jest.mocked(homeWidget.connected).mockResolvedValue(false);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await act(async () => {
+    await renderer.root.findByProps({ accessibilityLabel: 'Xóa giao dịch đang sửa' }).props.onPress();
+  });
+  expect(service.remove).not.toHaveBeenCalled();
+  const review = alert.mock.calls.find(call => call[0] === 'Xóa giao dịch trên máy?');
+  expect(review).toBeDefined();
+  await act(async () => {
+    await review?.[2]?.find(button => button.text === 'Xóa trên máy')?.onPress?.();
+  });
+  expect(offlineTransactionChanges.upsert).toHaveBeenCalledWith(
+    99,
+    expect.objectContaining({ id: 8 }),
+    'DELETE',
+  );
 });
 afterEach(async () => {
   await act(async () => renderer.unmount());

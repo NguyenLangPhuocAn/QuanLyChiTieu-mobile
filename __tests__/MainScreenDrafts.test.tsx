@@ -52,6 +52,7 @@ jest.mock('../src/services/bankNotificationExtraction', () => ({
 
 let mockUser: { id: number; currency_default: string } | null = null;
 let mockOfflineSession = false;
+let mockOnlyExpenseCategories = false;
 const mockSetParams = jest.fn();
 const mockGoBack = jest.fn();
 let mockShake: () => void;
@@ -108,6 +109,9 @@ jest.mock('../src/context/FinanceContext', () => {
         require('react').useState(null);
       return {
         ...stable,
+        categories: mockOnlyExpenseCategories
+          ? stable.categories.filter(category => category.type === 'EXPENSE')
+          : stable.categories,
         selectedTransactionCategory,
         setSelectedTransactionCategory,
       };
@@ -259,6 +263,7 @@ beforeEach(async () => {
   mockSpeechEvents = {};
   mockUser = null;
   mockOfflineSession = false;
+  mockOnlyExpenseCategories = false;
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -273,6 +278,32 @@ beforeEach(async () => {
   await act(async () => {
     tab.props.onPress();
   });
+});
+
+it('keeps Thu selected when cached categories contain only Chi', async () => {
+  mockOnlyExpenseCategories = true;
+  mockOfflineSession = true;
+  mockUser = { id: 7, currency_default: 'VND' };
+  await act(async () => tree.update(<MainScreen />));
+  await act(async () =>
+    tree.root.findByProps({ accessibilityLabel: 'Thêm giao dịch' }).props.onPress(),
+  );
+  await act(async () => button('Thu').props.onPress());
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Khoản thu'),
+  ).toBe(true);
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Chọn danh mục'),
+  ).toBe(true);
+  expect(
+    tree.root
+      .findAllByType(Text)
+      .some(node => node.props.children === 'Khoản chi'),
+  ).toBe(false);
 });
 
 it('previews a loan and preserves the request after a lost reply', async () => {
