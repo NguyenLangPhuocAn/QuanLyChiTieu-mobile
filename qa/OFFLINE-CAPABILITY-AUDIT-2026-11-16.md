@@ -44,6 +44,8 @@ Người dùng đã duyệt mở rộng thêm/sửa/xóa offline cho Danh mục,
 
 Giả lập Android API 33 chạy app debug local có JS bundle nhúng. Đã tắt Wi-Fi/dữ liệu di động, force-stop rồi mở lại app **không cần Metro**, tạo Chi và giữ ảnh hóa đơn qua lần mở lại. Sau khi nối API QA, màn so sánh cho chọn bản máy/chủ/để sau; chọn bản máy tạo đúng một giao dịch Chi 18.000đ kèm ảnh PNG và giảm ví một lần. Bản đầu lượt thử thiếu xác nhận trước khi lưu Thu/Chi; đã thêm hộp xem trước và kiểm tra lại trên giả lập với khoản Chi 7.000đ: hủy không ghi, xác nhận mới giữ bản nháp, nối mạng mới ghi một lần sau khi chọn bản máy. [Ảnh và biên bản ảnh hóa đơn](evidence/2026-11-25-offline-receipt-standalone/README.md), [ảnh và biên bản xem trước](evidence/2026-11-25-offline-preview-standalone/README.md). Đây là giả lập; điện thoại thật, xung đột thiết bị khác và luồng ảnh với hộp xác nhận mới chưa lặp cùng một ca Android.
 
+Theo điều chỉnh sau đó trong ngày 25/11, form Thu/Chi thường bỏ hộp `Kiểm tra giao dịch`; nút Lưu giữ bản nháp ngay khi offline. Khi API trở lại, màn chọn mặc định chỉ hiện số thay đổi theo loại; đối chiếu từng khoản mở bằng `Xem chi tiết`, rồi người dùng chọn bản máy/chủ hoặc để sau. [Ảnh Android của giao diện hiện tại](evidence/2026-11-25-sync-ui-simplified/README.md). Biên bản xem trước ở đoạn trên là bằng chứng lịch sử, không mô tả giao diện hiện tại.
+
 ## Kiểm tra mã 24/11/2026
 
 Bộ Jest mobile đạt 114/114 bộ, 745/745 ca sau khi cập nhật dữ liệu dựng kiểm thử theo phiên có ID tài khoản, cache độc lập và luồng ảnh hóa đơn offline hiện tại; TypeScript và ESLint file sửa đạt. Đây là kiểm tra mã, **không phải xác nhận trên điện thoại thật**. ADB chưa thấy thiết bị, nên chưa có ảnh chụp hoặc lượt thử Ngân sách mất mạng/nối lại ngoài đời thực.

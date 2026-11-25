@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Modal,
   ScrollView,
@@ -61,6 +61,39 @@ export default function OfflineSyncReviewModal({
   review: OfflineSyncReview | null;
   onChoose: (choice: 'later' | 'local' | 'server') => void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  useEffect(() => setDetailsOpen(false), [review]);
+  const transactionCount =
+    (review?.drafts.length ?? 0) + (review?.changes.length ?? 0);
+  const categoryCount = review?.categories?.length ?? 0;
+  const walletCount = review?.wallets?.length ?? 0;
+  const budgetCount = review?.budgets?.length ?? 0;
+  const savingsCount = review?.savingsGoals?.length ?? 0;
+  const loanCount =
+    (review?.loanDebts?.length ?? 0) + (review?.loanCreates?.length ?? 0);
+  const otherCount =
+    categoryCount + walletCount + budgetCount + savingsCount + loanCount;
+  const total = transactionCount + otherCount;
+  const summary = [
+    transactionCount ? `${transactionCount} giao dịch` : '',
+    categoryCount ? `${categoryCount} danh mục` : '',
+    walletCount ? `${walletCount} ví` : '',
+    budgetCount ? `${budgetCount} ngân sách` : '',
+    savingsCount ? `${savingsCount} mục tiêu tiết kiệm` : '',
+    loanCount ? `${loanCount} khoản vay/nợ` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const needsReview = [
+    ...(review?.drafts ?? []),
+    ...(review?.changes ?? []),
+    ...(review?.categories ?? []),
+    ...(review?.wallets ?? []),
+    ...(review?.budgets ?? []),
+    ...(review?.savingsGoals ?? []),
+    ...(review?.loanDebts ?? []),
+    ...(review?.loanCreates ?? []),
+  ].filter(item => item.status === 'NEEDS_REVIEW').length;
   return (
     <Modal
       visible={Boolean(review)}
@@ -70,258 +103,280 @@ export default function OfflineSyncReviewModal({
     >
       <View style={styles.scrim}>
         <View style={styles.sheet}>
-          <Text style={styles.title}>Dữ liệu khi có mạng lại</Text>
+          <Text style={styles.title}>{`${total} thay đổi chưa đồng bộ`}</Text>
           <Text style={styles.description}>
-            Xem từng thay đổi trên điện thoại trước khi chọn bản cần giữ.
+            So với lần kết nối trước: {summary}. Chọn bản bạn muốn giữ.
           </Text>
-          <ScrollView
-            style={styles.list}
-            contentContainerStyle={styles.listContent}
+          {needsReview ? (
+            <Text style={styles.warning}>
+              {needsReview} mục cần xem lại trước khi đồng bộ.
+            </Text>
+          ) : null}
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={detailsOpen ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+            style={styles.detailsButton}
+            onPress={() => setDetailsOpen(value => !value)}
           >
-            {review?.savingsGoals?.map(item => (
-              <View key={`savings-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>Sửa mục tiêu tiết kiệm</Text>
-                <Text style={styles.local}>
-                  Trên máy: {item.payload.name} ·{' '}
-                  {Number(item.payload.target_amount).toLocaleString('vi-VN')}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {review.remoteSavingsGoals?.[item.id]
-                    ? `${review.remoteSavingsGoals[item.id]?.name} · ${Number(
-                        review.remoteSavingsGoals[item.id]?.target_amount,
-                      ).toLocaleString('vi-VN')}`
-                    : 'Không còn mục tiêu'}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra xung đột.'}
+            <Text style={styles.detailsText}>
+              {detailsOpen ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+            </Text>
+          </TouchableOpacity>
+          {detailsOpen ? (
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+            >
+              {review?.savingsGoals?.map(item => (
+                <View key={`savings-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>Sửa mục tiêu tiết kiệm</Text>
+                  <Text style={styles.local}>
+                    Trên máy: {item.payload.name} ·{' '}
+                    {Number(item.payload.target_amount).toLocaleString('vi-VN')}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.loanDebts?.map(item => (
-              <View key={`loan-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>Sửa thông tin Vay/Nợ</Text>
-                <Text style={styles.local}>
-                  Trên máy: {item.payload.person_name} ·{' '}
-                  {item.payload.due_date?.slice(0, 10) ?? 'Chưa hẹn ngày'}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {review.remoteLoanDebts?.[item.id]
-                    ? `${review.remoteLoanDebts[item.id]?.person_name} · ${
-                        review.remoteLoanDebts[item.id]?.due_date?.slice(
-                          0,
-                          10,
-                        ) ?? 'Chưa hẹn ngày'
-                      }`
-                    : 'Không còn khoản này'}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {review.remoteSavingsGoals?.[item.id]
+                      ? `${review.remoteSavingsGoals[item.id]?.name} · ${Number(
+                          review.remoteSavingsGoals[item.id]?.target_amount,
+                        ).toLocaleString('vi-VN')}`
+                      : 'Không còn mục tiêu'}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.loanCreates?.map(item => (
-              <View key={`loan-create-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>Vay/Nợ mới</Text>
-                <Text style={styles.local}>
-                  Trên máy:{' '}
-                  {item.payload.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'}{' '}
-                  {item.payload.person_name} ·{' '}
-                  {Number(item.payload.principal_amount).toLocaleString(
-                    'vi-VN',
-                  )}{' '}
-                  {item.wallet.currency}
-                </Text>
-                <Text style={styles.local}>Ví đã chọn: {item.wallet.name}</Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {review.remoteLoanWallets?.[item.wallet.id]
-                    ? `Ví ${
-                        review.remoteLoanWallets[item.wallet.id]?.name
-                      } · ${Number(
-                        review.remoteLoanWallets[item.wallet.id]?.balance ?? 0,
-                      ).toLocaleString('vi-VN')} → ${(
-                        Number(
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.loanDebts?.map(item => (
+                <View key={`loan-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>Sửa thông tin Vay/Nợ</Text>
+                  <Text style={styles.local}>
+                    Trên máy: {item.payload.person_name} ·{' '}
+                    {item.payload.due_date?.slice(0, 10) ?? 'Chưa hẹn ngày'}
+                  </Text>
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {review.remoteLoanDebts?.[item.id]
+                      ? `${review.remoteLoanDebts[item.id]?.person_name} · ${
+                          review.remoteLoanDebts[item.id]?.due_date?.slice(
+                            0,
+                            10,
+                          ) ?? 'Chưa hẹn ngày'
+                        }`
+                      : 'Không còn khoản này'}
+                  </Text>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.loanCreates?.map(item => (
+                <View key={`loan-create-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>Vay/Nợ mới</Text>
+                  <Text style={styles.local}>
+                    Trên máy:{' '}
+                    {item.payload.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'}{' '}
+                    {item.payload.person_name} ·{' '}
+                    {Number(item.payload.principal_amount).toLocaleString(
+                      'vi-VN',
+                    )}{' '}
+                    {item.wallet.currency}
+                  </Text>
+                  <Text style={styles.local}>
+                    Ví đã chọn: {item.wallet.name}
+                  </Text>
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {review.remoteLoanWallets?.[item.wallet.id]
+                      ? `Ví ${
+                          review.remoteLoanWallets[item.wallet.id]?.name
+                        } · ${Number(
                           review.remoteLoanWallets[item.wallet.id]?.balance ??
                             0,
-                        ) +
-                        (item.payload.type === 'BORROWED' ? 1 : -1) *
-                          Number(item.payload.principal_amount)
-                      ).toLocaleString('vi-VN')} ${item.wallet.currency}`
-                    : 'Ví không còn hoặc chưa đọc được'}
-                </Text>
-                <Text style={styles.remote}>
-                  Khoản đã được ghi trước đó sẽ không tạo lại khi gửi cùng mã.
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra trước khi gửi.'}
+                        ).toLocaleString('vi-VN')} → ${(
+                          Number(
+                            review.remoteLoanWallets[item.wallet.id]?.balance ??
+                              0,
+                          ) +
+                          (item.payload.type === 'BORROWED' ? 1 : -1) *
+                            Number(item.payload.principal_amount)
+                        ).toLocaleString('vi-VN')} ${item.wallet.currency}`
+                      : 'Ví không còn hoặc chưa đọc được'}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.budgets?.map(item => (
-              <View key={`budget-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>
-                  {item.action === 'CREATE'
-                    ? 'Ngân sách mới'
-                    : item.action === 'UPDATE'
-                    ? 'Sửa ngân sách'
-                    : 'Xóa ngân sách'}
-                </Text>
-                <Text style={styles.local}>
-                  Trên máy:{' '}
-                  {item.action === 'DELETE'
-                    ? item.base?.name
-                    : item.payload?.name}
-                  {' · '}
-                  {Number(
-                    item.action === 'DELETE'
-                      ? item.base?.limit_amount
-                      : item.payload?.limit_amount,
-                  ).toLocaleString('vi-VN')}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {item.action === 'CREATE'
-                    ? 'Chưa xác định đã nhận'
-                    : review.remoteBudgets?.[item.id]
-                    ? `${review.remoteBudgets[item.id]?.name} · ${Number(
-                        review.remoteBudgets[item.id]?.limit_amount,
-                      ).toLocaleString('vi-VN')}`
-                    : 'Không còn ngân sách'}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  <Text style={styles.remote}>
+                    Khoản đã được ghi trước đó sẽ không tạo lại khi gửi cùng mã.
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.wallets?.map(item => (
-              <View key={`wallet-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>
-                  {item.action === 'CREATE'
-                    ? 'Ví mới'
-                    : item.action === 'UPDATE'
-                    ? 'Sửa ví'
-                    : 'Xóa ví'}
-                </Text>
-                <Text style={styles.local}>
-                  Trên máy:{' '}
-                  {item.action === 'DELETE'
-                    ? item.base?.name
-                    : item.payload?.name}{' '}
-                  ·{' '}
-                  {item.action === 'DELETE'
-                    ? item.base?.currency
-                    : item.payload?.currency}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {item.action === 'CREATE'
-                    ? 'Chưa xác định đã nhận'
-                    : review.remoteWallets?.[item.id]
-                    ? `${review.remoteWallets[item.id]?.name} · ${Number(
-                        review.remoteWallets[item.id]?.balance,
-                      ).toLocaleString('vi-VN')}`
-                    : 'Không còn ví'}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra trước khi gửi.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.budgets?.map(item => (
+                <View key={`budget-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>
+                    {item.action === 'CREATE'
+                      ? 'Ngân sách mới'
+                      : item.action === 'UPDATE'
+                      ? 'Sửa ngân sách'
+                      : 'Xóa ngân sách'}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.categories?.map(item => (
-              <View key={`category-${item.id}`} style={styles.row}>
-                <Text style={styles.rowTitle}>
-                  {item.action === 'CREATE'
-                    ? 'Danh mục mới'
-                    : item.action === 'UPDATE'
-                    ? 'Sửa danh mục'
-                    : 'Xóa danh mục'}
-                </Text>
-                <Text style={styles.local}>
-                  Trên máy:{' '}
-                  {item.action === 'DELETE'
-                    ? item.base?.name
-                    : item.payload?.name}{' '}
-                  ·{' '}
-                  {item.action === 'DELETE'
-                    ? item.base?.type
-                    : item.payload?.type}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ:{' '}
-                  {item.action === 'CREATE'
-                    ? 'Chưa xác định đã nhận'
-                    : review.remoteCategories?.[item.id]?.name ??
-                      'Không còn danh mục'}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    {item.lastError || 'Cần kiểm tra xung đột.'}
+                  <Text style={styles.local}>
+                    Trên máy:{' '}
+                    {item.action === 'DELETE'
+                      ? item.base?.name
+                      : item.payload?.name}
+                    {' · '}
+                    {Number(
+                      item.action === 'DELETE'
+                        ? item.base?.limit_amount
+                        : item.payload?.limit_amount,
+                    ).toLocaleString('vi-VN')}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.drafts.map(item => (
-              <View key={item.id} style={styles.row}>
-                <Text style={styles.rowTitle}>Giao dịch mới</Text>
-                <Text style={styles.local}>
-                  {item.payload.type === 'INCOME' ? 'Thu +' : 'Chi -'}
-                  {Number(item.payload.amount).toLocaleString('vi-VN')} ·{' '}
-                  {item.payload.note || 'Không có ghi chú'}
-                </Text>
-                <Text style={styles.remote}>
-                  {item.confirmedTransactionId
-                    ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
-                    : mayHaveReachedServer(item)
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {item.action === 'CREATE'
+                      ? 'Chưa xác định đã nhận'
+                      : review.remoteBudgets?.[item.id]
+                      ? `${review.remoteBudgets[item.id]?.name} · ${Number(
+                          review.remoteBudgets[item.id]?.limit_amount,
+                        ).toLocaleString('vi-VN')}`
+                      : 'Không còn ngân sách'}
+                  </Text>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.wallets?.map(item => (
+                <View key={`wallet-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>
+                    {item.action === 'CREATE'
+                      ? 'Ví mới'
+                      : item.action === 'UPDATE'
+                      ? 'Sửa ví'
+                      : 'Xóa ví'}
+                  </Text>
+                  <Text style={styles.local}>
+                    Trên máy:{' '}
+                    {item.action === 'DELETE'
+                      ? item.base?.name
+                      : item.payload?.name}{' '}
+                    ·{' '}
+                    {item.action === 'DELETE'
+                      ? item.base?.currency
+                      : item.payload?.currency}
+                  </Text>
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {item.action === 'CREATE'
+                      ? 'Chưa xác định đã nhận'
+                      : review.remoteWallets?.[item.id]
+                      ? `${review.remoteWallets[item.id]?.name} · ${Number(
+                          review.remoteWallets[item.id]?.balance,
+                        ).toLocaleString('vi-VN')}`
+                      : 'Không còn ví'}
+                  </Text>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.categories?.map(item => (
+                <View key={`category-${item.id}`} style={styles.row}>
+                  <Text style={styles.rowTitle}>
+                    {item.action === 'CREATE'
+                      ? 'Danh mục mới'
+                      : item.action === 'UPDATE'
+                      ? 'Sửa danh mục'
+                      : 'Xóa danh mục'}
+                  </Text>
+                  <Text style={styles.local}>
+                    Trên máy:{' '}
+                    {item.action === 'DELETE'
+                      ? item.base?.name
+                      : item.payload?.name}{' '}
+                    ·{' '}
+                    {item.action === 'DELETE'
+                      ? item.base?.type
+                      : item.payload?.type}
+                  </Text>
+                  <Text style={styles.remote}>
+                    Máy chủ:{' '}
+                    {item.action === 'CREATE'
+                      ? 'Chưa xác định đã nhận'
+                      : review.remoteCategories?.[item.id]?.name ??
+                        'Không còn danh mục'}
+                  </Text>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.drafts.map(item => (
+                <View key={item.id} style={styles.row}>
+                  <Text style={styles.rowTitle}>Giao dịch mới</Text>
+                  <Text style={styles.local}>
+                    {item.payload.type === 'INCOME' ? 'Thu +' : 'Chi -'}
+                    {Number(item.payload.amount).toLocaleString('vi-VN')} ·{' '}
+                    {item.payload.note || 'Không có ghi chú'}
+                  </Text>
+                  <Text style={styles.remote}>
+                    {item.confirmedTransactionId
+                      ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
+                      : mayHaveReachedServer(item)
                       ? 'Máy chủ: Chưa xác định đã nhận khoản này'
                       : item.rejectedByServer
-                        ? 'Máy chủ: Đã từ chối; chưa ghi giao dịch'
-                        : 'Máy chủ: Chưa gửi giao dịch'}
-                </Text>
-                {item.receipt ? (
+                      ? 'Máy chủ: Đã từ chối; chưa ghi giao dịch'
+                      : 'Máy chủ: Chưa gửi giao dịch'}
+                  </Text>
+                  {item.receipt ? (
+                    <Text style={styles.remote}>
+                      Ảnh hóa đơn đã giữ trên máy.
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {review?.changes.map(item => (
+                <View key={item.transactionId} style={styles.row}>
+                  <Text style={styles.rowTitle}>
+                    {item.action === 'DELETE'
+                      ? 'Xóa giao dịch'
+                      : 'Sửa giao dịch'}
+                  </Text>
+                  <Text style={styles.local}>
+                    Trên máy:{' '}
+                    {item.action === 'DELETE'
+                      ? 'Đã xóa'
+                      : `${
+                          item.payload?.type === 'INCOME' ? 'Thu +' : 'Chi -'
+                        }${Number(item.payload?.amount).toLocaleString(
+                          'vi-VN',
+                        )} · ${item.payload?.note || 'Không có ghi chú'}`}
+                  </Text>
                   <Text style={styles.remote}>
-                    Ảnh hóa đơn đã giữ trên máy.
+                    Máy chủ: {describe(review.remote[item.transactionId])}
                   </Text>
-                ) : null}
-              </View>
-            ))}
-            {review?.changes.map(item => (
-              <View key={item.transactionId} style={styles.row}>
-                <Text style={styles.rowTitle}>
-                  {item.action === 'DELETE' ? 'Xóa giao dịch' : 'Sửa giao dịch'}
-                </Text>
-                <Text style={styles.local}>
-                  Trên máy:{' '}
-                  {item.action === 'DELETE'
-                    ? 'Đã xóa'
-                    : `${
-                        item.payload?.type === 'INCOME' ? 'Thu +' : 'Chi -'
-                      }${Number(item.payload?.amount).toLocaleString(
-                        'vi-VN',
-                      )} · ${item.payload?.note || 'Không có ghi chú'}`}
-                </Text>
-                <Text style={styles.remote}>
-                  Máy chủ: {describe(review.remote[item.transactionId])}
-                </Text>
-                {item.status === 'NEEDS_REVIEW' ? (
-                  <Text style={styles.warning}>
-                    Cần kiểm tra xung đột trước khi ghi lên máy chủ.
-                  </Text>
-                ) : null}
-              </View>
-            ))}
-          </ScrollView>
+                  {item.status === 'NEEDS_REVIEW' ? (
+                    <Text style={styles.warning}>
+                      Cần kiểm tra xung đột trước khi ghi lên máy chủ.
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
           <TouchableOpacity
             accessibilityRole="button"
             style={styles.primary}
@@ -361,6 +416,8 @@ const styles = StyleSheet.create({
   },
   title: { color: '#4A2B1A', fontSize: 20, fontWeight: '800' },
   description: { color: '#7A5438', fontSize: 13, lineHeight: 19 },
+  detailsButton: { alignSelf: 'flex-start', paddingVertical: 5 },
+  detailsText: { color: '#AE5415', fontSize: 13, fontWeight: '700' },
   list: { flexGrow: 0 },
   listContent: { gap: 10, paddingVertical: 8 },
   row: {

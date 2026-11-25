@@ -253,11 +253,6 @@ const acceptRepeat = () =>
     .mocked(Alert.alert)
     .mock.calls.at(-1)![2]!
     .find(b => b.text === 'Xác nhận lưu')!.onPress!;
-const acceptStandard = () =>
-  jest
-    .mocked(Alert.alert)
-    .mock.calls.at(-1)![2]!
-    .find(b => b.text === 'Xác nhận lưu')!.onPress!;
 const button = (label: string) =>
   tree.root
     .findAllByType(TouchableOpacity)
@@ -291,7 +286,9 @@ it('keeps Thu selected when cached categories contain only Chi', async () => {
   mockUser = { id: 7, currency_default: 'VND' };
   await act(async () => tree.update(<MainScreen />));
   await act(async () =>
-    tree.root.findByProps({ accessibilityLabel: 'Thêm giao dịch' }).props.onPress(),
+    tree.root
+      .findByProps({ accessibilityLabel: 'Thêm giao dịch' })
+      .props.onPress(),
   );
   await act(async () => button('Thu').props.onPress());
   expect(
@@ -821,13 +818,6 @@ it('keeps the form and image when storing an offline receipt fails', async () =>
     choices.find((item: any) => item.text === 'Thư viện ảnh').onPress(),
   );
   await act(async () => button('Lưu giao dịch').props.onPress());
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  expect(Alert.alert).toHaveBeenCalledWith(
-    'Kiểm tra giao dịch',
-    expect.stringContaining('Có ảnh hóa đơn'),
-    expect.any(Array),
-  );
-  await act(async () => acceptStandard()());
 
   expect(Alert.alert).toHaveBeenCalledWith(
     'Chưa lưu được trên máy',
@@ -870,8 +860,6 @@ it('keeps a receipt with the draft when the network fails during save', async ()
     choices.find((item: any) => item.text === 'Thư viện ảnh').onPress(),
   );
   await act(async () => button('Lưu giao dịch').props.onPress());
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  await act(async () => acceptStandard()());
 
   expect(Alert.alert).toHaveBeenCalledWith(
     'Đã giữ bản nháp ngoại tuyến',
@@ -957,9 +945,12 @@ it('submits once when Save is pressed twice before the response', async () => {
     pending = save();
     save();
   });
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  await act(async () => acceptStandard()());
   expect(transactionsService.create).toHaveBeenCalledTimes(1);
+  expect(
+    jest
+      .mocked(Alert.alert)
+      .mock.calls.some(call => call[0] === 'Kiểm tra giao dịch'),
+  ).toBe(false);
   expect(transactionsService.create).toHaveBeenCalledWith(
     'session-token',
     expect.objectContaining({
@@ -973,36 +964,6 @@ it('submits once when Save is pressed twice before the response', async () => {
     finish({ id: 10 });
     await pending;
   });
-});
-
-it('does not save a transaction after its reviewed amount changes', async () => {
-  mockUser = { id: 7, currency_default: 'VND' };
-  await act(async () => tree.update(<MainScreen />));
-  await act(async () => {
-    chat().onCreateTransaction!({
-      ...draft,
-      wallet_name: 'Tiền mặt',
-      category_name: 'Ăn uống',
-    });
-  });
-  await act(async () => button('Lưu giao dịch').props.onPress());
-  const confirmOldAmount = acceptStandard();
-  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![1]).toContain('30.000');
-  await act(async () =>
-    tree.root.findByProps({ placeholder: '0' }).props.onChangeText('45000'),
-  );
-  await act(async () => confirmOldAmount());
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![0]).toBe(
-    'Thông tin đã thay đổi',
-  );
-  await act(async () => button('Lưu giao dịch').props.onPress());
-  expect(jest.mocked(Alert.alert).mock.calls.at(-1)![1]).toContain('45.000');
-  await act(async () => acceptStandard()());
-  expect(transactionsService.create).toHaveBeenCalledWith(
-    'session-token',
-    expect.objectContaining({ amount: '45000' }),
-  );
 });
 
 it('opens a scheduled bill in the ordinary expense form and writes only after review', async () => {
@@ -1117,8 +1078,6 @@ it('saves a bank notification with its source key and no conflicting client key'
   await act(async () => {
     await button('Lưu giao dịch').props.onPress();
   });
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  await act(async () => acceptStandard()());
 
   expect(transactionsService.create).toHaveBeenCalledWith(
     'session-token',
@@ -1433,8 +1392,6 @@ it('shows OCR line items and saves them with the transaction', async () => {
   await act(async () => {
     await button('Lưu giao dịch').props.onPress();
   });
-  expect(transactionsService.create).not.toHaveBeenCalled();
-  await act(async () => acceptStandard()());
 
   expect(transactionsService.create).toHaveBeenCalledWith(
     'session-token',
@@ -1622,8 +1579,6 @@ it.each([
     expect(button('Đổi ảnh')).toBeUndefined();
     expect(transactionsService.create).not.toHaveBeenCalled();
     await act(async () => button('Lưu giao dịch').props.onPress());
-    expect(transactionsService.create).not.toHaveBeenCalled();
-    await act(async () => acceptStandard()());
     expect(transactionsService.create).toHaveBeenCalledWith(
       'session-token',
       expect.objectContaining({

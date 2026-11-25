@@ -267,7 +267,7 @@ it('previews a local loan against its server wallet before sending it', async ()
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Vay/Nợ mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(loanCreateQueue.sync).not.toHaveBeenCalled();
   await act(async () => pressReview('Dùng thay đổi trên máy'));
@@ -313,7 +313,7 @@ it('shows a pending budget and waits for the user before syncing it', async () =
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Ngân sách mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(budgetQueue.sync).not.toHaveBeenCalled();
   await act(async () => {
@@ -354,7 +354,7 @@ it('shows a saved goal edit and waits for the local choice', async () => {
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Sửa mục tiêu tiết kiệm'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(savingsQueue.sync).not.toHaveBeenCalled();
   await act(async () => pressReview('Dùng thay đổi trên máy'));
@@ -390,7 +390,7 @@ it('reviews a saved Vay/Nợ edit before sending it', async () => {
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Sửa thông tin Vay/Nợ'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(loanQueue.sync).not.toHaveBeenCalled();
   await act(async () => pressReview('Dùng thay đổi trên máy'));
@@ -410,7 +410,7 @@ it('waits for an explicit local choice before sending any money to the server', 
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(queue.sync).not.toHaveBeenCalled();
   await act(async () => {
@@ -459,7 +459,7 @@ it('prompts again for a later write with the same draft identifier and timestamp
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
 });
 
@@ -509,7 +509,7 @@ it('reviews a persisted syncing marker after an app restart without auto-sending
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(queue.sync).not.toHaveBeenCalled();
 });
@@ -530,7 +530,7 @@ it('reacts to Android network recovery without writing before confirmation', asy
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
   expect(queue.sync).not.toHaveBeenCalled();
 });
@@ -547,7 +547,7 @@ it('offers the choice after the API recovers without a Wi-Fi change or app resta
     expect(
       renderer!.root
         .findAllByType(Text)
-        .some(node => node.props.children === 'Giao dịch mới'),
+        .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
     ).toBe(false);
 
     await act(async () => {
@@ -556,7 +556,7 @@ it('offers the choice after the API recovers without a Wi-Fi change or app resta
     expect(
       renderer!.root
         .findAllByType(Text)
-        .some(node => node.props.children === 'Giao dịch mới'),
+        .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
     ).toBe(true);
     expect(queue.sync).not.toHaveBeenCalled();
 
@@ -593,7 +593,7 @@ it('asks again after a confirmed sync loses its network response and keeps the d
     expect(
       renderer!.root
         .findAllByType(Text)
-        .some(node => node.props.children === 'Giao dịch mới'),
+        .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
     ).toBe(true);
     expect(queue.sync).toHaveBeenCalledTimes(1);
   } finally {
@@ -612,7 +612,7 @@ it('does not show a stale choice after a manual sync clears the queue', async ()
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(false);
   expect(queue.sync).not.toHaveBeenCalled();
 });
@@ -625,7 +625,7 @@ it('closes an already visible choice when another screen discards its draft', as
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(true);
 
   jest.mocked(queue.list).mockResolvedValue([]);
@@ -633,7 +633,7 @@ it('closes an already visible choice when another screen discards its draft', as
   expect(
     renderer!.root
       .findAllByType(Text)
-      .some(node => node.props.children === 'Giao dịch mới'),
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
   ).toBe(false);
   expect(queue.sync).not.toHaveBeenCalled();
 });

@@ -112,6 +112,13 @@ const openReview = async () => {
   );
   await act(async () => button.props.onPress());
 };
+const showReviewDetails = async () => {
+  await act(async () =>
+    renderer!.root
+      .findByProps({ accessibilityLabel: 'Xem chi tiết' })
+      .props.onPress(),
+  );
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -303,10 +310,21 @@ it('shows the actual offline transaction before manual sync and lets the user de
   expect(
     renderer!.root
       .findAllByType(Text)
+      .some(node => node.props.children === '1 thay đổi chưa đồng bộ'),
+  ).toBe(true);
+  expect(
+    renderer!.root
+      .findAllByType(Text)
       .some(node =>
-        String(node.props.children).includes(
-          'Máy chủ: Chưa gửi giao dịch',
-        ),
+        String(node.props.children).includes('Máy chủ: Chưa gửi giao dịch'),
+      ),
+  ).toBe(false);
+  await showReviewDetails();
+  expect(
+    renderer!.root
+      .findAllByType(Text)
+      .some(node =>
+        String(node.props.children).includes('Máy chủ: Chưa gửi giao dịch'),
       ),
   ).toBe(true);
   expect(offlineTransactionQueue.sync).not.toHaveBeenCalled();
@@ -352,6 +370,7 @@ it('warns before editing or removing a payment whose server result is unknown', 
     renderer = TestRenderer.create(<DataManagementScreen />);
   });
   await openReview();
+  await showReviewDetails();
   expect(
     renderer!.root
       .findAllByType(Text)
