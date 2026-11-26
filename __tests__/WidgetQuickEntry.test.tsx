@@ -73,7 +73,12 @@ jest.mock('../src/services/widgetQuickEntry', () => ({
 const data = {
   wallets: [{ id: 7, name: 'Ví QA', currency: 'VND' }],
   categories: [
-    { id: 9, name: 'Đi lại', type: 'EXPENSE', icon: 'categories/icons/expense_transport.png' },
+    {
+      id: 9,
+      name: 'Đi lại',
+      type: 'EXPENSE',
+      icon: 'categories/icons/expense_transport.png',
+    },
     { id: 10, name: 'Lương', type: 'INCOME' },
   ],
   transactions: [],
@@ -139,7 +144,9 @@ it('searches launcher categories with icons, saves the selection and returns to 
   );
   await press('Đi lại');
   expect(homeWidget.selectCategory).toHaveBeenCalledWith(
-    'http://qa.test:7', launcherCategoryUrl, 9,
+    'http://qa.test:7',
+    launcherCategoryUrl,
+    9,
   );
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith(undefined);
   expect(saveWidgetEntry).not.toHaveBeenCalled();
@@ -149,7 +156,9 @@ it('can clear the launcher category without creating a transaction', async () =>
   await mount(launcherCategoryUrl);
   await press('Để chưa phân loại');
   expect(homeWidget.selectCategory).toHaveBeenCalledWith(
-    'http://qa.test:7', launcherCategoryUrl, null,
+    'http://qa.test:7',
+    launcherCategoryUrl,
+    null,
   );
   expect(saveWidgetEntry).not.toHaveBeenCalled();
 });
@@ -192,6 +201,18 @@ it.each(['Vay', 'Cho vay'])(
     expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
   },
 );
+it('adds a loan from the widget without a required preview', async () => {
+  await mount();
+  await press('Vay/Nợ');
+  await fill('Số tiền widget', '100000');
+  await fill('Tên người vay nợ widget', 'Lan');
+  await press('Ví QA · VND');
+  jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
+  await press('Thêm giao dịch');
+  expect(saveWidgetLoanEntry).toHaveBeenCalledTimes(1);
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
+});
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
 });
@@ -261,11 +282,31 @@ it('opens the loan form directly from the full widget loan selection', async () 
       .replace('&category=9', ''),
   );
   expect(control('Tên người vay nợ widget')).toBeDefined();
-  expect(control('Tên người vay nợ widget').props.placeholder).toBe('Tên người cho vay');
+  expect(control('Tên người vay nợ widget').props.placeholder).toBe(
+    'Tên người cho vay',
+  );
   await press('Cho vay');
-  expect(control('Tên người vay nợ widget').props.placeholder).toBe('Tên người vay');
+  expect(control('Tên người vay nợ widget').props.placeholder).toBe(
+    'Tên người vay',
+  );
   expect(control('Chọn danh mục')).toBeUndefined();
   expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
+});
+it('adds a widget transaction in one action after wallet selection', async () => {
+  await mount();
+  await fill('Số tiền widget', '25000');
+  await press('Thêm giao dịch');
+  expect(saveWidgetEntry).not.toHaveBeenCalled();
+  await press('Ví QA · VND');
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Thêm giao dịch');
+  expect(saveWidgetEntry).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(saveWidgetEntry).mock.calls[0][2]).toMatchObject({
+    wallet_id: 7,
+    amount: '25000',
+    type: 'EXPENSE',
+  });
+  expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
 });
 it('requires wallet and preview before saving, locks repeated confirms, then closes the panel', async () => {
   await mount();
@@ -302,7 +343,9 @@ it('requires wallet and preview before saving, locks repeated confirms, then clo
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
 });
 it('opens and previews a transaction when this QA account has no categories', async () => {
-  jest.mocked(dashboardCache.read).mockResolvedValue({ ...data, categories: [] });
+  jest
+    .mocked(dashboardCache.read)
+    .mockResolvedValue({ ...data, categories: [] });
   await mount(entryUrl.replace('&category=9', ''));
   expect(control('Số tiền widget')).toBeDefined();
   await fill('Số tiền widget', '25000');
@@ -315,7 +358,7 @@ it('opens and previews a transaction when this QA account has no categories', as
 });
 it('cancel never writes and a stale widget link cannot show financial fields', async () => {
   await mount();
-  await press('Hủy');
+  await press('Đóng khung nhập');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
   await act(async () => renderer.unmount());
   jest.mocked(homeWidget.validateLink).mockResolvedValue(false);
@@ -734,7 +777,9 @@ it('ignores a late OCR result after cancelling the widget photo flow', async () 
   await mount(entryUrl + '&action=CAMERA');
   await pickPhoto('Chọn từ thư viện');
   await press('Hủy đọc ảnh');
-  await act(async () => resolve({ amount: 79000, receipt_items: [], warnings: [] }));
+  await act(async () =>
+    resolve({ amount: 79000, receipt_items: [], warnings: [] }),
+  );
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledTimes(1);
   expect(control('Số tiền widget')).toBeUndefined();
   expect(saveWidgetEntry).not.toHaveBeenCalled();

@@ -496,6 +496,44 @@ function Panel({ entryUrl }: Props) {
     Keyboard.dismiss();
     setDatePicker(target);
   };
+  const makePayload = () => {
+    if (!data) throw Error('Chưa tải được dữ liệu. Thử lại sau.');
+    if (type === 'LOAN_DEBT') {
+      loanRequestId.current ??= createClientRequestId();
+      return widgetLoanPayload(
+        data,
+        {
+          type: loanType,
+          personName,
+          dueDate,
+          walletId,
+          amount,
+          note,
+          date,
+          currency,
+        },
+        loanRequestId.current,
+      );
+    }
+    transactionRequestId.current ??= createClientRequestId();
+    return widgetEntryPayload(
+      data,
+      {
+        type,
+        categoryId,
+        walletId,
+        amount,
+        note,
+        date,
+        currency,
+        items: items.map(item => ({
+          ...item,
+          amount: Number(parsePositiveMoneyInput(item.amount)),
+        })),
+      },
+      transactionRequestId.current,
+    );
+  };
   const prepare = () => {
     if (
       !data ||
@@ -506,54 +544,15 @@ function Panel({ entryUrl }: Props) {
     )
       return;
     try {
-      if (type === 'LOAN_DEBT') {
-        loanRequestId.current ??= createClientRequestId();
-        setReview(
-          widgetLoanPayload(
-            data,
-            {
-              type: loanType,
-              personName,
-              dueDate,
-              walletId,
-              amount,
-              note,
-              date,
-              currency,
-            },
-            loanRequestId.current,
-          ),
-        );
-      } else {
-        transactionRequestId.current ??= createClientRequestId();
-        setReview(
-          widgetEntryPayload(
-            data,
-            {
-              type,
-              categoryId,
-              walletId,
-              amount,
-              note,
-              date,
-              currency,
-              items: items.map(item => ({
-                ...item,
-                amount: Number(parsePositiveMoneyInput(item.amount)),
-              })),
-            },
-            transactionRequestId.current,
-          ),
-        );
-      }
+      setReview(makePayload());
       setError('');
       voice.cancel();
     } catch (e) {
       setError((e as Error).message);
     }
   };
-  const save = async () => {
-    if (!review || !token || !user?.id || saving.current || completed.current)
+  const save = async (entry = review) => {
+    if (!entry || !token || !user?.id || saving.current || completed.current)
       return;
     saving.current = true;
     setBusy(true);
@@ -564,24 +563,25 @@ function Panel({ entryUrl }: Props) {
         alive.current &&
         latest.current.userId === owner &&
         latest.current.server === server;
-      const result = loanReview
-        ? await saveWidgetLoanEntry(
-            token,
-            owner,
-            loanReview,
-            isOfflineSession,
-            isCurrent,
-          )
-        : await saveWidgetEntry(
-            token,
-            owner,
-            transactionReview!,
-            isOfflineSession,
-            () =>
-              alive.current &&
-              latest.current.userId === owner &&
-              latest.current.server === server,
-          );
+      const result =
+        'principal_amount' in entry
+          ? await saveWidgetLoanEntry(
+              token,
+              owner,
+              entry,
+              isOfflineSession,
+              isCurrent,
+            )
+          : await saveWidgetEntry(
+              token,
+              owner,
+              entry,
+              isOfflineSession,
+              () =>
+                alive.current &&
+                latest.current.userId === owner &&
+                latest.current.server === server,
+            );
       if (
         alive.current &&
         latest.current.userId === owner &&
@@ -604,6 +604,24 @@ function Panel({ entryUrl }: Props) {
     } finally {
       saving.current = false;
       if (alive.current) setBusy(false);
+    }
+  };
+  const addDirect = () => {
+    if (
+      !data ||
+      busy ||
+      ocrBusy ||
+      voice.status !== 'idle' ||
+      completed.current
+    )
+      return;
+    try {
+      const entry = makePayload();
+      setError('');
+      voice.cancel();
+      save(entry).catch(() => undefined);
+    } catch (e) {
+      setError((e as Error).message);
     }
   };
   const button = (
@@ -1155,15 +1173,17 @@ function Panel({ entryUrl }: Props) {
                   {button('Sửa lại', () => setReview(null), false, busy)}
                   {button(
                     busy ? 'Đang lưu…' : 'Xác nhận lưu',
-                    save,
+                    () => {
+                      save().catch(() => undefined);
+                    },
                     true,
                     busy,
                   )}
                 </>
               ) : (
                 <>
-                  {button('Hủy', close)}
-                  {button('Xem trước', prepare, true, ocrBusy)}
+                  {button('Xem trước', prepare, false, ocrBusy)}
+                  {button('Thêm giao dịch', addDirect, true, busy || ocrBusy)}
                 </>
               )}
             </View>
