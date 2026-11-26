@@ -33,10 +33,7 @@ import { offlineWalletQueue } from '../../services/offlineWalletQueue';
 import { widgetScope } from '../../services/widgetSnapshot';
 import { widgetLink } from '../../services/widgetLinking';
 import { createClientRequestId } from '../../services/offlineTransactionQueue';
-import {
-  transactionsService,
-  type CreateTransactionPayload,
-} from '../../services/transactions';
+import { transactionsService } from '../../services/transactions';
 import {
   saveWidgetEntry,
   widgetEntryPayload,
@@ -56,7 +53,6 @@ import {
 import {
   widgetLoanPayload,
   saveWidgetLoanEntry,
-  type WidgetLoanPayload,
 } from '../../services/widgetLoanEntry';
 import type { LoanDebtType } from '../../types/loanDebt';
 import { getWalletTypeMeta } from '../../constants/walletTypes';
@@ -103,9 +99,6 @@ function Panel({ entryUrl }: Props) {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [picker, setPicker] = useState<'category' | null>(null);
   const [datePicker, setDatePicker] = useState<'date' | 'dueDate' | null>(null);
-  const [review, setReview] = useState<
-    CreateTransactionPayload | WidgetLoanPayload | null
-  >(null);
   const [busy, setBusy] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [voiceVisible, setVoiceVisible] = useState(false);
@@ -150,7 +143,6 @@ function Panel({ entryUrl }: Props) {
       if (saving.current) return true;
       if (completed.current) close();
       else if (picker) setPicker(null);
-      else if (review) setReview(null);
       else close();
       return true;
     });
@@ -159,7 +151,7 @@ function Panel({ entryUrl }: Props) {
     };
     // Rebind only the Back button's current panel state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picker, review]);
+  }, [picker]);
   useEffect(() => {
     if (isRestoringSession) return;
     let active = true;
@@ -483,8 +475,6 @@ function Panel({ entryUrl }: Props) {
     setVoiceVisible(false);
     setVoiceOnly(false);
   }, [voice.status, transcript, user?.id, server, type]);
-  const loanReview = review && 'principal_amount' in review ? review : null;
-  const transactionReview = review && 'amount' in review ? review : null;
   const changeDate = (event: DateTimePickerEvent, selected?: Date) => {
     const target = datePicker;
     setDatePicker(null);
@@ -534,24 +524,7 @@ function Panel({ entryUrl }: Props) {
       transactionRequestId.current,
     );
   };
-  const prepare = () => {
-    if (
-      !data ||
-      busy ||
-      ocrBusy ||
-      voice.status !== 'idle' ||
-      completed.current
-    )
-      return;
-    try {
-      setReview(makePayload());
-      setError('');
-      voice.cancel();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-  const save = async (entry = review) => {
+  const save = async (entry: ReturnType<typeof makePayload>) => {
     if (!entry || !token || !user?.id || saving.current || completed.current)
       return;
     saving.current = true;
@@ -663,11 +636,7 @@ function Panel({ entryUrl }: Props) {
         {!voiceOnly && !photoOnly && (
           <View style={s.header}>
             <Text style={s.title}>
-              {categoryOnly
-                ? 'Chọn danh mục'
-                : review
-                ? 'Xem trước giao dịch'
-                : 'Thêm giao dịch'}
+              {categoryOnly ? 'Chọn danh mục' : 'Thêm giao dịch'}
             </Text>
             <TouchableOpacity
               accessibilityRole="button"
@@ -757,60 +726,7 @@ function Panel({ entryUrl }: Props) {
                 close();
               })}
             </>
-          ) : voiceOnly ? null : review ? (
-            <>
-              {!!completedResult && (
-                <Text accessibilityLiveRegion="polite" style={s.review}>
-                  {completedResult === 'SAVED'
-                    ? 'Đã lưu giao dịch.'
-                    : 'Đã lưu trên máy, đang chờ đồng bộ.'}
-                </Text>
-              )}
-              <Text style={s.total}>
-                {loanReview
-                  ? loanReview.type === 'BORROWED'
-                    ? '+'
-                    : '−'
-                  : review.type === 'INCOME'
-                  ? '+'
-                  : '−'}
-                {Number(
-                  loanReview?.principal_amount ?? transactionReview?.amount,
-                ).toLocaleString('vi-VN')}{' '}
-                {wallet?.currency}
-              </Text>
-              <Text style={s.review}>
-                {wallet?.name} ·{' '}
-                {loanReview
-                  ? `${loanReview.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'} ${
-                      loanReview.person_name
-                    }`
-                  : category?.name ?? 'Chưa phân loại'}
-              </Text>
-              <Text style={s.muted}>{review.transaction_date}</Text>
-              <Text style={s.review}>{review.note || 'Không có ghi chú'}</Text>
-              {loanReview && (
-                <Text style={s.muted}>
-                  {loanReview.due_date
-                    ? `Hẹn trả: ${loanReview.due_date}`
-                    : 'Chưa hẹn ngày trả'}
-                </Text>
-              )}
-              {!!transactionReview?.receipt_items?.length && (
-                <Text style={s.muted}>
-                  {transactionReview.receipt_items.length} món · không đính kèm
-                  ảnh quét
-                </Text>
-              )}
-              {isOfflineSession && (
-                <Text style={s.muted}>
-                  {loanReview
-                    ? 'Vay/Nợ cần kết nối mạng để lưu.'
-                    : 'Đang ngoại tuyến: giữ trên máy, có mạng sẽ đồng bộ.'}
-                </Text>
-              )}
-            </>
-          ) : categoryOnly ? (
+          ) : voiceOnly ? null : categoryOnly ? (
             <WidgetCategoryPicker
               categories={data?.categories ?? []}
               type={type === 'INCOME' ? 'INCOME' : 'EXPENSE'}
@@ -1148,7 +1064,7 @@ function Panel({ entryUrl }: Props) {
             </Text>
           )}
         </ScrollView>
-        {ready && !review && !picker && datePicker && (
+        {ready && !picker && datePicker && (
           <DateTimePicker
             value={
               new Date(
@@ -1166,26 +1082,9 @@ function Panel({ entryUrl }: Props) {
           !photoOnly &&
           !voiceVisible && (
             <View style={s.footer}>
-              {completedResult ? (
-                button('Đóng', close, true, busy)
-              ) : review ? (
-                <>
-                  {button('Sửa lại', () => setReview(null), false, busy)}
-                  {button(
-                    busy ? 'Đang lưu…' : 'Xác nhận lưu',
-                    () => {
-                      save().catch(() => undefined);
-                    },
-                    true,
-                    busy,
-                  )}
-                </>
-              ) : (
-                <>
-                  {button('Xem trước', prepare, false, ocrBusy)}
-                  {button('Thêm giao dịch', addDirect, true, busy || ocrBusy)}
-                </>
-              )}
+              {completedResult
+                ? button('Đóng', close, true, busy)
+                : button('Thêm giao dịch', addDirect, true, busy || ocrBusy)}
             </View>
           )}
       </View>
@@ -1427,6 +1326,4 @@ const s = StyleSheet.create({
   },
   itemName: { flex: 1 },
   itemAmount: { width: 85 },
-  total: { fontSize: 28, fontWeight: '700', color: '#A75410' },
-  review: { fontSize: 16, color: '#4A2B1A', lineHeight: 24 },
 });

@@ -164,23 +164,21 @@ it('can clear the launcher category without creating a transaction', async () =>
 });
 
 it.each(['Vay', 'Cho vay'])(
-  'previews %s with a person and wallet, never sends a normal transaction, and reuses its key on retry',
+  'adds %s directly with a person and wallet and reuses its key on retry',
   async label => {
     await mount();
     await press('Vay/Nợ');
     if (label === 'Cho vay') await press('Cho vay');
     await fill('Số tiền widget', '100000');
-    await press('Xem trước');
+    await press('Thêm giao dịch');
     expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
     await fill('Tên người vay nợ widget', 'Nguoi QA');
     await chooseDate('Ngày hẹn trả widget', new Date(2026, 10, 30));
     await press('Ví QA · VND');
-    await press('Xem trước');
-    expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
     jest
       .mocked(saveWidgetLoanEntry)
       .mockRejectedValueOnce(Error('Mạng chưa sẵn sàng'));
-    await press('Xác nhận lưu');
+    await press('Thêm giao dịch');
     expect(homeWidget.closeQuickEntry).not.toHaveBeenCalled();
     const first = jest.mocked(saveWidgetLoanEntry).mock.calls[0][2];
     expect(first).toMatchObject({
@@ -190,10 +188,8 @@ it.each(['Vay', 'Cho vay'])(
       principal_amount: '100000',
       due_date: '2026-11-30',
     });
-    await press('Sửa lại');
-    await press('Xem trước');
     jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
-    await press('Xác nhận lưu');
+    await press('Thêm giao dịch');
     expect(
       jest.mocked(saveWidgetLoanEntry).mock.calls[1][2].client_request_id,
     ).toBe(first.client_request_id);
@@ -222,7 +218,7 @@ const mount = async (url = entryUrl) => {
   });
 };
 it.each(['Chi', 'Thu'])(
-  'keeps the same %s request after a failed save and repeated preview',
+  'keeps the same %s request after a failed direct save',
   async label => {
     await mount();
     if (label === 'Thu') {
@@ -232,16 +228,13 @@ it.each(['Chi', 'Thu'])(
     }
     await fill('Số tiền widget', '25000');
     await press('Ví QA · VND');
-    await press('Xem trước');
     jest
       .mocked(saveWidgetEntry)
       .mockRejectedValueOnce(Error('Chưa lưu hàng chờ'));
-    await press('Xác nhận lưu');
+    await press('Thêm giao dịch');
     const first = jest.mocked(saveWidgetEntry).mock.calls[0][2];
-    await press('Sửa lại');
-    await press('Xem trước');
     jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-    await press('Xác nhận lưu');
+    await press('Thêm giao dịch');
     expect(jest.mocked(saveWidgetEntry).mock.calls[1][2]).toEqual(first);
   },
 );
@@ -257,19 +250,17 @@ it.each([
   }
   await fill('Số tiền widget', '25000');
   await press('Ví QA · VND');
-  await press('Xem trước');
   jest
     .mocked(homeWidget.closeQuickEntry)
     .mockRejectedValueOnce(Error('Bridge unavailable'));
   if (kind === 'Vay/Nợ')
     jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
   else jest.mocked(saveWidgetEntry).mockResolvedValueOnce(result);
-  const oldConfirm = control('Xác nhận lưu').props.onPress;
-  await act(async () => oldConfirm());
-  expect(control('Sửa lại')).toBeUndefined();
-  expect(control('Xác nhận lưu')).toBeUndefined();
+  const oldAdd = control('Thêm giao dịch').props.onPress;
+  await act(async () => oldAdd());
+  expect(control('Thêm giao dịch')).toBeUndefined();
   expect(control('Đóng')).toBeDefined();
-  await act(async () => oldConfirm());
+  await act(async () => oldAdd());
   await press('Đóng');
   expect(saveWidgetEntry).toHaveBeenCalledTimes(kind === 'Vay/Nợ' ? 0 : 1);
   expect(saveWidgetLoanEntry).toHaveBeenCalledTimes(kind === 'Vay/Nợ' ? 1 : 0);
@@ -308,14 +299,12 @@ it('adds a widget transaction in one action after wallet selection', async () =>
   });
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
 });
-it('requires wallet and preview before saving, locks repeated confirms, then closes the panel', async () => {
+it('requires a wallet, locks repeated direct saves, then closes the panel', async () => {
   await mount();
   await fill('Số tiền widget', '25000');
-  await press('Xem trước');
+  await press('Thêm giao dịch');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
   await press('Ví QA · VND');
-  await press('Xem trước');
-  expect(saveWidgetEntry).not.toHaveBeenCalled();
   let done!: (v: 'SAVED') => void;
   jest.mocked(saveWidgetEntry).mockImplementationOnce(
     () =>
@@ -323,10 +312,9 @@ it('requires wallet and preview before saving, locks repeated confirms, then clo
         done = resolve;
       }),
   );
-  const button = control('Xác nhận lưu');
-  let pending!: Promise<void>;
+  const button = control('Thêm giao dịch');
   await act(async () => {
-    pending = button.props.onPress();
+    button.props.onPress();
     button.props.onPress();
   });
   expect(saveWidgetEntry).toHaveBeenCalledTimes(1);
@@ -338,11 +326,10 @@ it('requires wallet and preview before saving, locks repeated confirms, then clo
   });
   await act(async () => {
     done('SAVED');
-    await pending;
   });
   expect(homeWidget.closeQuickEntry).toHaveBeenCalledWith('SAVED');
 });
-it('opens and previews a transaction when this QA account has no categories', async () => {
+it('allows an uncategorized transaction when no categories are available', async () => {
   jest
     .mocked(dashboardCache.read)
     .mockResolvedValue({ ...data, categories: [] });
@@ -350,11 +337,11 @@ it('opens and previews a transaction when this QA account has no categories', as
   expect(control('Số tiền widget')).toBeDefined();
   await fill('Số tiền widget', '25000');
   await press('Ví QA · VND');
-  await press('Xem trước');
-  expect(saveWidgetEntry).not.toHaveBeenCalled();
-  expect(control('Xác nhận lưu')).toBeDefined();
-  await press('Sửa lại');
-  expect(control('Số tiền widget').props.value).toBe('25.000');
+  jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
+  await press('Thêm giao dịch');
+  expect(
+    jest.mocked(saveWidgetEntry).mock.calls[0][2].category_id,
+  ).toBeUndefined();
 });
 it('cancel never writes and a stale widget link cannot show financial fields', async () => {
   await mount();
@@ -387,9 +374,8 @@ it('camera fills editable items and amount but never saves or attaches its photo
   expect(control('Tên món 1').props.value).toBe('Bạc xỉu (2)');
   expect(saveWidgetEntry).not.toHaveBeenCalled();
   await press('Ví QA · VND');
-  await press('Xem trước');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('PENDING');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   const payload = jest.mocked(saveWidgetEntry).mock.calls[0][2];
   expect(payload).toMatchObject({
     amount: '79000',
@@ -447,9 +433,8 @@ it('accepts formatted VND and preserves an empty item amount while editing', asy
   await fill('Thành tiền món 1', '94.000');
   await fill('Số tiền widget', '79.000');
   await press('Ví QA · VND');
-  await press('Xem trước');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetEntry).mock.calls[0][2]).toMatchObject({
     amount: '79000',
     receipt_items: [{ name: 'Bạc xỉu', amount: 94000 }],
@@ -498,9 +483,8 @@ it('keeps decimal-comma input for a non-VND wallet instead of treating it as tho
   await mount();
   await press('Ví QA · USD');
   await fill('Số tiền widget', '2,50');
-  await press('Xem trước');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].amount).toBe('2.50');
 });
 
@@ -531,9 +515,8 @@ it('keeps the income draft and wallet through temporary auth-controller restorat
   expect(control('Số tiền widget').props.value).toBe('125.000');
   expect(control('Lương')).toBeDefined();
   expect(control('Ví QA · VND')).toBeDefined();
-  await press('Xem trước');
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetEntry).mock.calls[0][2]).toMatchObject({
     type: 'INCOME',
     category_id: 10,
@@ -568,10 +551,8 @@ it('lists all wallets in the form and previews the tapped wallet without an inte
     control('Tài khoản ngân hàng · VND').props.accessibilityState.selected,
   ).toBe(true);
   expect(control('Ví QA · VND').props.accessibilityState.selected).toBe(false);
-  await press('Xem trước');
-  expect(saveWidgetEntry).not.toHaveBeenCalled();
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].wallet_id).toBe(8);
 });
 
@@ -591,10 +572,8 @@ it('uses a native calendar, keeps the date on dismissal and submits the selected
       .findByType(DateTimePicker)
       .props.onChange({ type: 'dismissed' }, new Date(2026, 10, 2)),
   );
-  await press('Xem trước');
-  expect(saveWidgetEntry).not.toHaveBeenCalled();
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetEntry).mock.calls[0][2].transaction_date).toBe(
     '2026-11-01',
   );
@@ -616,10 +595,8 @@ it('lets the optional loan due date be picked and cleared and excludes savings w
   await fill('Tên người vay nợ widget', 'Nguoi QA');
   await fill('Số tiền widget', '100000');
   await press('Ví QA · VND');
-  await press('Xem trước');
-  expect(saveWidgetLoanEntry).not.toHaveBeenCalled();
   jest.mocked(saveWidgetLoanEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(jest.mocked(saveWidgetLoanEntry).mock.calls[0][2].due_date).toBeNull();
 });
 
@@ -677,10 +654,8 @@ it('chooses a library photo and fills receipt details without attaching the sour
   expect(control('Số tiền widget').props.value).toBe('79.000');
   expect(control('Tên món 1').props.value).toBe('Bạc xỉu');
   await press('Ví QA · VND');
-  await press('Xem trước');
-  expect(saveWidgetEntry).not.toHaveBeenCalled();
   jest.mocked(saveWidgetEntry).mockResolvedValueOnce('SAVED');
-  await press('Xác nhận lưu');
+  await press('Thêm giao dịch');
   expect(
     JSON.stringify(jest.mocked(saveWidgetEntry).mock.calls[0][2]),
   ).not.toContain('content://qa');
@@ -698,7 +673,7 @@ it('preserves the draft when the photo menu or library is cancelled', async () =
   await pickPhoto('Chọn từ thư viện');
   expect(transactionsService.analyzeReceipt).not.toHaveBeenCalled();
   expect(control('Số tiền widget').props.value).toBe('25.000');
-  expect(control('Xem trước').props.disabled).toBe(false);
+  expect(control('Thêm giao dịch').props.disabled).toBe(false);
 });
 
 it('ignores an old photo choice after the widget form is closed', async () => {
