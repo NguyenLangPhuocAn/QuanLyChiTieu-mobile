@@ -648,7 +648,7 @@ function Panel({ entryUrl }: Props) {
               {categoryOnly
                 ? 'Chọn danh mục'
                 : review
-                ? 'Kiểm tra giao dịch'
+                ? 'Xem trước giao dịch'
                 : 'Thêm giao dịch'}
             </Text>
             <TouchableOpacity
@@ -1163,7 +1163,7 @@ function Panel({ entryUrl }: Props) {
               ) : (
                 <>
                   {button('Hủy', close)}
-                  {button('Kiểm tra', prepare, true, ocrBusy)}
+                  {button('Xem trước', prepare, true, ocrBusy)}
                 </>
               )}
             </View>
