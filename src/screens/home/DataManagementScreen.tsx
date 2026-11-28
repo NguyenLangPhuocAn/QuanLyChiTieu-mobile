@@ -86,6 +86,11 @@ import { getApiStorageBaseUrl } from '../../services/api';
 import OfflineSyncReviewModal, {
   type OfflineSyncReview,
 } from '../../components/OfflineSyncReviewModal';
+import {
+  discardUnselected,
+  reviewItemKeys,
+  type ReviewExpected,
+} from '../../services/offlineSelection';
 
 type Route = NativeStackScreenProps<
   RootStackParamList,
@@ -760,7 +765,10 @@ const DataManagementScreen = () => {
     }
   };
 
-  const chooseManualReview = (choice: 'later' | 'local' | 'server') => {
+  const chooseManualReview = (
+    choice: 'later' | 'local' | 'server',
+    selected?: string[],
+  ) => {
     const review = manualReview;
     if (!review) return;
     if (choice === 'later') {
@@ -768,24 +776,67 @@ const DataManagementScreen = () => {
       return;
     }
     if (choice === 'local') {
-      setManualReview(null);
-      syncOfflineDrafts(
-        review.expectedDrafts,
-        review.expectedChanges,
-        review.expectedCategories,
-        review.remoteCategories ?? {},
-        review.expectedWallets,
-        review.remoteWallets ?? {},
-        review.expectedBudgets,
-        review.remoteBudgets ?? {},
-        review.expectedSavingsGoals,
-        review.remoteSavingsGoals ?? {},
-        review.expectedLoanDebts,
-        review.remoteLoanDebts ?? {},
-        review.expectedLoanCreates,
-        review.remoteLoanWallets ?? {},
-        review,
-      ).catch(() => undefined);
+      const syncWith = (expected: ReviewExpected) =>
+        syncOfflineDrafts(
+          expected.drafts,
+          expected.changes,
+          expected.categories,
+          review.remoteCategories ?? {},
+          expected.wallets,
+          review.remoteWallets ?? {},
+          expected.budgets,
+          review.remoteBudgets ?? {},
+          expected.savingsGoals,
+          review.remoteSavingsGoals ?? {},
+          expected.loanDebts,
+          review.remoteLoanDebts ?? {},
+          expected.loanCreates,
+          review.remoteLoanWallets ?? {},
+          review,
+        );
+      const expected: ReviewExpected = {
+        drafts: review.expectedDrafts,
+        changes: review.expectedChanges,
+        categories: review.expectedCategories,
+        wallets: review.expectedWallets,
+        budgets: review.expectedBudgets,
+        savingsGoals: review.expectedSavingsGoals,
+        loanDebts: review.expectedLoanDebts,
+        loanCreates: review.expectedLoanCreates,
+      };
+      const dropped = selected
+        ? reviewItemKeys(review).length - selected.length
+        : 0;
+      if (!selected || dropped <= 0) {
+        setManualReview(null);
+        syncWith(expected).catch(() => undefined);
+        return;
+      }
+      Alert.alert(
+        'Xóa mục không chọn?',
+        `${selected.length} mục đã chọn sẽ được đồng bộ. ${dropped} mục không chọn sẽ bị xóa khỏi điện thoại và không gửi lên máy chủ.`,
+        [
+          { text: 'Quay lại', style: 'cancel' },
+          {
+            text: 'Đồng bộ và xóa',
+            style: 'destructive',
+            onPress: () => {
+              setManualReview(null);
+              discardUnselected(review.userId, selected, review, expected)
+                .then(syncWith)
+                .catch(error =>
+                  Alert.alert(
+                    'Chưa hoàn tất',
+                    getUserFriendlyErrorMessage(
+                      error,
+                      'Dữ liệu trên máy vẫn được giữ nguyên.',
+                    ),
+                  ),
+                );
+            },
+          },
+        ],
+      );
       return;
     }
     Alert.alert(

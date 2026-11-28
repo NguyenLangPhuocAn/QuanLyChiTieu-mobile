@@ -22,6 +22,10 @@ import type { SavingsGoal } from '../types/savings';
 import type { OfflineLoanDebtChange } from '../services/offlineLoanDebtQueue';
 import type { OfflineLoanCreate } from '../services/offlineLoanCreateQueue';
 import type { LoanDebt } from '../types/loanDebt';
+import {
+  reviewDependencies,
+  reviewItemKeys,
+} from '../services/offlineSelection';
 import type {
   OfflineTransactionChange,
   TransactionSnapshot,
@@ -55,63 +59,6 @@ const describe = (item: TransactionSnapshot | null | undefined) =>
     : 'Không còn trên máy chủ';
 
 
-// Stable key for every reviewable item, shared with OfflineSessionSync.
-export const reviewItemKeys = (review: OfflineSyncReview | null) => [
-  ...(review?.savingsGoals ?? []).map(item => `savings:${item.id}`),
-  ...(review?.loanDebts ?? []).map(item => `loan:${item.id}`),
-  ...(review?.loanCreates ?? []).map(item => `loanCreate:${item.id}`),
-  ...(review?.budgets ?? []).map(item => `budget:${item.id}`),
-  ...(review?.wallets ?? []).map(item => `wallet:${item.id}`),
-  ...(review?.categories ?? []).map(item => `category:${item.id}`),
-  ...(review?.drafts ?? []).map(item => `draft:${item.id}`),
-  ...(review?.changes ?? []).map(item => `change:${item.transactionId}`),
-];
-
-// Items that point at a wallet/category created offline (negative id) can only
-// be synced together with that new wallet/category.
-export const reviewDependencies = (review: OfflineSyncReview | null) => {
-  const deps: Record<string, string[]> = {};
-  const createdWallets = new Set(
-    (review?.wallets ?? [])
-      .filter(item => item.action === 'CREATE')
-      .map(item => item.id),
-  );
-  const createdCategories = new Set(
-    (review?.categories ?? [])
-      .filter(item => item.action === 'CREATE')
-      .map(item => item.id),
-  );
-  const add = (
-    key: string,
-    walletId?: number | null,
-    categoryId?: number | null,
-  ) => {
-    const required: string[] = [];
-    if (walletId != null && createdWallets.has(walletId))
-      required.push(`wallet:${walletId}`);
-    if (categoryId != null && createdCategories.has(categoryId))
-      required.push(`category:${categoryId}`);
-    if (required.length) deps[key] = required;
-  };
-  review?.drafts.forEach(item =>
-    add(`draft:${item.id}`, item.payload.wallet_id, item.payload.category_id),
-  );
-  review?.changes.forEach(item =>
-    add(
-      `change:${item.transactionId}`,
-      item.payload?.wallet_id,
-      item.payload?.category_id,
-    ),
-  );
-  review?.budgets?.forEach(item =>
-    add(`budget:${item.id}`, item.payload?.wallet_id, item.payload?.category_id),
-  );
-  review?.loanCreates?.forEach(item =>
-    add(`loanCreate:${item.id}`, item.payload.wallet_id),
-  );
-  return deps;
-};
-
 function SelectableRow({
   selected,
   onToggle,
@@ -144,12 +91,12 @@ export default function OfflineSyncReviewModal({
   review: OfflineSyncReview | null;
   onChoose: (choice: 'later' | 'local' | 'server', selected?: string[]) => void;
 }) {
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const allKeys = useMemo(() => reviewItemKeys(review), [review]);
   const dependencies = useMemo(() => reviewDependencies(review), [review]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEffect(() => {
-    setDetailsOpen(true);
+    setDetailsOpen(false);
     setSelected(new Set(reviewItemKeys(review)));
   }, [review]);
   const isOn = (key: string) => selected.has(key);
@@ -224,29 +171,13 @@ export default function OfflineSyncReviewModal({
         <View style={styles.sheet}>
           <Text style={styles.title}>{`${total} thay đổi chưa đồng bộ`}</Text>
           <Text style={styles.description}>
-            So với lần kết nối trước: {summary}. Đánh dấu những mục muốn đồng bộ; mục không chọn sẽ bị xóa khỏi điện thoại.
+            So với lần kết nối trước: {summary}. Chọn bản bạn muốn giữ. Mở chi tiết để chọn từng mục; mục không chọn sẽ bị xóa khỏi điện thoại.
           </Text>
           {needsReview ? (
             <Text style={styles.warning}>
               {needsReview} mục cần xem lại trước khi đồng bộ.
             </Text>
           ) : null}
-          <View style={styles.selectBar}>
-            <TouchableOpacity
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: allSelected }}
-              style={styles.selectAll}
-              onPress={toggleAll}
-            >
-              <View style={[styles.checkbox, allSelected && styles.checkboxOn]}>
-                {allSelected ? <Text style={styles.checkmark}>✓</Text> : null}
-              </View>
-              <Text style={styles.selectAllText}>Chọn tất cả</Text>
-            </TouchableOpacity>
-            <Text style={styles.selectCount}>
-              Đã chọn {selected.size}/{allKeys.length}
-            </Text>
-          </View>
           <TouchableOpacity
             accessibilityRole="button"
             accessibilityLabel={detailsOpen ? 'Ẩn chi tiết' : 'Xem chi tiết'}
@@ -258,291 +189,313 @@ export default function OfflineSyncReviewModal({
             </Text>
           </TouchableOpacity>
           {detailsOpen ? (
-            <ScrollView
-              style={styles.list}
-              contentContainerStyle={styles.listContent}
-            >
-              {review?.savingsGoals?.map(item => (
-                <SelectableRow
-                  key={`savings:${item.id}`}
-                  selected={isOn(`savings:${item.id}`)}
-                  onToggle={() => toggle(`savings:${item.id}`)}
+            <>
+              <View style={styles.selectBar}>
+                <TouchableOpacity
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: allSelected }}
+                  style={styles.selectAll}
+                  onPress={toggleAll}
                 >
-                  <Text style={styles.rowTitle}>Sửa mục tiêu tiết kiệm</Text>
-                  <Text style={styles.local}>
-                    Trên máy: {item.payload.name} ·{' '}
-                    {Number(item.payload.target_amount).toLocaleString('vi-VN')}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {review.remoteSavingsGoals?.[item.id]
-                      ? `${review.remoteSavingsGoals[item.id]?.name} · ${Number(
-                          review.remoteSavingsGoals[item.id]?.target_amount,
-                        ).toLocaleString('vi-VN')}`
-                      : 'Không còn mục tiêu'}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                  <View
+                    style={[styles.checkbox, allSelected && styles.checkboxOn]}
+                  >
+                    {allSelected ? (
+                      <Text style={styles.checkmark}>✓</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.selectAllText}>Chọn tất cả</Text>
+                </TouchableOpacity>
+                <Text style={styles.selectCount}>
+                  Đã chọn {selected.size}/{allKeys.length}
+                </Text>
+              </View>
+              <ScrollView
+                style={styles.list}
+                contentContainerStyle={styles.listContent}
+              >
+                {review?.savingsGoals?.map(item => (
+                  <SelectableRow
+                    key={`savings:${item.id}`}
+                    selected={isOn(`savings:${item.id}`)}
+                    onToggle={() => toggle(`savings:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>Sửa mục tiêu tiết kiệm</Text>
+                    <Text style={styles.local}>
+                      Trên máy: {item.payload.name} ·{' '}
+                      {Number(item.payload.target_amount).toLocaleString('vi-VN')}
                     </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.loanDebts?.map(item => (
-                <SelectableRow
-                  key={`loan:${item.id}`}
-                  selected={isOn(`loan:${item.id}`)}
-                  onToggle={() => toggle(`loan:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>Sửa thông tin Vay/Nợ</Text>
-                  <Text style={styles.local}>
-                    Trên máy: {item.payload.person_name} ·{' '}
-                    {item.payload.due_date?.slice(0, 10) ?? 'Chưa hẹn ngày'}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {review.remoteLoanDebts?.[item.id]
-                      ? `${review.remoteLoanDebts[item.id]?.person_name} · ${
-                          review.remoteLoanDebts[item.id]?.due_date?.slice(
-                            0,
-                            10,
-                          ) ?? 'Chưa hẹn ngày'
-                        }`
-                      : 'Không còn khoản này'}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra xung đột.'}
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {review.remoteSavingsGoals?.[item.id]
+                        ? `${review.remoteSavingsGoals[item.id]?.name} · ${Number(
+                            review.remoteSavingsGoals[item.id]?.target_amount,
+                          ).toLocaleString('vi-VN')}`
+                        : 'Không còn mục tiêu'}
                     </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.loanCreates?.map(item => (
-                <SelectableRow
-                  key={`loanCreate:${item.id}`}
-                  selected={isOn(`loanCreate:${item.id}`)}
-                  onToggle={() => toggle(`loanCreate:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>Vay/Nợ mới</Text>
-                  <Text style={styles.local}>
-                    Trên máy:{' '}
-                    {item.payload.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'}{' '}
-                    {item.payload.person_name} ·{' '}
-                    {Number(item.payload.principal_amount).toLocaleString(
-                      'vi-VN',
-                    )}{' '}
-                    {item.wallet.currency}
-                  </Text>
-                  <Text style={styles.local}>
-                    Ví đã chọn: {item.wallet.name}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {review.remoteLoanWallets?.[item.wallet.id]
-                      ? `Ví ${
-                          review.remoteLoanWallets[item.wallet.id]?.name
-                        } · ${Number(
-                          review.remoteLoanWallets[item.wallet.id]?.balance ??
-                            0,
-                        ).toLocaleString('vi-VN')} → ${(
-                          Number(
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra xung đột.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.loanDebts?.map(item => (
+                  <SelectableRow
+                    key={`loan:${item.id}`}
+                    selected={isOn(`loan:${item.id}`)}
+                    onToggle={() => toggle(`loan:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>Sửa thông tin Vay/Nợ</Text>
+                    <Text style={styles.local}>
+                      Trên máy: {item.payload.person_name} ·{' '}
+                      {item.payload.due_date?.slice(0, 10) ?? 'Chưa hẹn ngày'}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {review.remoteLoanDebts?.[item.id]
+                        ? `${review.remoteLoanDebts[item.id]?.person_name} · ${
+                            review.remoteLoanDebts[item.id]?.due_date?.slice(
+                              0,
+                              10,
+                            ) ?? 'Chưa hẹn ngày'
+                          }`
+                        : 'Không còn khoản này'}
+                    </Text>
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra xung đột.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.loanCreates?.map(item => (
+                  <SelectableRow
+                    key={`loanCreate:${item.id}`}
+                    selected={isOn(`loanCreate:${item.id}`)}
+                    onToggle={() => toggle(`loanCreate:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>Vay/Nợ mới</Text>
+                    <Text style={styles.local}>
+                      Trên máy:{' '}
+                      {item.payload.type === 'BORROWED' ? 'Vay từ' : 'Cho vay'}{' '}
+                      {item.payload.person_name} ·{' '}
+                      {Number(item.payload.principal_amount).toLocaleString(
+                        'vi-VN',
+                      )}{' '}
+                      {item.wallet.currency}
+                    </Text>
+                    <Text style={styles.local}>
+                      Ví đã chọn: {item.wallet.name}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {review.remoteLoanWallets?.[item.wallet.id]
+                        ? `Ví ${
+                            review.remoteLoanWallets[item.wallet.id]?.name
+                          } · ${Number(
                             review.remoteLoanWallets[item.wallet.id]?.balance ??
                               0,
-                          ) +
-                          (item.payload.type === 'BORROWED' ? 1 : -1) *
-                            Number(item.payload.principal_amount)
-                        ).toLocaleString('vi-VN')} ${item.wallet.currency}`
-                      : 'Ví không còn hoặc chưa đọc được'}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Khoản đã được ghi trước đó sẽ không tạo lại khi gửi cùng mã.
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra trước khi gửi.'}
+                          ).toLocaleString('vi-VN')} → ${(
+                            Number(
+                              review.remoteLoanWallets[item.wallet.id]?.balance ??
+                                0,
+                            ) +
+                            (item.payload.type === 'BORROWED' ? 1 : -1) *
+                              Number(item.payload.principal_amount)
+                          ).toLocaleString('vi-VN')} ${item.wallet.currency}`
+                        : 'Ví không còn hoặc chưa đọc được'}
                     </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.budgets?.map(item => (
-                <SelectableRow
-                  key={`budget:${item.id}`}
-                  selected={isOn(`budget:${item.id}`)}
-                  onToggle={() => toggle(`budget:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>
-                    {item.action === 'CREATE'
-                      ? 'Ngân sách mới'
-                      : item.action === 'UPDATE'
-                      ? 'Sửa ngân sách'
-                      : 'Xóa ngân sách'}
-                  </Text>
-                  <Text style={styles.local}>
-                    Trên máy:{' '}
-                    {item.action === 'DELETE'
-                      ? item.base?.name
-                      : item.payload?.name}
-                    {' · '}
-                    {Number(
-                      item.action === 'DELETE'
-                        ? item.base?.limit_amount
-                        : item.payload?.limit_amount,
-                    ).toLocaleString('vi-VN')}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {item.action === 'CREATE'
-                      ? 'Chưa xác định đã nhận'
-                      : review.remoteBudgets?.[item.id]
-                      ? `${review.remoteBudgets[item.id]?.name} · ${Number(
-                          review.remoteBudgets[item.id]?.limit_amount,
-                        ).toLocaleString('vi-VN')}`
-                      : 'Không còn ngân sách'}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra xung đột.'}
-                    </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.wallets?.map(item => (
-                <SelectableRow
-                  key={`wallet:${item.id}`}
-                  selected={isOn(`wallet:${item.id}`)}
-                  onToggle={() => toggle(`wallet:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>
-                    {item.action === 'CREATE'
-                      ? 'Ví mới'
-                      : item.action === 'UPDATE'
-                      ? 'Sửa ví'
-                      : 'Xóa ví'}
-                  </Text>
-                  <Text style={styles.local}>
-                    Trên máy:{' '}
-                    {item.action === 'DELETE'
-                      ? item.base?.name
-                      : item.payload?.name}{' '}
-                    ·{' '}
-                    {item.action === 'DELETE'
-                      ? item.base?.currency
-                      : item.payload?.currency}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {item.action === 'CREATE'
-                      ? 'Chưa xác định đã nhận'
-                      : review.remoteWallets?.[item.id]
-                      ? `${review.remoteWallets[item.id]?.name} · ${Number(
-                          review.remoteWallets[item.id]?.balance,
-                        ).toLocaleString('vi-VN')}`
-                      : 'Không còn ví'}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra xung đột.'}
-                    </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.categories?.map(item => (
-                <SelectableRow
-                  key={`category:${item.id}`}
-                  selected={isOn(`category:${item.id}`)}
-                  onToggle={() => toggle(`category:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>
-                    {item.action === 'CREATE'
-                      ? 'Danh mục mới'
-                      : item.action === 'UPDATE'
-                      ? 'Sửa danh mục'
-                      : 'Xóa danh mục'}
-                  </Text>
-                  <Text style={styles.local}>
-                    Trên máy:{' '}
-                    {item.action === 'DELETE'
-                      ? item.base?.name
-                      : item.payload?.name}{' '}
-                    ·{' '}
-                    {item.action === 'DELETE'
-                      ? item.base?.type
-                      : item.payload?.type}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ:{' '}
-                    {item.action === 'CREATE'
-                      ? 'Chưa xác định đã nhận'
-                      : review.remoteCategories?.[item.id]?.name ??
-                        'Không còn danh mục'}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      {item.lastError || 'Cần kiểm tra xung đột.'}
-                    </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.drafts.map(item => (
-                <SelectableRow
-                  key={`draft:${item.id}`}
-                  selected={isOn(`draft:${item.id}`)}
-                  onToggle={() => toggle(`draft:${item.id}`)}
-                >
-                  <Text style={styles.rowTitle}>Giao dịch mới</Text>
-                  <Text style={styles.local}>
-                    {item.payload.type === 'INCOME' ? 'Thu +' : 'Chi -'}
-                    {Number(item.payload.amount).toLocaleString('vi-VN')} ·{' '}
-                    {item.payload.note || 'Không có ghi chú'}
-                  </Text>
-                  <Text style={styles.remote}>
-                    {item.confirmedTransactionId
-                      ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
-                      : mayHaveReachedServer(item)
-                      ? 'Máy chủ: Chưa xác định đã nhận khoản này'
-                      : item.rejectedByServer
-                      ? 'Máy chủ: Đã từ chối; chưa ghi giao dịch'
-                      : 'Máy chủ: Chưa gửi giao dịch'}
-                  </Text>
-                  {item.receipt ? (
                     <Text style={styles.remote}>
-                      Ảnh hóa đơn đã giữ trên máy.
+                      Khoản đã được ghi trước đó sẽ không tạo lại khi gửi cùng mã.
                     </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-              {review?.changes.map(item => (
-                <SelectableRow
-                  key={`change:${item.transactionId}`}
-                  selected={isOn(`change:${item.transactionId}`)}
-                  onToggle={() => toggle(`change:${item.transactionId}`)}
-                >
-                  <Text style={styles.rowTitle}>
-                    {item.action === 'DELETE'
-                      ? 'Xóa giao dịch'
-                      : 'Sửa giao dịch'}
-                  </Text>
-                  <Text style={styles.local}>
-                    Trên máy:{' '}
-                    {item.action === 'DELETE'
-                      ? 'Đã xóa'
-                      : `${
-                          item.payload?.type === 'INCOME' ? 'Thu +' : 'Chi -'
-                        }${Number(item.payload?.amount).toLocaleString(
-                          'vi-VN',
-                        )} · ${item.payload?.note || 'Không có ghi chú'}`}
-                  </Text>
-                  <Text style={styles.remote}>
-                    Máy chủ: {describe(review.remote[item.transactionId])}
-                  </Text>
-                  {item.status === 'NEEDS_REVIEW' ? (
-                    <Text style={styles.warning}>
-                      Cần kiểm tra xung đột trước khi ghi lên máy chủ.
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra trước khi gửi.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.budgets?.map(item => (
+                  <SelectableRow
+                    key={`budget:${item.id}`}
+                    selected={isOn(`budget:${item.id}`)}
+                    onToggle={() => toggle(`budget:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>
+                      {item.action === 'CREATE'
+                        ? 'Ngân sách mới'
+                        : item.action === 'UPDATE'
+                        ? 'Sửa ngân sách'
+                        : 'Xóa ngân sách'}
                     </Text>
-                  ) : null}
-                </SelectableRow>
-              ))}
-            </ScrollView>
+                    <Text style={styles.local}>
+                      Trên máy:{' '}
+                      {item.action === 'DELETE'
+                        ? item.base?.name
+                        : item.payload?.name}
+                      {' · '}
+                      {Number(
+                        item.action === 'DELETE'
+                          ? item.base?.limit_amount
+                          : item.payload?.limit_amount,
+                      ).toLocaleString('vi-VN')}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {item.action === 'CREATE'
+                        ? 'Chưa xác định đã nhận'
+                        : review.remoteBudgets?.[item.id]
+                        ? `${review.remoteBudgets[item.id]?.name} · ${Number(
+                            review.remoteBudgets[item.id]?.limit_amount,
+                          ).toLocaleString('vi-VN')}`
+                        : 'Không còn ngân sách'}
+                    </Text>
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra xung đột.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.wallets?.map(item => (
+                  <SelectableRow
+                    key={`wallet:${item.id}`}
+                    selected={isOn(`wallet:${item.id}`)}
+                    onToggle={() => toggle(`wallet:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>
+                      {item.action === 'CREATE'
+                        ? 'Ví mới'
+                        : item.action === 'UPDATE'
+                        ? 'Sửa ví'
+                        : 'Xóa ví'}
+                    </Text>
+                    <Text style={styles.local}>
+                      Trên máy:{' '}
+                      {item.action === 'DELETE'
+                        ? item.base?.name
+                        : item.payload?.name}{' '}
+                      ·{' '}
+                      {item.action === 'DELETE'
+                        ? item.base?.currency
+                        : item.payload?.currency}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {item.action === 'CREATE'
+                        ? 'Chưa xác định đã nhận'
+                        : review.remoteWallets?.[item.id]
+                        ? `${review.remoteWallets[item.id]?.name} · ${Number(
+                            review.remoteWallets[item.id]?.balance,
+                          ).toLocaleString('vi-VN')}`
+                        : 'Không còn ví'}
+                    </Text>
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra xung đột.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.categories?.map(item => (
+                  <SelectableRow
+                    key={`category:${item.id}`}
+                    selected={isOn(`category:${item.id}`)}
+                    onToggle={() => toggle(`category:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>
+                      {item.action === 'CREATE'
+                        ? 'Danh mục mới'
+                        : item.action === 'UPDATE'
+                        ? 'Sửa danh mục'
+                        : 'Xóa danh mục'}
+                    </Text>
+                    <Text style={styles.local}>
+                      Trên máy:{' '}
+                      {item.action === 'DELETE'
+                        ? item.base?.name
+                        : item.payload?.name}{' '}
+                      ·{' '}
+                      {item.action === 'DELETE'
+                        ? item.base?.type
+                        : item.payload?.type}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ:{' '}
+                      {item.action === 'CREATE'
+                        ? 'Chưa xác định đã nhận'
+                        : review.remoteCategories?.[item.id]?.name ??
+                          'Không còn danh mục'}
+                    </Text>
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        {item.lastError || 'Cần kiểm tra xung đột.'}
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.drafts.map(item => (
+                  <SelectableRow
+                    key={`draft:${item.id}`}
+                    selected={isOn(`draft:${item.id}`)}
+                    onToggle={() => toggle(`draft:${item.id}`)}
+                  >
+                    <Text style={styles.rowTitle}>Giao dịch mới</Text>
+                    <Text style={styles.local}>
+                      {item.payload.type === 'INCOME' ? 'Thu +' : 'Chi -'}
+                      {Number(item.payload.amount).toLocaleString('vi-VN')} ·{' '}
+                      {item.payload.note || 'Không có ghi chú'}
+                    </Text>
+                    <Text style={styles.remote}>
+                      {item.confirmedTransactionId
+                        ? 'Máy chủ: Đã ghi giao dịch; ảnh còn chờ tải lên'
+                        : mayHaveReachedServer(item)
+                        ? 'Máy chủ: Chưa xác định đã nhận khoản này'
+                        : item.rejectedByServer
+                        ? 'Máy chủ: Đã từ chối; chưa ghi giao dịch'
+                        : 'Máy chủ: Chưa gửi giao dịch'}
+                    </Text>
+                    {item.receipt ? (
+                      <Text style={styles.remote}>
+                        Ảnh hóa đơn đã giữ trên máy.
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+                {review?.changes.map(item => (
+                  <SelectableRow
+                    key={`change:${item.transactionId}`}
+                    selected={isOn(`change:${item.transactionId}`)}
+                    onToggle={() => toggle(`change:${item.transactionId}`)}
+                  >
+                    <Text style={styles.rowTitle}>
+                      {item.action === 'DELETE'
+                        ? 'Xóa giao dịch'
+                        : 'Sửa giao dịch'}
+                    </Text>
+                    <Text style={styles.local}>
+                      Trên máy:{' '}
+                      {item.action === 'DELETE'
+                        ? 'Đã xóa'
+                        : `${
+                            item.payload?.type === 'INCOME' ? 'Thu +' : 'Chi -'
+                          }${Number(item.payload?.amount).toLocaleString(
+                            'vi-VN',
+                          )} · ${item.payload?.note || 'Không có ghi chú'}`}
+                    </Text>
+                    <Text style={styles.remote}>
+                      Máy chủ: {describe(review.remote[item.transactionId])}
+                    </Text>
+                    {item.status === 'NEEDS_REVIEW' ? (
+                      <Text style={styles.warning}>
+                        Cần kiểm tra xung đột trước khi ghi lên máy chủ.
+                      </Text>
+                    ) : null}
+                  </SelectableRow>
+                ))}
+              </ScrollView>
+            </>
           ) : null}
           <TouchableOpacity
             accessibilityRole="button"
@@ -558,7 +511,7 @@ export default function OfflineSyncReviewModal({
           >
             <Text style={styles.primaryText}>
               {allSelected
-                ? 'Đồng bộ tất cả thay đổi'
+                ? 'Dùng thay đổi trên máy'
                 : `Đồng bộ ${selected.size} mục đã chọn`}
             </Text>
           </TouchableOpacity>

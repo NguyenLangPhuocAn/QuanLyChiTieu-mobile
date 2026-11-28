@@ -22,10 +22,12 @@ import { transactionsService } from '../services/transactions';
 import { financeRefresh } from '../services/financeRefresh';
 import { getApiStorageBaseUrl } from '../services/api';
 import OfflineSyncReviewModal, {
-  reviewDependencies,
-  reviewItemKeys,
   type OfflineSyncReview,
 } from './OfflineSyncReviewModal';
+import {
+  discardUnselected,
+  reviewItemKeys,
+} from '../services/offlineSelection';
 
 // Retry only while a foreground session has local writes waiting for the API.
 // Android connectivity events do not cover an API outage on working Wi-Fi.
@@ -428,58 +430,29 @@ export default function OfflineSessionSync({
               let selLoanDebts = expectedLoanDebts;
               let selLoanCreates = expectedLoanCreates;
               if (selected) {
-                const keep = new Set(selected);
-                const dependencies = reviewDependencies(reviewData);
-                for (const key of keep)
-                  if ((dependencies[key] ?? []).some(need => !keep.has(need)))
-                    throw Error(
-                      'Một mục đã chọn cần ví hoặc danh mục mới chưa được chọn. Hãy chọn kèm mục đó.',
-                    );
-                const kept = <T,>(prefix: string, ids: T[]) =>
-                  ids.filter(id => keep.has(`${prefix}:${id}`));
-                selExpected = await offlineTransactionQueue.discardLocalExcept(
+                const remaining = await discardUnselected(
                   userId,
-                  expected,
-                  kept('draft', expected.map(item => item.id)),
+                  selected,
+                  reviewData,
+                  {
+                    drafts: expected,
+                    changes: expectedChanges,
+                    categories: expectedCategories,
+                    wallets: expectedWallets,
+                    budgets: expectedBudgets,
+                    savingsGoals: expectedSavingsGoals,
+                    loanDebts: expectedLoanDebts,
+                    loanCreates: expectedLoanCreates,
+                  },
                 );
-                selChanges = await offlineTransactionChanges.discardExcept(
-                  userId,
-                  expectedChanges,
-                  kept(
-                    'change',
-                    expectedChanges.map(item => item.transactionId),
-                  ),
-                );
-                selCategories = await offlineCategoryQueue.discardExcept(
-                  userId,
-                  expectedCategories,
-                  kept('category', expectedCategories.map(item => item.id)),
-                );
-                selWallets = await offlineWalletQueue.discardExcept(
-                  userId,
-                  expectedWallets,
-                  kept('wallet', expectedWallets.map(item => item.id)),
-                );
-                selBudgets = await offlineBudgetQueue.discardExcept(
-                  userId,
-                  expectedBudgets,
-                  kept('budget', expectedBudgets.map(item => item.id)),
-                );
-                selSavingsGoals = await offlineSavingsGoalQueue.discardExcept(
-                  userId,
-                  expectedSavingsGoals,
-                  kept('savings', expectedSavingsGoals.map(item => item.id)),
-                );
-                selLoanDebts = await offlineLoanDebtQueue.discardExcept(
-                  userId,
-                  expectedLoanDebts,
-                  kept('loan', expectedLoanDebts.map(item => item.id)),
-                );
-                selLoanCreates = await offlineLoanCreateQueue.discardExcept(
-                  userId,
-                  expectedLoanCreates,
-                  kept('loanCreate', expectedLoanCreates.map(item => item.id)),
-                );
+                selExpected = remaining.drafts;
+                selChanges = remaining.changes;
+                selCategories = remaining.categories;
+                selWallets = remaining.wallets;
+                selBudgets = remaining.budgets;
+                selSavingsGoals = remaining.savingsGoals;
+                selLoanDebts = remaining.loanDebts;
+                selLoanCreates = remaining.loanCreates;
               }
               const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
                 latest.current.token,
