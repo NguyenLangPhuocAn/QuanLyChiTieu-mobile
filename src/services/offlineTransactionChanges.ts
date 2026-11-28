@@ -262,6 +262,22 @@ export const offlineTransactionChanges = {
       return rows.length;
     });
   },
+  // Keep only the selected edits/deletes; the rest are dropped from the device.
+  async discardExcept(
+    userId: number,
+    expected: ReturnType<typeof previewOf>,
+    keep: number[],
+  ) {
+    return withLock(userId, async () => {
+      const rows = await read(userId);
+      if (JSON.stringify(previewOf(rows)) !== JSON.stringify(expected))
+        throw Error('Thay đổi trên máy đã đổi. Hãy xem lại trước khi bỏ.');
+      const keepIds = new Set(keep);
+      const kept = rows.filter(item => keepIds.has(item.transactionId));
+      await write(userId, kept);
+      return previewOf(kept);
+    });
+  },
   async sync(
     token: string,
     userId: number,
