@@ -221,6 +221,31 @@ describe('offlineTransactionQueue', () => {
     unsubscribe();
   });
 
+  it('sends every queued draft in one pass without skipping the next one', async () => {
+    for (const [note, id] of [
+      ['Bữa trưa', 'txn_offline_lunch_1234567'],
+      ['Thiệp sinh nhật', 'txn_offline_card_12345678'],
+      ['Nước suối', 'txn_offline_water_1234567'],
+    ])
+      await offlineTransactionQueue.enqueue(7, {
+        wallet_id: 2,
+        amount: '15000',
+        type: 'EXPENSE',
+        note,
+        client_request_id: id,
+      });
+    createTransaction
+      .mockResolvedValueOnce({ id: 91 })
+      .mockResolvedValueOnce({ id: 92 })
+      .mockResolvedValueOnce({ id: 93 });
+
+    const result = await offlineTransactionQueue.sync('token', 7);
+
+    expect(result).toEqual({ synced: 3, pending: 0, needsReview: 0 });
+    expect(createTransaction).toHaveBeenCalledTimes(3);
+    await expect(offlineTransactionQueue.list(7)).resolves.toEqual([]);
+  });
+
   it('keeps an unknown write outcome pending for a safe retry', async () => {
     await offlineTransactionQueue.enqueue(7, {
       wallet_id: 2,
