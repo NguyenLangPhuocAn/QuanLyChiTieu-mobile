@@ -118,6 +118,60 @@ const makeRequestId = () =>
     .toString(36)
     .slice(2, 16)}`;
 
+// A category must not disappear while another pending change still points at
+// it: the sync would never resolve its id and the queue would stay stuck.
+const ensureNotUsedByPendingChanges = async (
+  userId: number,
+  categoryId: number,
+) => {
+  const editsRaw = await AsyncStorage.getItem(
+    `offline-transaction-changes:v1:${getApiStorageBaseUrl()}:${userId}`,
+  );
+  if (editsRaw) {
+    let edits: Array<{ payload?: { category_id?: number } }>;
+    try {
+      const parsed: unknown = JSON.parse(editsRaw);
+      if (!Array.isArray(parsed)) throw Error();
+      edits = parsed;
+    } catch {
+      throw Error(
+        'Chưa đọc được giao dịch sửa trên máy. Không thể xóa danh mục an toàn.',
+      );
+    }
+    if (edits.some(item => item.payload?.category_id === categoryId))
+      throw Error(
+        'Danh mục đang được dùng bởi giao dịch sửa chờ đồng bộ. Hãy sửa giao dịch đó trước.',
+      );
+  }
+  const budgetsRaw = await AsyncStorage.getItem(
+    `offline-budgets:v1:${getApiStorageBaseUrl()}:${userId}`,
+  );
+  if (budgetsRaw) {
+    let budgets: Array<{
+      action?: string;
+      payload?: { category_id?: number | null };
+    }>;
+    try {
+      const parsed = JSON.parse(budgetsRaw) as { changes?: unknown };
+      if (!Array.isArray(parsed?.changes)) throw Error();
+      budgets = parsed.changes;
+    } catch {
+      throw Error(
+        'Chưa đọc được ngân sách trên máy. Không thể xóa danh mục an toàn.',
+      );
+    }
+    if (
+      budgets.some(
+        item =>
+          item.action !== 'DELETE' && item.payload?.category_id === categoryId,
+      )
+    )
+      throw Error(
+        'Danh mục đang được dùng bởi ngân sách chờ đồng bộ. Hãy sửa ngân sách đó trước.',
+      );
+  }
+};
+
 export const offlineCategoryQueue = {
   createRequestId: makeRequestId,
   subscribe(listener: () => void) {
@@ -218,6 +272,7 @@ export const offlineCategoryQueue = {
   },
   async remove(userId: number, category: Category) {
     return lock(userId, async () => {
+      await ensureNotUsedByPendingChanges(userId, category.id);
       const rawDrafts = await AsyncStorage.getItem(
         `quan_ly_chi_tieu_offline_transactions_v1_${userId}`,
       );
