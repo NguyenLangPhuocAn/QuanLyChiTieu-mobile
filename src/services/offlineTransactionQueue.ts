@@ -142,7 +142,7 @@ const runSync = async (
   }
   let synced = 0;
 
-  for (const draft of drafts) {
+  for (const draft of [...drafts]) {
     if (!isCurrent() || getApiStorageBaseUrl() !== server) break;
     if (draft.server !== server) continue;
     if (draft.status === 'NEEDS_REVIEW') continue;
