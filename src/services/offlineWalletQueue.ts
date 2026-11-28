@@ -306,6 +306,23 @@ export const offlineWalletQueue = {
       await write(userId, state);
     });
   },
+  // Keep only the reviewed items the user selected; every other pending
+  // change in this queue is removed from the device.
+  async discardExcept(
+    userId: number,
+    expected: ReturnType<typeof previewOf>,
+    keep: number[],
+  ) {
+    return lock(userId, async () => {
+      const state = await read(userId);
+      if (JSON.stringify(previewOf(state)) !== JSON.stringify(expected))
+        throw Error('Ví trên máy đã thay đổi. Hãy xem lại.');
+      const keepIds = new Set(keep);
+      state.changes = state.changes.filter(item => keepIds.has(item.id));
+      await write(userId, state);
+      return previewOf(state);
+    });
+  },
   async rebaseReviewed(
     token: string,
     userId: number,

@@ -22,6 +22,8 @@ import { transactionsService } from '../services/transactions';
 import { financeRefresh } from '../services/financeRefresh';
 import { getApiStorageBaseUrl } from '../services/api';
 import OfflineSyncReviewModal, {
+  reviewDependencies,
+  reviewItemKeys,
   type OfflineSyncReview,
 } from './OfflineSyncReviewModal';
 
@@ -36,7 +38,8 @@ export default function OfflineSessionSync({
   const server = getApiStorageBaseUrl();
   const [review, setReview] = useState<OfflineSyncReview | null>(null);
   const choiceRef = useRef<
-    ((choice: 'later' | 'local' | 'server') => void) | null
+    | ((choice: 'later' | 'local' | 'server', selected?: string[]) => void)
+    | null
   >(null);
   const latest = useRef({
     userId: user?.id,
@@ -281,7 +284,27 @@ export default function OfflineSessionSync({
         retryPending = false;
         clearRetry();
         promptedUsers.add(userId);
-        const choose = async (source: 'local' | 'cloud') => {
+        const reviewData: OfflineSyncReview = {
+          drafts,
+          changes,
+          categories,
+          wallets,
+          budgets,
+          savingsGoals,
+          loanDebts,
+          loanCreates,
+          remote,
+          remoteCategories,
+          remoteWallets,
+          remoteBudgets,
+          remoteSavingsGoals,
+          remoteLoanDebts,
+          remoteLoanWallets,
+        };
+        const choose = async (
+          source: 'local' | 'cloud',
+          selected?: string[],
+        ) => {
           let retryAfterChoice = false;
           try {
             if (!current() || !latest.current.token) return;
@@ -394,10 +417,74 @@ export default function OfflineSessionSync({
                 JSON.stringify(expectedLoanCreates)
               )
                 throw Error('Khoản Vay/Nợ mới trên máy đã đổi. Hãy xem lại.');
+              // The user may keep only some of the reviewed items. Everything
+              // left unchecked is removed from the device before syncing.
+              let selExpected = expected;
+              let selChanges = expectedChanges;
+              let selCategories = expectedCategories;
+              let selWallets = expectedWallets;
+              let selBudgets = expectedBudgets;
+              let selSavingsGoals = expectedSavingsGoals;
+              let selLoanDebts = expectedLoanDebts;
+              let selLoanCreates = expectedLoanCreates;
+              if (selected) {
+                const keep = new Set(selected);
+                const dependencies = reviewDependencies(reviewData);
+                for (const key of keep)
+                  if ((dependencies[key] ?? []).some(need => !keep.has(need)))
+                    throw Error(
+                      'Một mục đã chọn cần ví hoặc danh mục mới chưa được chọn. Hãy chọn kèm mục đó.',
+                    );
+                const kept = <T,>(prefix: string, ids: T[]) =>
+                  ids.filter(id => keep.has(`${prefix}:${id}`));
+                selExpected = await offlineTransactionQueue.discardLocalExcept(
+                  userId,
+                  expected,
+                  kept('draft', expected.map(item => item.id)),
+                );
+                selChanges = await offlineTransactionChanges.discardExcept(
+                  userId,
+                  expectedChanges,
+                  kept(
+                    'change',
+                    expectedChanges.map(item => item.transactionId),
+                  ),
+                );
+                selCategories = await offlineCategoryQueue.discardExcept(
+                  userId,
+                  expectedCategories,
+                  kept('category', expectedCategories.map(item => item.id)),
+                );
+                selWallets = await offlineWalletQueue.discardExcept(
+                  userId,
+                  expectedWallets,
+                  kept('wallet', expectedWallets.map(item => item.id)),
+                );
+                selBudgets = await offlineBudgetQueue.discardExcept(
+                  userId,
+                  expectedBudgets,
+                  kept('budget', expectedBudgets.map(item => item.id)),
+                );
+                selSavingsGoals = await offlineSavingsGoalQueue.discardExcept(
+                  userId,
+                  expectedSavingsGoals,
+                  kept('savings', expectedSavingsGoals.map(item => item.id)),
+                );
+                selLoanDebts = await offlineLoanDebtQueue.discardExcept(
+                  userId,
+                  expectedLoanDebts,
+                  kept('loan', expectedLoanDebts.map(item => item.id)),
+                );
+                selLoanCreates = await offlineLoanCreateQueue.discardExcept(
+                  userId,
+                  expectedLoanCreates,
+                  kept('loanCreate', expectedLoanCreates.map(item => item.id)),
+                );
+              }
               const rebasedWallets = await offlineWalletQueue.rebaseReviewed(
                 latest.current.token,
                 userId,
-                expectedWallets,
+                selWallets,
                 remoteWallets,
               );
               const walletResult = await offlineWalletQueue.sync(
@@ -410,7 +497,7 @@ export default function OfflineSessionSync({
                 await offlineCategoryQueue.rebaseReviewed(
                   latest.current.token,
                   userId,
-                  expectedCategories,
+                  selCategories,
                   remoteCategories,
                 );
               const categoryResult = await offlineCategoryQueue.sync(
@@ -431,19 +518,19 @@ export default function OfflineSessionSync({
                     await offlineBudgetQueue.rebaseReviewed(
                       latest.current.token,
                       userId,
-                      expectedBudgets,
+                      selBudgets,
                       remoteBudgets,
                     ),
                     current,
                   )
-                : { synced: 0, pending: budgets.length, needsReview: 0 };
+                : { synced: 0, pending: selBudgets.length, needsReview: 0 };
               const savingsResult = await offlineSavingsGoalQueue.sync(
                 latest.current.token,
                 userId,
                 await offlineSavingsGoalQueue.rebaseReviewed(
                   latest.current.token,
                   userId,
-                  expectedSavingsGoals,
+                  selSavingsGoals,
                   remoteSavingsGoals,
                 ),
                 current,
@@ -454,7 +541,7 @@ export default function OfflineSessionSync({
                 await offlineLoanDebtQueue.rebaseReviewed(
                   latest.current.token,
                   userId,
-                  expectedLoanDebts,
+                  selLoanDebts,
                   remoteLoanDebts,
                 ),
                 current,
@@ -465,7 +552,7 @@ export default function OfflineSessionSync({
                 await offlineLoanCreateQueue.rebaseReviewed(
                   latest.current.token,
                   userId,
-                  expectedLoanCreates,
+                  selLoanCreates,
                   remoteLoanWallets,
                 ),
                 remoteLoanWallets,
@@ -476,20 +563,20 @@ export default function OfflineSessionSync({
                     latest.current.token,
                     userId,
                     current,
-                    expected,
+                    selExpected,
                   )
-                : { synced: 0, pending: expected.length, needsReview: 0 };
+                : { synced: 0, pending: selExpected.length, needsReview: 0 };
               const edits =
                 !categoriesReady || result.pending || result.needsReview
                   ? {
                       synced: 0,
-                      pending: expectedChanges.length,
+                      pending: selChanges.length,
                       needsReview: 0,
                     }
                   : await offlineTransactionChanges.sync(
                       latest.current.token,
                       userId,
-                      expectedChanges,
+                      selChanges,
                       current,
                     );
               if (
@@ -578,7 +665,7 @@ export default function OfflineSessionSync({
             if (retryAfterChoice && current()) scheduleRetry();
           }
         };
-        choiceRef.current = choice => {
+        choiceRef.current = (choice, selected) => {
           if (choice === 'later') {
             setReview(null);
             reviewVisible = false;
@@ -586,9 +673,31 @@ export default function OfflineSessionSync({
             promptedUsers.delete(userId);
             choiceRef.current = null;
           } else if (choice === 'local') {
-            setReview(null);
-            reviewVisible = false;
-            choose('local').catch(() => undefined);
+            const dropped = selected
+              ? reviewItemKeys(reviewData).length - selected.length
+              : 0;
+            if (!selected || dropped <= 0) {
+              setReview(null);
+              reviewVisible = false;
+              choose('local').catch(() => undefined);
+              return;
+            }
+            Alert.alert(
+              'Xóa mục không chọn?',
+              `${selected.length} mục đã chọn sẽ được đồng bộ. ${dropped} mục không chọn sẽ bị xóa khỏi điện thoại và không gửi lên máy chủ.`,
+              [
+                { text: 'Quay lại', style: 'cancel' },
+                {
+                  text: 'Đồng bộ và xóa',
+                  style: 'destructive',
+                  onPress: () => {
+                    setReview(null);
+                    reviewVisible = false;
+                    choose('local', selected).catch(() => undefined);
+                  },
+                },
+              ],
+            );
           } else {
             Alert.alert(
               'Bỏ thay đổi trên máy?',
@@ -617,23 +726,7 @@ export default function OfflineSessionSync({
             );
           }
         };
-        setReview({
-          drafts,
-          changes,
-          categories,
-          wallets,
-          budgets,
-          savingsGoals,
-          loanDebts,
-          loanCreates,
-          remote,
-          remoteCategories,
-          remoteWallets,
-          remoteBudgets,
-          remoteSavingsGoals,
-          remoteLoanDebts,
-          remoteLoanWallets,
-        });
+        setReview(reviewData);
       } catch {
         /* Durable drafts remain; retry only for pending writes in foreground. */
       } finally {
@@ -733,7 +826,7 @@ export default function OfflineSessionSync({
   return (
     <OfflineSyncReviewModal
       review={review}
-      onChoose={choice => choiceRef.current?.(choice)}
+      onChoose={(choice, selected) => choiceRef.current?.(choice, selected)}
     />
   );
 }

@@ -412,6 +412,42 @@ export const offlineTransactionQueue = {
       return current.length;
     });
   },
+  // Keep only the selected drafts for this server; the other drafts (and
+  // their stored receipt images) are removed from the device.
+  async discardLocalExcept(
+    userId: number,
+    expected: Array<{ id: string; updatedAt: string }>,
+    keep: string[],
+  ) {
+    return withUserLock(userId, async () => {
+      const server = getApiStorageBaseUrl();
+      const drafts = parseDrafts(
+        await AsyncStorage.getItem(storageKey(userId)),
+      );
+      const current = drafts
+        .filter(item => item.server === server)
+        .map(item => ({ id: item.id, updatedAt: item.updatedAt }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      if (
+        JSON.stringify(current) !==
+        JSON.stringify([...expected].sort((a, b) => a.id.localeCompare(b.id)))
+      )
+        throw Error('Dữ liệu trên máy đã thay đổi. Hãy xem lại trước khi bỏ.');
+      const keepIds = new Set(keep);
+      const removed = drafts.filter(
+        item => item.server === server && !keepIds.has(item.id),
+      );
+      await save(
+        userId,
+        drafts.filter(item => item.server !== server || keepIds.has(item.id)),
+      );
+      for (const draft of removed.filter(item => item.receipt))
+        await offlineReceiptStore
+          .remove(userId, draft.receipt!)
+          .catch(() => undefined);
+      return expected.filter(item => keepIds.has(item.id));
+    });
+  },
 
   async update(
     userId: number,
